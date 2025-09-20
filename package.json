@@ -1,6 +1,6 @@
 {
   "name": "@le-space/orbitdb-identity-provider-webauthn-did",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "WebAuthn-based DID identity provider for OrbitDB for hardware-secured wallets and biometric Passkey authentication",
   "main": "src/index.js",
   "type": "module",
@@ -43,12 +43,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/orbitdb/orbitdb-identity-provider-webauthn-did.git"
+    "url": "git+https://github.com/le-space/orbitdb-identity-provider-webauthn-did.git"
   },
   "bugs": {
-    "url": "https://github.com/orbitdb/orbitdb-identity-provider-webauthn-did/issues"
+    "url": "https://github.com/le-space.de/orbitdb-identity-provider-webauthn-did/issues"
   },
-  "homepage": "https://github.com/orbitdb/orbitdb-identity-provider-webauthn-did#readme",
+  "homepage": "https://github.com/le-space/orbitdb-identity-provider-webauthn-did#readme",
   "peerDependencies": {
     "@orbitdb/core": "^3.0.0"
   },
