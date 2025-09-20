@@ -53,7 +53,8 @@
     "@orbitdb/core": "^3.0.0"
   },
   "dependencies": {
-    "cbor-web": "^9.0.1"
+    "cbor-web": "^9.0.1",
+    "vite-plugin-node-polyfills": "^0.24.0"
   },
   "devDependencies": {
     "@orbitdb/core": "^3.0.0",
