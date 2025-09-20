@@ -30,20 +30,12 @@ jobs:
         run: npm run lint --if-present
         continue-on-error: true
       
-      - name: Build package
-        run: npm run build --if-present
-      
-      - name: Pack main package
-        run: npm pack
-      
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
       
-      - name: Install demo dependencies with packed tarball
+      - name: Install demo dependencies
         run: |
           cd examples/webauthn-todo-demo
-          # Update package.json to use the packed tarball
-          npm pkg set dependencies.@le-space/orbitdb-identity-provider-webauthn-did="file:../../le-space-orbitdb-identity-provider-webauthn-did-0.0.1.tgz"
           npm ci
       
       - name: Build demo application
@@ -179,17 +171,13 @@ jobs:
       - name: Build package (if build script exists)
         run: npm run build --if-present
       
-      - name: Pack package for final testing
-        run: npm pack
-      
       - name: Run final tests before publish
         run: |
           # Install Playwright for final test run
           npx playwright install --with-deps chromium
           
-          # Install and start demo with packed tarball
+          # Install and start demo
           cd examples/webauthn-todo-demo
-          npm pkg set dependencies.@le-space/orbitdb-identity-provider-webauthn-did="file:../../le-space-orbitdb-identity-provider-webauthn-did-0.0.1.tgz"
           npm ci
           npm run build
           npm run preview -- --port 5173 --host &
