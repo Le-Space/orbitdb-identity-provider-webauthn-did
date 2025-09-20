@@ -1,0 +1,54 @@
+{
+  "name": "@orbitdb/identity-provider-webauthn-did",
+  "version": "1.0.0",
+  "description": "WebAuthn-based DID identity provider for OrbitDB with hardware-secured biometric authentication",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "test": "mocha test/*.test.js",
+    "test:watch": "mocha test/*.test.js --watch",
+    "lint": "eslint src/ test/",
+    "lint:fix": "eslint src/ test/ --fix"
+  },
+  "keywords": [
+    "orbitdb",
+    "identity",
+    "webauthn",
+    "did",
+    "biometric",
+    "authentication",
+    "decentralized",
+    "blockchain",
+    "cryptography"
+  ],
+  "author": "OrbitDB Community",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/orbitdb/orbitdb-identity-provider-webauthn-did.git"
+  },
+  "bugs": {
+    "url": "https://github.com/orbitdb/orbitdb-identity-provider-webauthn-did/issues"
+  },
+  "homepage": "https://github.com/orbitdb/orbitdb-identity-provider-webauthn-did#readme",
+  "peerDependencies": {
+    "@orbitdb/core": "^3.0.0"
+  },
+  "dependencies": {
+    "cbor-web": "^9.0.1"
+  },
+  "devDependencies": {
+    "@orbitdb/core": "^3.0.0",
+    "helia": "^5.0.0",
+    "libp2p": "^2.0.0",
+    "mocha": "^10.0.0",
+    "chai": "^5.0.0",
+    "eslint": "^9.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "browser": {
+    "crypto": false
+  }
+}
