@@ -91,12 +91,7 @@ await db.put('greeting', 'Hello, secure world!')
 
 ### LibP2P and IPFS Setup
 
-For production applications, you'll need proper libp2p configuration. See the [OrbitDB Liftoff example](https://github.com/orbitdb/orbitdb/tree/main/examples/liftoff) for comprehensive libp2p setup including:
-
-- Transport protocols (WebSockets, WebRTC, Circuit Relay)
-- Connection encryption and stream multiplexing
-- Peer discovery and bootstrap nodes
-- Browser vs Node.js specific configurations
+For an example libp2p configuration. See the [OrbitDB Liftoff example](https://github.com/orbitdb/liftoff) for example libp2p setup including:
 
 ### Credential Creation Options
 
