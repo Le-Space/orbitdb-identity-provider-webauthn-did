@@ -31,8 +31,7 @@
     "svelte": "^5.38.7",
     "svelte-check": "^4.3.1",
     "typescript": "^5.9.2",
-    "vite": "^7.1.4",
-    "vite-plugin-pwa": "^1.0.3"
+    "vite": "^7.1.4"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

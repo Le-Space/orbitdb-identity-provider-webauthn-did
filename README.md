@@ -1,5 +1,9 @@
 # OrbitDB WebAuthn DID Identity Provider
 
+[![Tests](https://github.com/orbitdb/orbitdb-identity-provider-webauthn-did/workflows/Tests/badge.svg)](https://github.com/orbitdb/orbitdb-identity-provider-webauthn-did/actions/workflows/test.yml) [![CI/CD](https://github.com/orbitdb/orbitdb-identity-provider-webauthn-did/workflows/CI%2FCD%20-%20Test%20and%20Publish/badge.svg)](https://github.com/orbitdb/orbitdb-identity-provider-webauthn-did/actions/workflows/ci-cd.yml)
+
+🚀 **[Try the Live Demo](https://bafybeida2cdlt3yie4hh67fwm2q4gvi23s53klo4rb2en2inhu33zzmmqa.ipfs.w3s.link/)** - Interactive WebAuthn demo with biometric authentication
+
 A hardware-secured identity provider for OrbitDB using WebAuthn authentication. This provider enables hardware -secured database access (Ledger, Yubikey etc.) where private keys never leave the secure hardware element 
 and biometric authentication via Passkey.
 
