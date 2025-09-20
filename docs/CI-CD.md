@@ -28,7 +28,7 @@ Comprehensive workflow that runs on releases and publishes to npm.
 **Jobs:**
 
 #### Test Job
-- Tests across Node.js versions: 18.x, 20.x, 22.x
+- Tests on Node.js 22.x (latest LTS)
 - Installs Playwright and Chromium
 - Builds and serves the demo application
 - Runs the complete WebAuthn test suite
@@ -89,7 +89,7 @@ The CI/CD pipeline runs these specific test scenarios:
 ### Automatic Publishing
 When you create a GitHub release, the workflow will:
 
-1. Run all tests across multiple Node.js versions
+1. Run all tests on Node.js 22.x (latest LTS)
 2. Perform security audits
 3. Validate package structure
 4. Run final integration tests

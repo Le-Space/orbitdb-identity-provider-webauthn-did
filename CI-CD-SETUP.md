@@ -15,7 +15,7 @@ A comprehensive CI/CD pipeline has been established for the OrbitDB WebAuthn Ide
 
 **📁 `.github/workflows/ci-cd.yml`**
 - Comprehensive release pipeline
-- Tests across Node.js 18.x, 20.x, 22.x
+- Tests on Node.js 22.x (latest LTS)
 - Security auditing with npm audit
 - Package validation and publishing
 - Automated release notes generation
@@ -108,7 +108,7 @@ The pipeline validates these critical scenarios:
    ```
 
 2. **Automated Pipeline Executes:**
-   - ✅ Tests across Node.js 18.x, 20.x, 22.x
+   - ✅ Tests on Node.js 22.x (latest LTS)
    - ✅ Security audit with npm audit
    - ✅ Package validation and export verification
    - ✅ Complete WebAuthn + OrbitDB integration tests
@@ -146,7 +146,7 @@ The CI/CD pipeline includes multiple security layers:
 ## 🎯 Quality Assurance
 
 ### Automated Checks
-- ✅ **Cross-platform Compatibility**: Node.js 18+
+- ✅ **Node.js 22.x Compatibility**: Latest LTS version
 - ✅ **Security Auditing**: Moderate+ severity vulnerability detection
 - ✅ **Package Integrity**: Export validation and installation testing
 - ✅ **Functional Testing**: Complete user workflow validation
