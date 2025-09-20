@@ -1,53 +1,52 @@
 <script>
   import { onMount } from 'svelte';
-  import { createOrbitDB, Identities, useIdentityProvider, IPFSAccessController } from '@orbitdb/core';
-  import { createLibp2p } from 'libp2p';
-  import { createHelia } from 'helia';
-  import { circuitRelayTransport } from '@libp2p/circuit-relay-v2';
-  import { webSockets } from '@libp2p/websockets';
-  import { webRTC } from '@libp2p/webrtc';
-  import { noise } from '@chainsafe/libp2p-noise';
-  import { yamux } from '@chainsafe/libp2p-yamux';
-  import { identify } from '@libp2p/identify';
-  import { gossipsub } from '@chainsafe/libp2p-gossipsub';
-import { all } from '@libp2p/websockets/filters';
-import { LevelBlockstore } from 'blockstore-level';
-import { LevelDatastore } from 'datastore-level';
   import {
     WebAuthnDIDProvider,
-    OrbitDBWebAuthnIdentityProviderFunction,
-    registerWebAuthnProvider,
     checkWebAuthnSupport
   } from './orbitdb-identity-provider-webauthn-did.js';
+  import {
+    setupOrbitDB,
+    cleanup,
+    resetDatabaseState
+  } from './libp2p.js';
+  import {
+    openTodoDatabase,
+    loadTodos,
+    addTodo,
+    toggleTodo,
+    deleteTodo,
+    getTodoStats
+  } from './database.js';
   import {
     Button,
     Tile,
     InlineNotification,
-    Loading,
-    ProgressIndicator,
-    ProgressStep,
+    Loading
   } from 'carbon-components-svelte';
   import {
     Checkmark,
     Warning,
   } from 'carbon-icons-svelte';
 
-  let orbitdb = null;
-  let ipfs = null;
+  // Core instances
+  let orbitdbInstances = null; // Will contain { orbitdb, ipfs, identity, identities }
   let database = null;
+  
+  // UI state
   let todos = [];
   let newTodo = '';
   let credential = null;
-  let identity = null;
-  let identities = null;
   let isAuthenticated = false;
   let loading = false;
   let status = 'Checking WebAuthn support...';
-  let support = null;
+  
+  // WebAuthn support detection
   let webAuthnSupported = false;
   let webAuthnPlatformAvailable = false;
-  let webAuthnSupportMessage = '';
   let webAuthnChecking = true;
+  
+  // Computed values
+  $: todoStats = getTodoStats(todos);
 
   onMount(async () => {
     await initializeWebAuthn();
@@ -56,10 +55,9 @@ import { LevelDatastore } from 'datastore-level';
   async function initializeWebAuthn() {
     try {
       status = 'Checking WebAuthn support...';
-      support = await checkWebAuthnSupport();
+      const support = await checkWebAuthnSupport();
       webAuthnSupported = support.supported;
       webAuthnPlatformAvailable = support.platformAuthenticator;
-      webAuthnSupportMessage = support.message;
       
       if (!support.supported) {
         status = `WebAuthn not supported: ${support.message}`;
@@ -68,27 +66,10 @@ import { LevelDatastore } from 'datastore-level';
       
       status = support.message;
       
-      // Check if we have stored credentials
-      const storedCredential = localStorage.getItem('webauthn-credential');
-      if (storedCredential) {
-        try {
-          const parsed = JSON.parse(storedCredential);
-          // Properly deserialize Uint8Arrays for credential data AND public key coordinates
-          credential = {
-            ...parsed,
-            rawCredentialId: new Uint8Array(parsed.rawCredentialId),
-            attestationObject: new Uint8Array(parsed.attestationObject),
-            publicKey: {
-              ...parsed.publicKey,
-              x: new Uint8Array(parsed.publicKey.x),
-              y: new Uint8Array(parsed.publicKey.y)
-            }
-          };
-          status = 'Credential found, ready to authenticate!';
-        } catch (error) {
-          console.warn('Failed to load credential from localStorage:', error);
-          localStorage.removeItem('webauthn-credential');
-        }
+      // Load stored credential
+      credential = loadStoredCredential();
+      if (credential) {
+        status = 'Credential found, ready to authenticate!';
       }
       
     } catch (error) {
@@ -97,6 +78,30 @@ import { LevelDatastore } from 'datastore-level';
     } finally {
       webAuthnChecking = false;
     }
+  }
+  
+  function loadStoredCredential() {
+    try {
+      const storedCredential = localStorage.getItem('webauthn-credential');
+      if (storedCredential) {
+        const parsed = JSON.parse(storedCredential);
+        // Properly deserialize Uint8Arrays for credential data AND public key coordinates
+        return {
+          ...parsed,
+          rawCredentialId: new Uint8Array(parsed.rawCredentialId),
+          attestationObject: new Uint8Array(parsed.attestationObject),
+          publicKey: {
+            ...parsed.publicKey,
+            x: new Uint8Array(parsed.publicKey.x),
+            y: new Uint8Array(parsed.publicKey.y)
+          }
+        };
+      }
+    } catch (error) {
+      console.warn('Failed to load credential from localStorage:', error);
+      localStorage.removeItem('webauthn-credential');
+    }
+    return null;
   }
 
   async function createCredential() {
@@ -109,18 +114,8 @@ import { LevelDatastore } from 'datastore-level';
         displayName: 'TODO App User'
       });
       
-      // Store credential for future use (with proper serialization for all Uint8Arrays)
-      const serializedCredential = {
-        ...credential,
-        rawCredentialId: Array.from(credential.rawCredentialId),
-        attestationObject: Array.from(credential.attestationObject),
-        publicKey: {
-          ...credential.publicKey,
-          x: Array.from(credential.publicKey.x),
-          y: Array.from(credential.publicKey.y)
-        }
-      };
-      localStorage.setItem('webauthn-credential', JSON.stringify(serializedCredential));
+      // Store credential for future use
+      storeCredential(credential);
       
       status = 'Credential created successfully!';
     } catch (error) {
@@ -130,204 +125,78 @@ import { LevelDatastore } from 'datastore-level';
       loading = false;
     }
   }
+  
+  function storeCredential(credential) {
+    const serializedCredential = {
+      ...credential,
+      rawCredentialId: Array.from(credential.rawCredentialId),
+      attestationObject: Array.from(credential.attestationObject),
+      publicKey: {
+        ...credential.publicKey,
+        x: Array.from(credential.publicKey.x),
+        y: Array.from(credential.publicKey.y)
+      }
+    };
+    localStorage.setItem('webauthn-credential', JSON.stringify(serializedCredential));
+  }
 
   async function authenticate() {
     try {
       loading = true;
-      status = 'Creating libp2p instance...';
       
-      // Create libp2p instance with browser-compatible configuration (from original template)
-      const libp2p = await createLibp2p({
-        addresses: {
-          listen: [
-            '/p2p-circuit', // Essential for relay connections
-            '/webrtc' // WebRTC for direct connections
-          ]
-        },
-        transports: [
-          webSockets({
-            filter: all
-          }),
-          webRTC({
-            rtcConfiguration: {
-              iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:global.stun.twilio.com:3478' }
-              ]
-            }
-          }),
-          circuitRelayTransport({
-            discoverRelays: 2, // Discover more relays
-            maxReservations: 2 // Allow more reservations
-          })
-        ],
-        connectionEncryption: [noise()],
-        streamMuxers: [yamux()],
-        services: {
-          identify: identify(),
-          pubsub: gossipsub({ 
-            emitSelf: true, // Enable to see our own messages
-            allowPublishToZeroTopicPeers: true 
-          })
-        },
-        connectionManager: {
-          maxConnections: 20,
-          minConnections: 1
-        }
-      });
-      
-      status = 'Creating IPFS instance...';
-      // Create Helia instance with libp2p and persistent Level storage
-      ipfs = await createHelia({
-        libp2p,
-        blockstore: new LevelBlockstore('./orbitdb/blocks'),
-        datastore: new LevelDatastore('./orbitdb/data')
-      });
-      
-      status = 'Registering WebAuthn provider...';
-      // Register the WebAuthn provider (exactly like in original)
-      useIdentityProvider(OrbitDBWebAuthnIdentityProviderFunction);
-      
-      status = 'Creating identities instance...';
-      // Create OrbitDB identities instance
-      identities = await Identities();
-      
-      status = 'Creating WebAuthn identity...';
-      // Create the identity using OrbitDB's standard identity creation (like original)
-      identity = await identities.createIdentity({
-        provider: OrbitDBWebAuthnIdentityProviderFunction({ webauthnCredential: credential })
-      });
-      
-      
-      status = 'Creating OrbitDB instance...';
-      // Create OrbitDB instance with WebAuthn identity and identities (like original)
-      orbitdb = await createOrbitDB({
-        ipfs: ipfs,
-        identities: identities,
-        identity: identity
-      });
+      status = 'Setting up OrbitDB...';
+      // Use the extracted setupOrbitDB function
+      orbitdbInstances = await setupOrbitDB(credential);
       
       status = 'Opening TODO database...';
+      // Use the extracted openTodoDatabase function
+      database = await openTodoDatabase(orbitdbInstances.orbitdb, orbitdbInstances.identity);
       
-      // Open TODO database with keyvalue type and access controller (like original)
-      const writePermissions = [identity.id];
-      console.log('🔓 Database access configuration:', {
-        writePermissions,
-        identityId: identity.id,
-        identityType: identity.type
-      });
-      
-      console.log('📝 Opening database "webauthn-todos"...');
-      database = await Promise.race([
-        orbitdb.open('webauthn-todos', {
-          type: 'keyvalue',
-          create: true,
-          sync: true,
-          accessController: IPFSAccessController({ 
-            write: writePermissions
-          })
-        }),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Database open timeout after 15 seconds')), 15000)
-        )
-      ]);
-      
-      console.log('✅ Database opened successfully:', {
-        name: database.name,
-        address: database.address,
-        type: database.type,
-        identityId: database.identity?.id,
-        accessControllerType: database.access?.type
-      });
-      
-      // Set up database event listeners for debugging
-      database.events.on('join', (address, entry) => {
-        console.log('🔗 Database JOIN event:', { address, entry: entry?.key });
-      });
-      
-      database.events.on('update', (address) => {
-        console.log('🔄 Database UPDATE event:', { address });
-      });
-      
-      database.events.on('error', (error) => {
-        console.error('❌ Database ERROR event:', error);
-      });
-      
-      // Load existing todos
-      console.log('📋 Loading existing todos...');
-      await loadTodos();
+      status = 'Loading existing todos...';
+      // Use the extracted loadTodos function
+      await refreshTodos();
       
       isAuthenticated = true;
       status = 'Successfully authenticated with biometric security!';
       
     } catch (error) {
       console.error('Authentication failed:', error);
-      
-      // Handle specific error types
-      if (error instanceof AggregateError) {
-        console.error('AggregateError details:', {
-          errors: error.errors,
-          errorCount: error.errors?.length
-        });
-        
-        // Check if it's a database loading issue
-        const hasLoadingErrors = error.errors?.some(e => 
-          e.message?.includes('all') || 
-          e.message?.includes('timeout') || 
-          e.message?.includes('sync')
-        );
-        
-        if (hasLoadingErrors) {
-          status = 'Database loading failed - network or sync issues. Try resetting database.';
-        } else {
-          status = `Multiple errors occurred: ${error.errors?.map(e => e.message).join(', ')}`;
-        }
-      } else {
-        status = `Authentication failed: ${error.message}`;
-      }
+      status = handleAuthenticationError(error);
     } finally {
       loading = false;
     }
   }
+  
+  function handleAuthenticationError(error) {
+    if (error instanceof AggregateError) {
+      console.error('AggregateError details:', {
+        errors: error.errors,
+        errorCount: error.errors?.length
+      });
+      
+      const hasLoadingErrors = error.errors?.some(e => 
+        e.message?.includes('all') || 
+        e.message?.includes('timeout') || 
+        e.message?.includes('sync')
+      );
+      
+      if (hasLoadingErrors) {
+        return 'Database loading failed - network or sync issues. Try resetting database.';
+      } else {
+        return `Multiple errors occurred: ${error.errors?.map(e => e.message).join(', ')}`;
+      }
+    } else {
+      return `Authentication failed: ${error.message}`;
+    }
+  }
 
-  async function loadTodos() {
+  async function refreshTodos() {
     if (!database) return;
     
     try {
-      console.log('📊 Loading todos from database:', {
-        databaseName: database.name,
-        databaseAddress: database.address,
-        databaseType: database.type,
-        identityId: database.identity?.id,
-        accessController: database.access?.type
-      });
-      
-      console.log('⏳ Calling database.all()...');
-      const allTodos = await Promise.race([
-        database.all(),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Database.all() timeout after 10 seconds')), 10000)
-        )
-      ]);
-      
-      console.log('✅ Database.all() completed, entries found:', allTodos.length);
-      
-      todos = allTodos
-        .map(entry => {
-          console.log('📝 Todo entry:', { key: entry.key, value: entry.value });
-          return entry.value;
-        })
-        .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-        
-      console.log('📋 Todos loaded successfully:', todos.length);
+      todos = await loadTodos(database);
     } catch (error) {
       console.error('❌ Failed to load todos:', error);
-      console.error('Error details:', {
-        message: error.message,
-        name: error.name,
-        stack: error.stack?.slice(0, 500)
-      });
-      
       // If it's a timeout or connection issue, suggest reset
       if (error.message.includes('timeout') || error.message.includes('rejected')) {
         status = 'Database loading failed - try resetting database state';
@@ -335,49 +204,14 @@ import { LevelDatastore } from 'datastore-level';
     }
   }
 
-  async function addTodo() {
+  async function handleAddTodo() {
     if (!newTodo.trim() || !database) return;
     
     try {
       loading = true;
       
-      // 🧪 DEBUG: Test direct WebAuthn call before OrbitDB operation
-      console.log('🧪 [DEBUG] Testing direct WebAuthn call before adding TODO...');
-      try {
-        const testChallenge = crypto.getRandomValues(new Uint8Array(32));
-        console.log('🧪 [DEBUG] Calling navigator.credentials.get directly - this should show biometric prompt!');
-        
-        const directAuth = await navigator.credentials.get({
-          publicKey: {
-            challenge: testChallenge,
-            allowCredentials: [{
-              id: credential.rawCredentialId,
-              type: 'public-key'
-            }],
-            userVerification: 'required',
-            timeout: 60000
-          }
-        });
-        
-        console.log('🧪 [DEBUG] Direct WebAuthn auth successful:', {
-          hasResponse: !!directAuth?.response,
-          hasAuthenticatorData: !!directAuth?.response?.authenticatorData
-        });
-      } catch (directAuthError) {
-        console.warn('🧪 [DEBUG] Direct WebAuthn auth failed:', directAuthError.message);
-      }
-      
-      const todoId = `todo-${Date.now()}`;
-      const todo = {
-        id: todoId,
-        text: newTodo.trim(),
-        completed: false,
-        createdAt: new Date().toISOString()
-      };
-      
-      console.log('🧪 [DEBUG] Now calling OrbitDB database.put() - this should also trigger biometric prompt...');
-      await database.put(todoId, todo);
-      await loadTodos();
+      await addTodo(database, newTodo, credential);
+      await refreshTodos();
       
       newTodo = '';
       status = 'TODO added successfully!';
@@ -390,19 +224,14 @@ import { LevelDatastore } from 'datastore-level';
     }
   }
 
-  async function toggleTodo(todo) {
+  async function handleToggleTodo(todo) {
     if (!database) return;
     
     try {
       loading = true;
       
-      const updatedTodo = {
-        ...todo,
-        completed: !todo.completed
-      };
-      
-      await database.put(todo.id, updatedTodo);
-      await loadTodos();
+      await toggleTodo(database, todo);
+      await refreshTodos();
       
     } catch (error) {
       console.error('Failed to toggle todo:', error);
@@ -411,14 +240,14 @@ import { LevelDatastore } from 'datastore-level';
     }
   }
 
-  async function deleteTodo(todo) {
+  async function handleDeleteTodo(todo) {
     if (!database) return;
     
     try {
       loading = true;
       
-      await database.del(todo.id);
-      await loadTodos();
+      await deleteTodo(database, todo);
+      await refreshTodos();
       
     } catch (error) {
       console.error('Failed to delete todo:', error);
@@ -427,47 +256,26 @@ import { LevelDatastore } from 'datastore-level';
     }
   }
 
-  async function resetDatabase() {
+  async function handleResetDatabase() {
     try {
       loading = true;
       status = 'Resetting database state...';
       
       console.log('🗑️ Resetting database state...');
       
-      // Close current connections
-      if (database) {
-        await database.close();
-        database = null;
+      // Close current connections using extracted cleanup function
+      if (orbitdbInstances) {
+        await cleanup({ ...orbitdbInstances, database });
       }
       
-      if (orbitdb) {
-        await orbitdb.stop();
-        orbitdb = null;
-      }
-      
-      if (ipfs) {
-        await ipfs.stop();
-        ipfs = null;
-      }
-      
-      // Clear IndexedDB
-      console.log('🗑️ Clearing IndexedDB...');
-      if ('databases' in indexedDB) {
-        const databases = await indexedDB.databases();
-        for (const db of databases) {
-          if (db.name.includes('orbitdb') || db.name.includes('helia') || db.name.includes('webauthn')) {
-            console.log('🗑️ Deleting database:', db.name);
-            indexedDB.deleteDatabase(db.name);
-          }
-        }
-      }
+      // Clear IndexedDB using extracted function
+      await resetDatabaseState();
       
       // Reset state
       todos = [];
       isAuthenticated = false;
-      // Keep credential but reset everything else
-      identity = null;
-      identities = null;
+      database = null;
+      orbitdbInstances = null;
       
       status = 'Database reset complete - ready to authenticate again';
       console.log('✅ Database reset completed');
@@ -480,41 +288,30 @@ import { LevelDatastore } from 'datastore-level';
     }
   }
 
-  async function logout() {
+  async function handleLogout() {
     try {
-      if (database) {
-        await database.close();
-        database = null;
+      // Clean up connections
+      if (orbitdbInstances) {
+        await cleanup({ ...orbitdbInstances, database });
       }
       
-      if (orbitdb) {
-        await orbitdb.stop();
-        orbitdb = null;
-      }
-      
-      if (ipfs) {
-        await ipfs.stop();
-        ipfs = null;
-      }
-      
+      // Clear all state
       todos = [];
       isAuthenticated = false;
       credential = null;
-      identity = null;
-      identities = null;
+      database = null;
+      orbitdbInstances = null;
       localStorage.removeItem('webauthn-credential');
       status = 'Logged out successfully';
+      
     } catch (error) {
       console.error('Error during logout:', error);
       // Force clear state even if cleanup fails
-      orbitdb = null;
-      ipfs = null;
-      database = null;
       todos = [];
       isAuthenticated = false;
       credential = null;
-      identity = null;
-      identities = null;
+      database = null;
+      orbitdbInstances = null;
       localStorage.removeItem('webauthn-credential');
       status = 'Logged out (with cleanup errors)';
     }
@@ -579,7 +376,7 @@ import { LevelDatastore } from 'datastore-level';
           
           {#if status.includes('failed') || status.includes('timeout')}
             <Button
-              on:click={resetDatabase}
+              on:click={handleResetDatabase}
               disabled={loading}
               kind="danger-tertiary"
               size="small"
@@ -597,7 +394,7 @@ import { LevelDatastore } from 'datastore-level';
         <h2 style="font-size: 1.5rem; font-weight: bold;">My Secure TODOs</h2>
         <div style="display: flex; gap: 0.5rem;">
           <Button
-            on:click={resetDatabase}
+            on:click={handleResetDatabase}
             kind="danger-tertiary"
             size="small"
             disabled={loading}
@@ -605,7 +402,7 @@ import { LevelDatastore } from 'datastore-level';
             {loading ? 'Resetting...' : 'Reset DB'}
           </Button>
           <Button
-            on:click={logout}
+            on:click={handleLogout}
             kind="ghost"
             size="small"
           >
@@ -620,11 +417,11 @@ import { LevelDatastore } from 'datastore-level';
           type="text"
           bind:value={newTodo}
           placeholder="Add a new TODO..."
-          on:keydown={(e) => e.key === 'Enter' && addTodo()}
+          on:keydown={(e) => e.key === 'Enter' && handleAddTodo()}
           style="flex: 1; padding: 0.5rem 1rem; border: 1px solid var(--cds-border-subtle); border-radius: 0.5rem; font-size: 1rem; background: var(--cds-field); color: var(--cds-text-primary);"
         />
         <Button
-          on:click={addTodo}
+          on:click={handleAddTodo}
           disabled={loading || !newTodo.trim()}
           kind="primary"
         >
@@ -643,7 +440,7 @@ import { LevelDatastore } from 'datastore-level';
           {#each todos as todo}
             <div style="display: flex; align-items: center; gap: 0.75rem; padding: 1rem; background-color: var(--cds-layer-accent); border-radius: 0.5rem; border: 1px solid var(--cds-border-subtle);">
               <button
-                on:click={() => toggleTodo(todo)}
+                on:click={() => handleToggleTodo(todo)}
                 style="flex-shrink: 0; background: none; border: none; cursor: pointer;"
                 disabled={loading}
               >
@@ -663,7 +460,7 @@ import { LevelDatastore } from 'datastore-level';
               </span>
               
               <button
-                on:click={() => deleteTodo(todo)}
+                on:click={() => handleDeleteTodo(todo)}
                 disabled={loading}
                 style="color: var(--cds-support-error); background: none; border: none; cursor: pointer; padding: 0.25rem;"
               >
@@ -676,7 +473,7 @@ import { LevelDatastore } from 'datastore-level';
         </div>
         
         <div style="margin-top: 1.5rem; font-size: 0.875rem; color: var(--cds-text-secondary); text-align: center;">
-          {todos.length} total • {todos.filter(t => t.completed).length} completed
+          {todoStats.total} total • {todoStats.completed} completed
         </div>
       {/if}
     </Tile>
