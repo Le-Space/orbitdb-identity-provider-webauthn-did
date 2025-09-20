@@ -41,18 +41,6 @@ jobs:
           cd examples/webauthn-todo-demo
           npm run build
       
-      - name: Start demo server in background
-        run: |
-          cd examples/webauthn-todo-demo
-          npm run preview -- --port 5173 --host &
-          sleep 10
-        env:
-          CI: true
-      
-      - name: Wait for server to be ready
-        run: |
-          timeout 30 bash -c 'until curl -f http://localhost:5173; do sleep 1; done'
-      
       - name: Run WebAuthn tests
         run: npx playwright test tests/webauthn-focused.test.js --project=chromium --reporter=github
         env:
@@ -67,12 +55,6 @@ jobs:
             test-results/
             playwright-report/
           retention-days: 3
-      
-      - name: Stop demo server
-        if: always()
-        run: |
-          pkill -f "vite preview" || true
-          pkill -f "npm run preview" || true
 
   lint-and-format:
     name: Code Quality
