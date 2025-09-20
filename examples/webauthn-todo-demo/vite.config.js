@@ -17,12 +17,6 @@ const buildDate =
   new Date().toLocaleTimeString(); // YYYY-MM-DD HH:MM:SS format
 
 export default defineConfig({
-  resolve: {
-    alias: {
-      buffer: 'vite-plugin-node-polyfills/shims/buffer/dist/index.js',
-      'vite-plugin-node-polyfills/shims/buffer': 'vite-plugin-node-polyfills/shims/buffer/dist/index.js',
-    },
-  },
   plugins: [
     sveltekit(),
     nodePolyfills({
@@ -89,7 +83,6 @@ export default defineConfig({
         skipWaiting: true,
         clientsClaim: true,
         // Exclude OrbitDB and large files from precaching
-        // globIgnores: ["**/orbitdb/**", "**/ipfs/**", "**/node_modules/**"],
       },
       // Use existing manifest.json
       manifest: false, // We'll use our custom manifest.json
@@ -102,19 +95,6 @@ export default defineConfig({
       periodicSyncForUpdates: 20,
     }),
   ],
-  // build: {
-  // 	rollupOptions: {
-  // 		external: [
-  // 			// Externalize the problematic buffer shim import
-  // 			'vite-plugin-node-polyfills/shims/buffer'
-  // 		],
-  // 		output: {
-  // 			globals: {
-  // 				'vite-plugin-node-polyfills/shims/buffer': 'Buffer'
-  // 			}
-  // 		}
-  // 	}
-  // },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __BUILD_DATE__: JSON.stringify(buildDate),
