@@ -1,14 +1,32 @@
 {
-  "name": "@orbitdb/identity-provider-webauthn-did",
-  "version": "1.0.0",
-  "description": "WebAuthn-based DID identity provider for OrbitDB with hardware-secured biometric authentication",
+  "name": "@le-space/orbitdb-identity-provider-webauthn-did",
+  "version": "0.0.1",
+  "description": "WebAuthn-based DID identity provider for OrbitDB for hardware-secured wallets and biometric Passkey authentication",
   "main": "src/index.js",
   "type": "module",
   "scripts": {
-    "test": "mocha test/*.test.js",
+    "test": "playwright test tests/webauthn-focused.test.js --project=chromium",
+    "test:all": "playwright test",
+    "test:headed": "playwright test tests/webauthn-focused.test.js --headed --project=chromium",
+    "test:ui": "playwright test --ui",
+    "test:focused": "playwright test tests/webauthn-focused.test.js --project=chromium --reporter=line",
+    "test:unit": "playwright test tests/webauthn-unit.test.js",
+    "test:integration": "playwright test tests/webauthn-integration.test.js",
+    "test:ci": "playwright test tests/webauthn-focused.test.js --project=chromium --reporter=github",
+    "test:old": "mocha test/*.test.js",
     "test:watch": "mocha test/*.test.js --watch",
-    "lint": "eslint src/ test/",
-    "lint:fix": "eslint src/ test/ --fix"
+    "test:full-flow": "npm run demo:setup && npm run test:focused",
+    "lint": "eslint src/ tests/",
+    "lint:fix": "eslint src/ tests/ --fix",
+    "prepublishOnly": "npm run test:ci",
+    "demo": "cd examples/webauthn-todo-demo && npm run dev",
+    "demo:build": "cd examples/webauthn-todo-demo && npm run build",
+    "demo:setup": "cd examples/webauthn-todo-demo && npm ci && npm run build",
+    "demo:preview": "cd examples/webauthn-todo-demo && npm run preview",
+    "validate-package": "npm pack --dry-run && echo 'Package validation successful'",
+    "preversion": "npm run test:ci",
+    "version": "git add -A",
+    "postversion": "git push && git push --tags"
   },
   "keywords": [
     "orbitdb",
@@ -25,7 +43,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/orbitdb/orbitdb-identity-provider-webauthn-did.git"
+    "url": "git+https://github.com/orbitdb/orbitdb-identity-provider-webauthn-did.git"
   },
   "bugs": {
     "url": "https://github.com/orbitdb/orbitdb-identity-provider-webauthn-did/issues"
@@ -39,16 +57,26 @@
   },
   "devDependencies": {
     "@orbitdb/core": "^3.0.0",
+    "@playwright/test": "^1.55.0",
+    "chai": "^5.0.0",
+    "eslint": "^9.0.0",
     "helia": "^5.0.0",
     "libp2p": "^2.0.0",
-    "mocha": "^10.0.0",
-    "chai": "^5.0.0",
-    "eslint": "^9.0.0"
+    "mocha": "^10.0.0"
   },
   "engines": {
     "node": ">=18.0.0"
   },
   "browser": {
     "crypto": false
+  },
+  "files": [
+    "src/",
+    "README.md",
+    "LICENSE",
+    "package.json"
+  ],
+  "publishConfig": {
+    "access": "public"
   }
 }

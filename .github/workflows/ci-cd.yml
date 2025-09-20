@@ -1,0 +1,268 @@
+name: CI/CD - Test and Publish
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [ created ]
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x, 22.x]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run linting
+        run: npm run lint --if-present
+        continue-on-error: true
+      
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      
+      - name: Install demo dependencies
+        run: |
+          cd examples/webauthn-todo-demo
+          npm ci
+      
+      - name: Build demo application
+        run: |
+          cd examples/webauthn-todo-demo
+          npm run build
+      
+      - name: Start demo server in background
+        run: |
+          cd examples/webauthn-todo-demo
+          npm run preview -- --port 5173 --host &
+          sleep 10
+        env:
+          CI: true
+      
+      - name: Wait for server to be ready
+        run: |
+          timeout 30 bash -c 'until curl -f http://localhost:5173; do sleep 1; done'
+      
+      - name: Run WebAuthn tests
+        run: npx playwright test tests/webauthn-focused.test.js --project=chromium --reporter=github
+        env:
+          CI: true
+      
+      - name: Upload test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results-${{ matrix.node-version }}
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
+      
+      - name: Stop demo server
+        if: always()
+        run: |
+          pkill -f "vite preview" || true
+          pkill -f "npm run preview" || true
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run security audit
+        run: npm audit --audit-level=moderate
+      
+      - name: Check for known vulnerabilities
+        run: npx better-npm-audit audit --level moderate
+
+  package-validation:
+    name: Package Validation
+    runs-on: ubuntu-latest
+    needs: [test]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Validate package.json
+        run: npm run validate-package --if-present || echo "No validate-package script found, skipping"
+      
+      - name: Check package files
+        run: |
+          echo "Checking package structure..."
+          ls -la
+          echo "Package files that will be included:"
+          npm pack --dry-run
+      
+      - name: Test package installation
+        run: |
+          # Pack the package locally
+          npm pack
+          # Create a test directory and install the package
+          mkdir -p test-install
+          cd test-install
+          npm init -y
+          npm install ../le-space-orbitdb-identity-provider-webauthn-did-*.tgz
+          # Test that the package can be imported
+          node -e "
+            try {
+              const provider = require('@le-space/orbitdb-identity-provider-webauthn-did');
+              console.log('✅ Package imports successfully');
+              console.log('Exported keys:', Object.keys(provider));
+            } catch (error) {
+              console.error('❌ Package import failed:', error);
+              process.exit(1);
+            }
+          "
+
+  publish:
+    name: Publish to NPM
+    runs-on: ubuntu-latest
+    needs: [test, security-audit, package-validation]
+    if: github.event_name == 'release' && github.event.action == 'created'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build package (if build script exists)
+        run: npm run build --if-present
+      
+      - name: Run final tests before publish
+        run: |
+          # Install Playwright for final test run
+          npx playwright install --with-deps chromium
+          
+          # Install and start demo
+          cd examples/webauthn-todo-demo
+          npm ci
+          npm run build
+          npm run preview -- --port 5173 --host &
+          cd ../..
+          
+          # Wait for server
+          sleep 10
+          timeout 30 bash -c 'until curl -f http://localhost:5173; do sleep 1; done'
+          
+          # Run tests
+          npx playwright test tests/webauthn-focused.test.js --project=chromium
+        env:
+          CI: true
+      
+      - name: Publish to NPM
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      
+      - name: Create GitHub release notes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: release } = await github.rest.repos.getRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: context.payload.release.id
+            });
+            
+            const packageJson = require('./package.json');
+            
+            const body = `
+            ## 🎉 ${packageJson.name} v${packageJson.version}
+            
+            ### ✅ Automated Tests Passed
+            - WebAuthn credential creation and authentication
+            - Browser reload persistence testing
+            - TODO operations with biometric security
+            - OrbitDB integration validation
+            - Security audit passed
+            - Package validation completed
+            
+            ### 📦 Installation
+            \`\`\`bash
+            npm install ${packageJson.name}@${packageJson.version}
+            \`\`\`
+            
+            ### 🔗 Links
+            - [NPM Package](https://www.npmjs.com/package/${packageJson.name})
+            - [Demo Application](./examples/webauthn-todo-demo)
+            
+            ### 🛡️ Security
+            This release has passed all security audits and comprehensive WebAuthn integration tests.
+            
+            ${release.body || ''}
+            `;
+            
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: context.payload.release.id,
+              body: body
+            });
+
+  notify:
+    name: Notify on Success
+    runs-on: ubuntu-latest
+    needs: [publish]
+    if: always() && github.event_name == 'release'
+    
+    steps:
+      - name: Notify success
+        if: needs.publish.result == 'success'
+        run: |
+          echo "🎉 Successfully published new release!"
+          echo "Package: @le-space/orbitdb-identity-provider-webauthn-did"
+          echo "Release: ${{ github.event.release.tag_name }}"
+      
+      - name: Notify failure
+        if: needs.publish.result == 'failure'
+        run: |
+          echo "❌ Publication failed!"
+          echo "Check the logs above for details."
+          exit 1

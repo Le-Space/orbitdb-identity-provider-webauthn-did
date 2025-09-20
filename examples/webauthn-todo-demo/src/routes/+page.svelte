@@ -1,26 +1,25 @@
 <script>
-  import WebAuthnTodo from "$lib/WebAuthnTodo.svelte"
-  import { theme } from "$lib/theme.js";
+  import WebAuthnTodo from '$lib/WebAuthnTodo.svelte';
+  import { theme } from '$lib/theme.js';
   import {
     Content,
     Header,
     HeaderUtilities,
     Button,
-    Toggle,
-  } from "carbon-components-svelte";
-  import { Light, Asleep } from "carbon-icons-svelte";
-  import { onMount } from "svelte";
+  } from 'carbon-components-svelte';
+  import { Light, Asleep } from 'carbon-icons-svelte';
+  import { onMount } from 'svelte';
 
   onMount(() => {
     // Create floating particles
-    const particlesContainer = document.querySelector(".particles");
+    const particlesContainer = document.querySelector('.particles');
     if (particlesContainer) {
       for (let i = 0; i < 50; i++) {
-        const particle = document.createElement("div");
-        particle.className = "particle";
-        particle.style.left = Math.random() * 100 + "%";
-        particle.style.animationDelay = Math.random() * 15 + "s";
-        particle.style.animationDuration = 15 + Math.random() * 10 + "s";
+        const particle = document.createElement('div');
+        particle.className = 'particle';
+        particle.style.left = Math.random() * 100 + '%';
+        particle.style.animationDelay = Math.random() * 15 + 's';
+        particle.style.animationDuration = 15 + Math.random() * 10 + 's';
         particlesContainer.appendChild(particle);
       }
     }
@@ -30,7 +29,7 @@
     theme.toggle();
   }
 
-  $: isDark = $theme === "g100";
+  $: isDark = $theme === 'g100';
 </script>
 
 <svelte:head>
@@ -50,10 +49,10 @@
       kind="ghost"
       size="sm"
       icon={isDark ? Light : Asleep}
-      iconDescription={isDark ? "Switch to light mode" : "Switch to dark mode"}
+      iconDescription={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
       on:click={toggleTheme}
     >
-      {isDark ? "Light" : "Dark"}
+      {isDark ? 'Light' : 'Dark'}
     </Button>
   </HeaderUtilities>
 </Header>
@@ -148,7 +147,8 @@
       >
         local-first peer-to-peer todo example with <span
           class="gradient-text-cyan"
-          style="font-weight:600;">WebAuthn ([biometric]-Passkey, Ledger, Yubkey) Support</span
+          style="font-weight:600;"
+          >WebAuthn ([biometric]-Passkey, Ledger, Yubkey) Support</span
         >
       </p>
       <p
@@ -156,28 +156,81 @@
       >
         data stored in browser indexdb storage via OrbitDB
       </p>
-      
+
       <!-- Technology Stack Logos Row -->
-      <div style="display:flex;align-items:center;justify-content:center;gap:1.5rem;margin-top:1.5rem;flex-wrap:wrap;">
-        <a href="https://orbitdb.org/" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;gap:0.25rem;text-decoration:none;color:inherit;">
-          <img src="/orbitdb.png" alt="OrbitDB" style="width:20px;height:20px;object-fit:contain;" />
-          <span style="font-size:0.75rem;color:var(--cds-text-secondary);">OrbitDB</span>
+      <div
+        style="display:flex;align-items:center;justify-content:center;gap:1.5rem;margin-top:1.5rem;flex-wrap:wrap;"
+      >
+        <a
+          href="https://orbitdb.org/"
+          target="_blank"
+          rel="noopener noreferrer"
+          style="display:flex;align-items:center;gap:0.25rem;text-decoration:none;color:inherit;"
+        >
+          <img
+            src="/orbitdb.png"
+            alt="OrbitDB"
+            style="width:20px;height:20px;object-fit:contain;"
+          />
+          <span style="font-size:0.75rem;color:var(--cds-text-secondary);"
+            >OrbitDB</span
+          >
         </a>
-        <a href="https://w3c.github.io/webauthn/" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;gap:0.25rem;text-decoration:none;color:inherit;">
+        <a
+          href="https://w3c.github.io/webauthn/"
+          target="_blank"
+          rel="noopener noreferrer"
+          style="display:flex;align-items:center;gap:0.25rem;text-decoration:none;color:inherit;"
+        >
           <span style="font-size:1rem;">🔐</span>
-          <span style="font-size:0.75rem;color:var(--cds-text-secondary);">WebAuthn</span>
+          <span style="font-size:0.75rem;color:var(--cds-text-secondary);"
+            >WebAuthn</span
+          >
         </a>
-        <a href="https://helia.io/" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;gap:0.25rem;text-decoration:none;color:inherit;">
-          <img src="/helia.svg" alt="Helia" style="width:20px;height:20px;object-fit:contain;" />
-          <span style="font-size:0.75rem;color:var(--cds-text-secondary);">Helia</span>
+        <a
+          href="https://helia.io/"
+          target="_blank"
+          rel="noopener noreferrer"
+          style="display:flex;align-items:center;gap:0.25rem;text-decoration:none;color:inherit;"
+        >
+          <img
+            src="/helia.svg"
+            alt="Helia"
+            style="width:20px;height:20px;object-fit:contain;"
+          />
+          <span style="font-size:0.75rem;color:var(--cds-text-secondary);"
+            >Helia</span
+          >
         </a>
-        <a href="https://docs.ipfs.tech/" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;gap:0.25rem;text-decoration:none;color:inherit;">
-          <img src="/ipfs.png" alt="IPFS" style="width:20px;height:20px;object-fit:contain;" />
-          <span style="font-size:0.75rem;color:var(--cds-text-secondary);">IPFS</span>
+        <a
+          href="https://docs.ipfs.tech/"
+          target="_blank"
+          rel="noopener noreferrer"
+          style="display:flex;align-items:center;gap:0.25rem;text-decoration:none;color:inherit;"
+        >
+          <img
+            src="/ipfs.png"
+            alt="IPFS"
+            style="width:20px;height:20px;object-fit:contain;"
+          />
+          <span style="font-size:0.75rem;color:var(--cds-text-secondary);"
+            >IPFS</span
+          >
         </a>
-        <a href="https://docs.libp2p.io/" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;gap:0.25rem;text-decoration:none;color:inherit;">
-          <img src="/libp2p.png" alt="libp2p" style="width:20px;height:20px;object-fit:contain;" />
-          <span style="font-size:0.75rem;color:var(--cds-text-secondary);">libp2p</span>
+        <a
+          href="https://docs.libp2p.io/"
+          target="_blank"
+          rel="noopener noreferrer"
+          style="display:flex;align-items:center;gap:0.25rem;text-decoration:none;color:inherit;"
+        >
+          <img
+            src="/libp2p.png"
+            alt="libp2p"
+            style="width:20px;height:20px;object-fit:contain;"
+          />
+          <span style="font-size:0.75rem;color:var(--cds-text-secondary);"
+            >libp2p</span
+          >
         </a>
       </div>
     </div>
@@ -195,7 +248,8 @@
     <div
       style="margin-top:0.5rem;color:var(--cds-text-helper);font-size:0.75rem;"
     >
-      local-first peer-to-peer with WebAuthn support - data in browser indexdb via OrbitDB
+      local-first peer-to-peer with WebAuthn support - data in browser indexdb
+      via OrbitDB
     </div>
   </div>
 </Content>

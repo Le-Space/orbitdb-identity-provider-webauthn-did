@@ -1,109 +1,115 @@
 :root {
-	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu,
+    Cantarell, sans-serif;
 }
 
 body {
-	margin: 0;
-	padding: 0;
+  margin: 0;
+  padding: 0;
 }
 
 /* Custom scrollbar */
 ::-webkit-scrollbar {
-	width: 8px;
+  width: 8px;
 }
 
 ::-webkit-scrollbar-track {
-	background: #f1f1f1;
+  background: #f1f1f1;
 }
 
 ::-webkit-scrollbar-thumb {
-	background: #888;
-	border-radius: 4px;
+  background: #888;
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-	background: #555;
+  background: #555;
 }
 
 /* Floating particles background */
 .particles {
-	position: fixed;
-	top: 0;
-	left: 0;
-	width: 100%;
-	height: 100%;
-	pointer-events: none;
-	z-index: -1;
-	overflow: hidden;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: -1;
+  overflow: hidden;
 }
 
 .particle {
-	position: absolute;
-	width: 4px;
-	height: 4px;
-	background: linear-gradient(45deg, #4F46E5, #7C3AED);
-	border-radius: 50%;
-	opacity: 0.6;
-	animation: float 15s infinite linear;
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: linear-gradient(45deg, #4f46e5, #7c3aed);
+  border-radius: 50%;
+  opacity: 0.6;
+  animation: float 15s infinite linear;
 }
 
 @keyframes float {
-	0% {
-		transform: translateY(100vh) rotate(0deg);
-		opacity: 0;
-	}
-	10% {
-		opacity: 0.6;
-	}
-	90% {
-		opacity: 0.6;
-	}
-	100% {
-		transform: translateY(-100px) rotate(360deg);
-		opacity: 0;
-	}
+  0% {
+    transform: translateY(100vh) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.6;
+  }
+  90% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateY(-100px) rotate(360deg);
+    opacity: 0;
+  }
 }
 
 /* Gradient text styles */
 .gradient-text-purple {
-	background: linear-gradient(135deg, #4F46E5, #7C3AED);
-	-webkit-background-clip: text;
-	-webkit-text-fill-color: transparent;
-	background-clip: text;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .gradient-text-cyan {
-	background: linear-gradient(135deg, #06B6D4, #0891B2);
-	-webkit-background-clip: text;
-	-webkit-text-fill-color: transparent;
-	background-clip: text;
+  background: linear-gradient(135deg, #06b6d4, #0891b2);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 /* Orbital card with subtle animation */
 .orbital-card {
-	background: var(--cds-layer);
-	border: 1px solid var(--cds-border-subtle);
-	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-	transition: all 0.3s ease;
-	max-width: 64rem;
-	margin: 0 auto;
+  background: var(--cds-layer);
+  border: 1px solid var(--cds-border-subtle);
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s ease;
+  max-width: 64rem;
+  margin: 0 auto;
 }
 
 .orbital-card:hover {
-	box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-	transform: translateY(-2px);
+  box-shadow:
+    0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  transform: translateY(-2px);
 }
 
 /* Orbit animation */
 .orbit-animation {
-	animation: orbit 20s infinite linear;
+  animation: orbit 20s infinite linear;
 }
 
 @keyframes orbit {
-	from {
-		transform: rotate(0deg);
-	}
-	to {
-		transform: rotate(360deg);
-	}
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }

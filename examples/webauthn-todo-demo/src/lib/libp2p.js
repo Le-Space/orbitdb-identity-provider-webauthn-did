@@ -11,7 +11,7 @@ import { gossipsub } from '@chainsafe/libp2p-gossipsub';
 import { all } from '@libp2p/websockets/filters';
 import { LevelBlockstore } from 'blockstore-level';
 import { LevelDatastore } from 'datastore-level';
-import { OrbitDBWebAuthnIdentityProviderFunction } from './orbitdb-identity-provider-webauthn-did.js';
+import { OrbitDBWebAuthnIdentityProviderFunction } from '@le-space/orbitdb-identity-provider-webauthn-did';
 
 /**
  * Creates a browser-compatible libp2p instance with optimal configuration
@@ -22,39 +22,39 @@ export async function createLibp2pInstance() {
     addresses: {
       listen: [
         '/p2p-circuit', // Essential for relay connections
-        '/webrtc' // WebRTC for direct connections
-      ]
+        '/webrtc', // WebRTC for direct connections
+      ],
     },
     transports: [
       webSockets({
-        filter: all
+        filter: all,
       }),
       webRTC({
         rtcConfiguration: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:global.stun.twilio.com:3478' }
-          ]
-        }
+            { urls: 'stun:global.stun.twilio.com:3478' },
+          ],
+        },
       }),
       circuitRelayTransport({
         discoverRelays: 2, // Discover more relays
-        maxReservations: 2 // Allow more reservations
-      })
+        maxReservations: 2, // Allow more reservations
+      }),
     ],
     connectionEncryption: [noise()],
     streamMuxers: [yamux()],
     services: {
       identify: identify(),
-      pubsub: gossipsub({ 
+      pubsub: gossipsub({
         emitSelf: true, // Enable to see our own messages
-        allowPublishToZeroTopicPeers: true 
-      })
+        allowPublishToZeroTopicPeers: true,
+      }),
     },
     connectionManager: {
       maxConnections: 20,
-      minConnections: 1
-    }
+      minConnections: 1,
+    },
   });
 }
 
@@ -66,7 +66,7 @@ export async function createHeliaInstance(libp2p) {
   return await createHelia({
     libp2p,
     blockstore: new LevelBlockstore('./orbitdb/blocks'),
-    datastore: new LevelDatastore('./orbitdb/data')
+    datastore: new LevelDatastore('./orbitdb/data'),
   });
 }
 
@@ -91,7 +91,9 @@ export async function createIdentitiesInstance() {
  */
 export async function createWebAuthnIdentity(identities, credential) {
   return await identities.createIdentity({
-    provider: OrbitDBWebAuthnIdentityProviderFunction({ webauthnCredential: credential })
+    provider: OrbitDBWebAuthnIdentityProviderFunction({
+      webauthnCredential: credential,
+    }),
   });
 }
 
@@ -105,7 +107,7 @@ export async function createOrbitDBInstance(ipfs, identities, identity) {
   return await createOrbitDB({
     ipfs,
     identities,
-    identity
+    identity,
   });
 }
 
@@ -117,27 +119,27 @@ export async function createOrbitDBInstance(ipfs, identities, identity) {
 export async function setupOrbitDB(credential) {
   // Create libp2p instance
   const libp2p = await createLibp2pInstance();
-  
+
   // Create Helia instance
   const ipfs = await createHeliaInstance(libp2p);
-  
+
   // Register WebAuthn provider
   registerWebAuthnProvider();
-  
+
   // Create identities instance
   const identities = await createIdentitiesInstance();
-  
+
   // Create WebAuthn identity
   const identity = await createWebAuthnIdentity(identities, credential);
-  
+
   // Create OrbitDB instance
   const orbitdb = await createOrbitDBInstance(ipfs, identities, identity);
-  
+
   return {
     orbitdb,
     ipfs,
     identity,
-    identities
+    identities,
   };
 }
 
@@ -150,11 +152,11 @@ export async function cleanup({ orbitdb, ipfs, database = null }) {
     if (database) {
       await database.close();
     }
-    
+
     if (orbitdb) {
       await orbitdb.stop();
     }
-    
+
     if (ipfs) {
       await ipfs.stop();
     }
@@ -173,7 +175,11 @@ export async function resetDatabaseState() {
     if ('databases' in indexedDB) {
       const databases = await indexedDB.databases();
       for (const db of databases) {
-        if (db.name.includes('orbitdb') || db.name.includes('helia') || db.name.includes('webauthn')) {
+        if (
+          db.name.includes('orbitdb') ||
+          db.name.includes('helia') ||
+          db.name.includes('webauthn')
+        ) {
           console.log('🗑️ Deleting database:', db.name);
           indexedDB.deleteDatabase(db.name);
         }

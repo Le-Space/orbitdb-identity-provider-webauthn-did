@@ -1,0 +1,52 @@
+# Examples directory - users can get this from GitHub
+examples/
+
+# Playwright tests - users don't need these
+tests/
+playwright.config.js
+test-results/
+playwright-report/
+
+# Development files
+.git/
+.github/
+.gitignore
+.vscode/
+.idea/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Test artifacts
+test-*.png
+test-*.webm
+*.test.*
+*.spec.*
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Environment files
+.env*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+
+# Build artifacts that aren't needed
+dist/
+build/
+.cache/
+
+# Lock files (let users choose their package manager)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml

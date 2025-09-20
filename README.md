@@ -1,6 +1,7 @@
 # OrbitDB WebAuthn DID Identity Provider
 
-A hardware-secured identity provider for OrbitDB using WebAuthn biometric authentication. This provider enables quantum-resistant, biometric-secured database access where private keys never leave the secure hardware element.
+A hardware-secured identity provider for OrbitDB using WebAuthn authentication. This provider enables hardware -secured database access (Ledger, Yubikey etc.) where private keys never leave the secure hardware element 
+and biometric authentication via Passkey.
 
 ## Features
 
@@ -20,14 +21,15 @@ npm install orbitdb-identity-provider-webauthn-did
 ## Basic Usage
 
 ```javascript
-import { createOrbitDB, Identities, useIdentityProvider, IPFSAccessController } from '@orbitdb/core'
+import { createOrbitDB, Identities, IPFSAccessController } from '@orbitdb/core'
 import { createHelia } from 'helia'
-import { createLibp2p } from 'libp2p'
 import { 
   WebAuthnDIDProvider,
   OrbitDBWebAuthnIdentityProviderFunction,
   registerWebAuthnProvider,
-  checkWebAuthnSupport 
+  checkWebAuthnSupport,
+  storeWebAuthnCredential,
+  loadWebAuthnCredential
 } from 'orbitdb-identity-provider-webauthn-did'
 
 // Check WebAuthn support
@@ -38,46 +40,21 @@ if (!support.supported) {
 }
 
 // Create or load WebAuthn credential
-let credential = null
+let credential = loadWebAuthnCredential()
 
-// Check if we have stored credentials
-const storedCredential = localStorage.getItem('webauthn-credential')
-if (storedCredential) {
-  const parsed = JSON.parse(storedCredential)
-  // IMPORTANT: Properly deserialize Uint8Arrays
-  credential = {
-    ...parsed,
-    rawCredentialId: new Uint8Array(parsed.rawCredentialId),
-    attestationObject: new Uint8Array(parsed.attestationObject),
-    publicKey: {
-      ...parsed.publicKey,
-      x: new Uint8Array(parsed.publicKey.x),
-      y: new Uint8Array(parsed.publicKey.y)
-    }
-  }
-} else {
+if (!credential) {
   // Create new WebAuthn credential (triggers biometric prompt)
   credential = await WebAuthnDIDProvider.createCredential({
     userId: 'alice@example.com',
     displayName: 'Alice Smith'
   })
   
-  // Store credential with proper serialization
-  const serializedCredential = {
-    ...credential,
-    rawCredentialId: Array.from(credential.rawCredentialId),
-    attestationObject: Array.from(credential.attestationObject),
-    publicKey: {
-      ...credential.publicKey,
-      x: Array.from(credential.publicKey.x),
-      y: Array.from(credential.publicKey.y)
-    }
-  }
-  localStorage.setItem('webauthn-credential', JSON.stringify(serializedCredential))
+  // Store credential for future use
+  storeWebAuthnCredential(credential)
 }
 
 // Register the WebAuthn provider
-useIdentityProvider(OrbitDBWebAuthnIdentityProviderFunction)
+registerWebAuthnProvider()
 
 // Create identities instance
 const identities = await Identities()
@@ -87,29 +64,9 @@ const identity = await identities.createIdentity({
   provider: OrbitDBWebAuthnIdentityProviderFunction({ webauthnCredential: credential })
 })
 
-// Create libp2p and IPFS instances (browser-compatible)
-const libp2p = await createLibp2p({
-  addresses: {
-    listen: ['/p2p-circuit', '/webrtc']
-  },
-  transports: [
-    webSockets({ filter: all }),
-    webRTC(),
-    circuitRelayTransport()
-  ],
-  connectionEncryption: [noise()],
-  streamMuxers: [yamux()],
-  services: {
-    identify: identify(),
-    pubsub: gossipsub({ emitSelf: true, allowPublishToZeroTopicPeers: true })
-  }
-})
-
-const ipfs = await createHelia({ 
-  libp2p,
-  blockstore: new MemoryBlockstore(),
-  datastore: new MemoryDatastore()
-})
+// Create IPFS instance - see OrbitDB Liftoff example for full libp2p configuration:
+// https://github.com/orbitdb/orbitdb/tree/main/examples/liftoff
+const ipfs = await createHelia()
 
 // Create OrbitDB instance with WebAuthn identity
 const orbitdb = await createOrbitDB({
@@ -131,6 +88,15 @@ await db.put('greeting', 'Hello, secure world!')
 ```
 
 ## Advanced Configuration
+
+### LibP2P and IPFS Setup
+
+For production applications, you'll need proper libp2p configuration. See the [OrbitDB Liftoff example](https://github.com/orbitdb/orbitdb/tree/main/examples/liftoff) for comprehensive libp2p setup including:
+
+- Transport protocols (WebSockets, WebRTC, Circuit Relay)
+- Connection encryption and stream multiplexing
+- Peer discovery and bootstrap nodes
+- Browser vs Node.js specific configurations
 
 ### Credential Creation Options
 
@@ -197,62 +163,54 @@ const hasBiometric = await WebAuthnDIDProvider.isPlatformAuthenticatorAvailable(
 - **Android**: Fingerprint, face unlock, screen lock
 - **Linux**: FIDO2 security keys, fingerprint readers
 
-## Important: localStorage Serialization
+## Credential Storage Utilities
 
-⚠️ **CRITICAL**: When storing WebAuthn credentials in localStorage, you must properly serialize and deserialize `Uint8Array` objects, including the public key coordinates.
+The library provides utility functions for properly storing and loading WebAuthn credentials:
 
-### Correct Storage:
+### Using the Built-in Utilities:
+
 ```javascript
-// Store credential with proper serialization
-const serializedCredential = {
-  ...credential,
-  rawCredentialId: Array.from(credential.rawCredentialId),
-  attestationObject: Array.from(credential.attestationObject),
-  publicKey: {
-    ...credential.publicKey,
-    x: Array.from(credential.publicKey.x),  // Convert to regular array
-    y: Array.from(credential.publicKey.y)   // Convert to regular array
-  }
-}
-localStorage.setItem('webauthn-credential', JSON.stringify(serializedCredential))
+import { 
+  storeWebAuthnCredential, 
+  loadWebAuthnCredential, 
+  clearWebAuthnCredential 
+} from 'orbitdb-identity-provider-webauthn-did'
+
+// Store credential (handles Uint8Array serialization automatically)
+storeWebAuthnCredential(credential)
+
+// Load credential (handles Uint8Array deserialization automatically)  
+const credential = loadWebAuthnCredential()
+
+// Clear stored credential
+clearWebAuthnCredential()
+
+// Use custom storage keys
+storeWebAuthnCredential(credential, 'my-custom-key')
+const credential = loadWebAuthnCredential('my-custom-key')
 ```
 
-### Correct Loading:
-```javascript
-const storedCredential = localStorage.getItem('webauthn-credential')
-if (storedCredential) {
-  const parsed = JSON.parse(storedCredential)
-  credential = {
-    ...parsed,
-    rawCredentialId: new Uint8Array(parsed.rawCredentialId),
-    attestationObject: new Uint8Array(parsed.attestationObject),
-    publicKey: {
-      ...parsed.publicKey,
-      x: new Uint8Array(parsed.publicKey.x),  // Restore to Uint8Array
-      y: new Uint8Array(parsed.publicKey.y)   // Restore to Uint8Array
-    }
-  }
-}
-```
-
-**Why this matters**: Without proper serialization, the public key coordinates will be empty arrays after loading from localStorage, causing DID generation to fail with `did:webauthn:` (missing identifier).
+**Why we provide these utilities**: WebAuthn credentials contain `Uint8Array` objects that don't serialize properly with `JSON.stringify()`. Without proper serialization, the public key coordinates become empty arrays after loading from localStorage, causing DID generation to fail with `did:webauthn:` (missing identifier). Our utility functions handle this complexity automatically.
 
 ## Security Considerations
 
 ### Private Key Security
+
 - Private keys are generated within the secure hardware element
 - Keys cannot be extracted, cloned, or compromised through software attacks
 - Each authentication requires user presence and verification
 
 ### DID Generation
+
 - DIDs are deterministically generated from the WebAuthn public key
 - Same credential always produces the same DID
 - Format: `did:webauthn:{32-char-hex-identifier}`
 
 ### Authentication Flow
+
 1. User attempts database operation
-2. WebAuthn biometric prompt appears
-3. User provides biometric authentication
+2. WebAuthn prompt appears
+3. User provides authentication
 4. Hardware element signs the operation
 5. OrbitDB verifies the signature
 
@@ -335,6 +293,9 @@ OrbitDB-compatible identity provider.
 - `registerWebAuthnProvider()` - Register provider with OrbitDB
 - `checkWebAuthnSupport()` - Comprehensive support detection
 - `OrbitDBWebAuthnIdentityProviderFunction(options)` - Provider factory function
+- `storeWebAuthnCredential(credential, key?)` - Store credential to localStorage with proper serialization
+- `loadWebAuthnCredential(key?)` - Load credential from localStorage with proper deserialization
+- `clearWebAuthnCredential(key?)` - Clear stored credential from localStorage
 
 ## Examples
 
@@ -344,6 +305,68 @@ See the `test/` directory for comprehensive usage examples including:
 - Multi-platform compatibility testing
 - Error handling scenarios
 - Integration with OrbitDB databases
+
+## Reference Documentation
+
+### Core Technologies
+
+#### OrbitDB
+- [OrbitDB Documentation](https://orbitdb.org/docs/) - Peer-to-peer database for the decentralized web
+- [OrbitDB GitHub](https://github.com/orbitdb/orbitdb) - Source code and examples
+- [OrbitDB Liftoff Example](https://github.com/orbitdb/orbitdb/tree/main/examples/liftoff) - Complete setup guide
+
+#### IPFS & Helia
+- [Helia Documentation](https://helia.io/) - Lean, modular, and modern implementation of IPFS for JavaScript
+- [Helia GitHub](https://github.com/ipfs/helia) - Source code and examples
+- [IPFS Documentation](https://docs.ipfs.tech/) - InterPlanetary File System docs
+
+#### libp2p
+- [libp2p Documentation](https://docs.libp2p.io/) - Modular network stack for peer-to-peer applications
+- [libp2p JavaScript](https://github.com/libp2p/js-libp2p) - JavaScript implementation
+- [libp2p Browser Examples](https://github.com/libp2p/js-libp2p/tree/main/examples) - Browser-specific configurations
+
+### WebAuthn & Authentication
+
+#### WebAuthn Standard
+- [WebAuthn W3C Specification](https://w3c.github.io/webauthn/) - Official WebAuthn standard
+- [WebAuthn Guide](https://webauthn.guide/) - Comprehensive WebAuthn tutorial
+- [MDN WebAuthn API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Authentication_API) - Browser API documentation
+
+#### Passkeys
+- [Passkeys.dev](https://passkeys.dev/) - Complete guide to implementing passkeys
+- [Apple Passkeys](https://developer.apple.com/passkeys/) - iOS/macOS passkey implementation
+- [Google Passkeys](https://developers.google.com/identity/passkeys) - Android/Chrome passkey support
+- [Microsoft Passkeys](https://docs.microsoft.com/en-us/microsoft-edge/web-platform/passkeys) - Windows Hello integration
+
+#### Hardware Security Keys
+
+##### Ledger WebAuthn
+- [Ledger WebAuthn Support](https://support.ledger.com/hc/en-us/articles/115005198545-FIDO-U2F) - FIDO U2F and WebAuthn on Ledger devices
+- [Ledger Developer Portal](https://developers.ledger.com/) - Building apps for Ledger hardware wallets
+- [Ledger WebAuthn Example](https://github.com/LedgerHQ/ledger-live/tree/develop/apps/ledger-live-desktop/src/renderer/families/ethereum/WebAuthnModal) - Implementation examples
+
+##### YubiKey WebAuthn
+- [YubiKey WebAuthn Guide](https://developers.yubico.com/WebAuthn/) - Complete WebAuthn implementation guide
+- [YubiKey Developer Program](https://developers.yubico.com/) - SDKs, libraries, and documentation
+- [YubiKey WebAuthn Examples](https://github.com/Yubico/java-webauthn-server) - Server-side WebAuthn implementation
+- [YubiKey JavaScript Library](https://github.com/Yubico/yubikit-web) - Web integration tools
+
+#### Browser Compatibility
+- [Can I Use WebAuthn](https://caniuse.com/webauthn) - Browser support matrix
+- [WebAuthn Awesome List](https://github.com/herrjemand/awesome-webauthn) - Curated WebAuthn resources
+- [FIDO Alliance](https://fidoalliance.org/) - Industry standards and certification
+
+### Cryptography & DIDs
+
+#### Decentralized Identifiers (DIDs)
+- [DID W3C Specification](https://w3c.github.io/did-core/) - Official DID standard
+- [DID Method Registry](https://w3c.github.io/did-spec-registries/) - Registered DID methods
+- [DID Primer](https://github.com/WebOfTrustInfo/rwot5-boston/blob/master/topics-and-advance-readings/did-primer.md) - Introduction to DIDs
+
+#### P-256 Elliptic Curve Cryptography
+- [RFC 6090 - ECC Algorithms](https://tools.ietf.org/html/rfc6090) - Fundamental ECC operations
+- [NIST P-256 Curve](https://csrc.nist.gov/csrc/media/events/workshop-on-elliptic-curve-cryptography-standards/documents/papers/session6-adalier-mehmet.pdf) - Technical specifications
+- [WebCrypto API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API) - Browser cryptography APIs
 
 ## Contributing
 
@@ -355,4 +378,4 @@ MIT License - see LICENSE file for details.
 
 ## Security Disclosures
 
-For security vulnerabilities, please email security@your-domain.com instead of using the issue tracker.
+For security vulnerabilities, please email security@le-space.de instead of using the issue tracker.

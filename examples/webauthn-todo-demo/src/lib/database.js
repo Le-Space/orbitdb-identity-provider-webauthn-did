@@ -8,40 +8,43 @@ import { IPFSAccessController } from '@orbitdb/core';
  */
 export async function openTodoDatabase(orbitdb, identity) {
   const writePermissions = [identity.id];
-  
+
   console.log('🔓 Database access configuration:', {
     writePermissions,
     identityId: identity.id,
-    identityType: identity.type
+    identityType: identity.type,
   });
-  
+
   console.log('📝 Opening database "webauthn-todos"...');
-  
+
   const database = await Promise.race([
     orbitdb.open('webauthn-todos', {
       type: 'keyvalue',
       create: true,
       sync: true,
-      accessController: IPFSAccessController({ 
-        write: writePermissions
-      })
+      accessController: IPFSAccessController({
+        write: writePermissions,
+      }),
     }),
-    new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Database open timeout after 15 seconds')), 15000)
-    )
+    new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error('Database open timeout after 15 seconds')),
+        15000
+      )
+    ),
   ]);
-  
+
   console.log('✅ Database opened successfully:', {
     name: database.name,
     address: database.address,
     type: database.type,
     identityId: database.identity?.id,
-    accessControllerType: database.access?.type
+    accessControllerType: database.access?.type,
   });
-  
+
   // Set up database event listeners for debugging
   setupDatabaseEventListeners(database);
-  
+
   return database;
 }
 
@@ -53,11 +56,11 @@ function setupDatabaseEventListeners(database) {
   database.events.on('join', (address, entry) => {
     console.log('🔗 Database JOIN event:', { address, entry: entry?.key });
   });
-  
+
   database.events.on('update', (address) => {
     console.log('🔄 Database UPDATE event:', { address });
   });
-  
+
   database.events.on('error', (error) => {
     console.error('❌ Database ERROR event:', error);
   });
@@ -70,44 +73,46 @@ function setupDatabaseEventListeners(database) {
  */
 export async function loadTodos(database) {
   if (!database) return [];
-  
+
   try {
     console.log('📊 Loading todos from database:', {
       databaseName: database.name,
       databaseAddress: database.address,
       databaseType: database.type,
       identityId: database.identity?.id,
-      accessController: database.access?.type
+      accessController: database.access?.type,
     });
-    
+
     console.log('⏳ Calling database.all()...');
     const allTodos = await Promise.race([
       database.all(),
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Database.all() timeout after 10 seconds')), 10000)
-      )
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error('Database.all() timeout after 10 seconds')),
+          10000
+        )
+      ),
     ]);
-    
+
     console.log('✅ Database.all() completed, entries found:', allTodos.length);
-    
+
     const todos = allTodos
-      .map(entry => {
+      .map((entry) => {
         console.log('📝 Todo entry:', { key: entry.key, value: entry.value });
         return entry.value;
       })
       .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-      
+
     console.log('📋 Todos loaded successfully:', todos.length);
     return todos;
-    
   } catch (error) {
     console.error('❌ Failed to load todos:', error);
     console.error('Error details:', {
       message: error.message,
       name: error.name,
-      stack: error.stack?.slice(0, 500)
+      stack: error.stack?.slice(0, 500),
     });
-    
+
     // Re-throw the error so the caller can handle it
     throw error;
   }
@@ -124,49 +129,59 @@ export async function addTodo(database, text, credential = null) {
   if (!database || !text.trim()) {
     throw new Error('Database and todo text are required');
   }
-  
+
   try {
     // 🧪 DEBUG: Test direct WebAuthn call before OrbitDB operation
     if (credential) {
-      console.log('🧪 [DEBUG] Testing direct WebAuthn call before adding TODO...');
+      console.log(
+        '🧪 [DEBUG] Testing direct WebAuthn call before adding TODO...'
+      );
       try {
         const testChallenge = crypto.getRandomValues(new Uint8Array(32));
-        console.log('🧪 [DEBUG] Calling navigator.credentials.get directly - this should show biometric prompt!');
-        
+        console.log(
+          '🧪 [DEBUG] Calling navigator.credentials.get directly - this should show biometric prompt!'
+        );
+
         const directAuth = await navigator.credentials.get({
           publicKey: {
             challenge: testChallenge,
-            allowCredentials: [{
-              id: credential.rawCredentialId,
-              type: 'public-key'
-            }],
+            allowCredentials: [
+              {
+                id: credential.rawCredentialId,
+                type: 'public-key',
+              },
+            ],
             userVerification: 'required',
-            timeout: 60000
-          }
+            timeout: 60000,
+          },
         });
-        
+
         console.log('🧪 [DEBUG] Direct WebAuthn auth successful:', {
           hasResponse: !!directAuth?.response,
-          hasAuthenticatorData: !!directAuth?.response?.authenticatorData
+          hasAuthenticatorData: !!directAuth?.response?.authenticatorData,
         });
       } catch (directAuthError) {
-        console.warn('🧪 [DEBUG] Direct WebAuthn auth failed:', directAuthError.message);
+        console.warn(
+          '🧪 [DEBUG] Direct WebAuthn auth failed:',
+          directAuthError.message
+        );
       }
     }
-    
+
     const todoId = `todo-${Date.now()}`;
     const todo = {
       id: todoId,
       text: text.trim(),
       completed: false,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
-    
-    console.log('🧪 [DEBUG] Now calling OrbitDB database.put() - this should also trigger biometric prompt...');
+
+    console.log(
+      '🧪 [DEBUG] Now calling OrbitDB database.put() - this should also trigger biometric prompt...'
+    );
     await database.put(todoId, todo);
-    
+
     return todo;
-    
   } catch (error) {
     console.error('Failed to add todo:', error);
     throw error;
@@ -183,16 +198,15 @@ export async function toggleTodo(database, todo) {
   if (!database || !todo) {
     throw new Error('Database and todo are required');
   }
-  
+
   try {
     const updatedTodo = {
       ...todo,
-      completed: !todo.completed
+      completed: !todo.completed,
     };
-    
+
     await database.put(todo.id, updatedTodo);
     return updatedTodo;
-    
   } catch (error) {
     console.error('Failed to toggle todo:', error);
     throw error;
@@ -208,7 +222,7 @@ export async function deleteTodo(database, todo) {
   if (!database || !todo) {
     throw new Error('Database and todo are required');
   }
-  
+
   try {
     await database.del(todo.id);
   } catch (error) {
@@ -225,7 +239,7 @@ export async function deleteTodo(database, todo) {
 export function getTodoStats(todos) {
   return {
     total: todos.length,
-    completed: todos.filter(t => t.completed).length,
-    remaining: todos.filter(t => !t.completed).length
+    completed: todos.filter((t) => t.completed).length,
+    remaining: todos.filter((t) => !t.completed).length,
   };
 }

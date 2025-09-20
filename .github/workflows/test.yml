@@ -1,0 +1,101 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  quick-tests:
+    name: Quick Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run linting
+        run: npm run lint --if-present
+        continue-on-error: true
+      
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      
+      - name: Install demo dependencies
+        run: |
+          cd examples/webauthn-todo-demo
+          npm ci
+      
+      - name: Build demo application
+        run: |
+          cd examples/webauthn-todo-demo
+          npm run build
+      
+      - name: Start demo server in background
+        run: |
+          cd examples/webauthn-todo-demo
+          npm run preview -- --port 5173 --host &
+          sleep 10
+        env:
+          CI: true
+      
+      - name: Wait for server to be ready
+        run: |
+          timeout 30 bash -c 'until curl -f http://localhost:5173; do sleep 1; done'
+      
+      - name: Run WebAuthn tests
+        run: npx playwright test tests/webauthn-focused.test.js --project=chromium --reporter=github
+        env:
+          CI: true
+      
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 3
+      
+      - name: Stop demo server
+        if: always()
+        run: |
+          pkill -f "vite preview" || true
+          pkill -f "npm run preview" || true
+
+  lint-and-format:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Check code formatting
+        run: npm run format:check --if-present || echo "No format:check script found"
+      
+      - name: Run linting
+        run: npm run lint --if-present || echo "No lint script found"
+      
+      - name: Type checking
+        run: npm run type-check --if-present || echo "No type-check script found"
