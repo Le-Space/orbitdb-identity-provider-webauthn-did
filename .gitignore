@@ -120,7 +120,8 @@ examples/**/.env.*
 
 # Examples node_modules (in case someone runs npm install in examples)
 examples/**/node_modules/
-examples/**/package-lock.json
+# Keep demo lockfiles for CI reproducibility
+# examples/**/package-lock.json
 examples/**/yarn.lock
 examples/**/pnpm-lock.yaml
 
