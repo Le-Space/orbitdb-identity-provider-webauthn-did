@@ -1,12 +1,27 @@
 import { IPFSAccessController } from '@orbitdb/core';
 
+// Global store for identity verification results (not persisted)
+const identityVerifications = new Map(); // Map<todoId, {verified: boolean, timestamp: number, identityHash: string}>
+
+// Export function to access verification store from UI
+export function getIdentityVerifications() {
+  return identityVerifications;
+}
+
+export function getVerificationForTodo(todoId) {
+  return identityVerifications.get(todoId) || null;
+}
+
 /**
  * Opens a TODO database with the given OrbitDB instance and identity
  * @param {Object} orbitdb - The OrbitDB instance
  * @param {Object} identity - The WebAuthn identity
+ * @param {Object} identities - The OrbitDB identities instance
  * @returns {Object} The opened database instance
  */
-export async function openTodoDatabase(orbitdb, identity) {
+export async function openTodoDatabase(orbitdb, identity, identities) {
+  // Store references for later use in event handlers
+  const ipfsInstance = orbitdb.ipfs;
   const writePermissions = [identity.id];
 
   console.log('🔓 Database access configuration:', {
@@ -43,7 +58,7 @@ export async function openTodoDatabase(orbitdb, identity) {
   });
 
   // Set up database event listeners for debugging
-  setupDatabaseEventListeners(database);
+  setupDatabaseEventListeners(database, ipfsInstance, identities);
 
   return database;
 }
@@ -51,14 +66,73 @@ export async function openTodoDatabase(orbitdb, identity) {
 /**
  * Sets up event listeners for database debugging
  * @param {Object} database - The database instance
+ * @param {Object} ipfs - The IPFS/Helia instance
+ * @param {Object} identities - The OrbitDB identities instance
  */
-function setupDatabaseEventListeners(database) {
+function setupDatabaseEventListeners(database, ipfs, identities) {
   database.events.on('join', (address, entry) => {
     console.log('🔗 Database JOIN event:', { address, entry: entry?.key });
   });
 
-  database.events.on('update', (address) => {
+  database.events.on('update', async (address) => {
     console.log('🔄 Database UPDATE event:', { address });
+
+    // Get the identity hash from the update event
+    const updateIdentityHash = address?.identity;
+    if (!updateIdentityHash) {
+      console.warn('⚠️ Update event missing identity information');
+      return;
+    }
+
+    // Get our WebAuthn DID from the database's identity
+    const webAuthnDID = database.identity.id;
+    if (!webAuthnDID) {
+      console.warn('⚠️ Database missing identity information');
+      return;
+    }
+
+    // Import verification utilities and verify the identity
+    try {
+      // Use pragmatic verification to avoid network timeouts
+      const { verifyDatabaseUpdate } = await import('./verification.js');
+      const verification = await verifyDatabaseUpdate(database, updateIdentityHash, webAuthnDID);
+      
+      // Find which todo was just updated by checking the latest entries
+      let updatedTodoId = null;
+      try {
+        const allEntries = await database.all();
+        // Find the most recent entry - this should be the one that triggered the update
+        const latestEntry = allEntries
+          .sort((a, b) => new Date(b.value.createdAt) - new Date(a.value.createdAt))[0];
+        updatedTodoId = latestEntry?.key;
+      } catch (error) {
+        console.warn('Could not determine which todo was updated:', error);
+      }
+      
+      // Persist verification outcome in ephemeral map for UI
+      if (updatedTodoId) {
+        identityVerifications.set(updatedTodoId, {
+          success: verification.success,
+          timestamp: Date.now(),
+          identityHash: updateIdentityHash,
+          error: verification.error || null,
+          method: verification.method
+        });
+        console.log(`💾 Stored verification for todo ${updatedTodoId}: ${verification.success ? 'PASSED' : 'FAILED'}`);
+      }
+      
+    } catch (identityError) {
+      console.error('❌ Error retrieving identity from OrbitDB:', identityError);
+      // Store error result for failed verification
+      const updatedTodoId = 'unknown';
+      identityVerifications.set(updatedTodoId, {
+        success: false,
+        identityHash: updateIdentityHash,
+        timestamp: Date.now(),
+        error: `Identity verification failed: ${identityError.message}`,
+        method: 'error-fallback'
+      });
+    }
   });
 
   database.events.on('error', (error) => {
@@ -131,42 +205,8 @@ export async function addTodo(database, text, credential = null) {
   }
 
   try {
-    // 🧪 DEBUG: Test direct WebAuthn call before OrbitDB operation
-    if (credential) {
-      console.log(
-        '🧪 [DEBUG] Testing direct WebAuthn call before adding TODO...'
-      );
-      try {
-        const testChallenge = crypto.getRandomValues(new Uint8Array(32));
-        console.log(
-          '🧪 [DEBUG] Calling navigator.credentials.get directly - this should show biometric prompt!'
-        );
-
-        const directAuth = await navigator.credentials.get({
-          publicKey: {
-            challenge: testChallenge,
-            allowCredentials: [
-              {
-                id: credential.rawCredentialId,
-                type: 'public-key',
-              },
-            ],
-            userVerification: 'required',
-            timeout: 60000,
-          },
-        });
-
-        console.log('🧪 [DEBUG] Direct WebAuthn auth successful:', {
-          hasResponse: !!directAuth?.response,
-          hasAuthenticatorData: !!directAuth?.response?.authenticatorData,
-        });
-      } catch (directAuthError) {
-        console.warn(
-          '🧪 [DEBUG] Direct WebAuthn auth failed:',
-          directAuthError.message
-        );
-      }
-    }
+    // Direct database operation without additional WebAuthn calls
+    // (WebAuthn authentication happens automatically via OrbitDB identity provider)
 
     const todoId = `todo-${Date.now()}`;
     const todo = {
@@ -176,9 +216,7 @@ export async function addTodo(database, text, credential = null) {
       createdAt: new Date().toISOString(),
     };
 
-    console.log(
-      '🧪 [DEBUG] Now calling OrbitDB database.put() - this should also trigger biometric prompt...'
-    );
+    console.log('💾 Adding todo to OrbitDB database...');
     await database.put(todoId, todo);
 
     return todo;

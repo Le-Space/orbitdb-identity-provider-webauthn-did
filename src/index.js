@@ -574,6 +574,25 @@ export function clearWebAuthnCredential(key = 'webauthn-credential') {
   }
 }
 
+// Import verification utilities
+import * as VerificationUtils from './verification.js';
+
+export {
+  // Verification utilities
+  VerificationUtils,
+};
+
+// Re-export individual verification functions for convenience
+export {
+  verifyDatabaseUpdate,
+  verifyIdentityStorage,
+  verifyDataEntries,
+  isValidWebAuthnDID,
+  extractWebAuthnDIDSuffix,
+  compareWebAuthnDIDs,
+  createVerificationResult
+} from './verification.js';
+
 export default {
   WebAuthnDIDProvider,
   OrbitDBWebAuthnIdentityProvider,
@@ -582,5 +601,7 @@ export default {
   checkWebAuthnSupport,
   storeWebAuthnCredential,
   loadWebAuthnCredential,
-  clearWebAuthnCredential
+  clearWebAuthnCredential,
+  // Include verification utilities in default export
+  VerificationUtils
 };

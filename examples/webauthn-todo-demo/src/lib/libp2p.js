@@ -126,11 +126,31 @@ export async function setupOrbitDB(credential) {
   // Register WebAuthn provider
   registerWebAuthnProvider();
 
-  // Create identities instance
-  const identities = await createIdentitiesInstance();
+  // Create identities instance with IPFS for proper storage
+  const identities = await Identities({ ipfs });
 
   // Create WebAuthn identity
   const identity = await createWebAuthnIdentity(identities, credential);
+  
+  console.log('🔍 Created WebAuthn identity:', {
+    id: identity.id,
+    type: identity.type,
+    hash: identity.hash
+  });
+  
+  // Try to verify our identity is in the identities store
+  try {
+    const storedIdentity = await identities.getIdentity(identity.hash);
+    console.log('✅ Identity found in identities store:', !!storedIdentity);
+    if (storedIdentity) {
+      console.log('📊 Stored identity details:', {
+        id: storedIdentity.id,
+        type: storedIdentity.type
+      });
+    }
+  } catch (error) {
+    console.warn('⚠️ Could not retrieve identity from store:', error.message);
+  }
 
   // Create OrbitDB instance
   const orbitdb = await createOrbitDBInstance(ipfs, identities, identity);

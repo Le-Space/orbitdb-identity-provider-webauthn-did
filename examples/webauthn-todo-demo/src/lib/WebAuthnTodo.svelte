@@ -6,13 +6,15 @@
   } from '@le-space/orbitdb-identity-provider-webauthn-did';
 
   import { setupOrbitDB, cleanup, resetDatabaseState } from './libp2p.js';
-  import {
+import {
     openTodoDatabase,
     loadTodos,
     addTodo,
     toggleTodo,
     deleteTodo,
     getTodoStats,
+    getIdentityVerifications,
+    getVerificationForTodo,
   } from './database.js';
   import {
     Button,
@@ -21,6 +23,7 @@
     Loading,
   } from 'carbon-components-svelte';
   import { Checkmark, Warning } from 'carbon-icons-svelte';
+  import IdentityVerificationBadge from './components/IdentityVerificationBadge.svelte';
 
   // Core instances
   let orbitdbInstances = null; // Will contain { orbitdb, ipfs, identity, identities }
@@ -33,6 +36,9 @@
   let isAuthenticated = false;
   let loading = false;
   let status = 'Checking WebAuthn support...';
+  
+  // Identity verification tracking (not stored in database)
+  let todoVerifications = new Map(); // Map<todoId, {verified: boolean, timestamp: number, identityHash: string}>
 
   // WebAuthn support detection
   let webAuthnSupported = false;
@@ -162,7 +168,8 @@
       // Use the extracted openTodoDatabase function
       database = await openTodoDatabase(
         orbitdbInstances.orbitdb,
-        orbitdbInstances.identity
+        orbitdbInstances.identity,
+        orbitdbInstances.identities
       );
 
       status = 'Loading existing todos...';
@@ -208,6 +215,14 @@
 
     try {
       todos = await loadTodos(database);
+      
+      // Refresh verification states after loading todos
+      if (todos.length > 0) {
+        console.log(`📋 Loaded ${todos.length} todos, scheduling verification...`);
+        setTimeout(() => refreshVerificationStates(), 100); // Small delay to let database settle
+      } else {
+        console.log('📋 No todos loaded, skipping verification');
+      }
     } catch (error) {
       console.error('❌ Failed to load todos:', error);
       // If it's a timeout or connection issue, suggest reset
@@ -228,6 +243,9 @@
 
       await addTodo(database, newTodo, credential);
       await refreshTodos();
+      
+      // Refresh verification states after a short delay to allow database events to process
+      setTimeout(() => refreshVerificationStates(), 2000);
 
       newTodo = '';
       status = 'TODO added successfully!';
@@ -300,6 +318,54 @@
     }
   }
 
+  async function refreshVerificationStates() {
+    console.log('🔄 Starting refreshVerificationStates...');
+    
+    // First, get states from the global store (from database events)
+    const globalVerifications = getIdentityVerifications();
+    console.log(`💾 Found ${globalVerifications.size} verifications in global store`);
+    
+    // Clear and update with global state
+    todoVerifications.clear();
+    for (const [todoId, verification] of globalVerifications) {
+      todoVerifications.set(todoId, verification);
+      console.log(`✅ Loaded verification for ${todoId}: ${verification.success ? 'PASSED' : 'FAILED'}`);
+    }
+    
+    // For todos that don't have verification yet, use the simple verification approach
+    if (database && orbitdbInstances?.identity?.id) {
+      try {
+        // Use the single verification approach
+        const { verifyTodos } = await import('./verification.js');
+        
+        // Find todos that need verification
+        const unverifiedTodos = todos.filter(todo => !todoVerifications.has(todo.id));
+        
+        if (unverifiedTodos.length > 0) {
+          console.log(`🔍 Running verification for ${unverifiedTodos.length} todos...`);
+          
+          const newVerifications = await verifyTodos(
+            database,
+            unverifiedTodos, 
+            orbitdbInstances.identity.id
+          );
+          
+          // Add new verifications to our map
+          for (const [todoId, verification] of newVerifications) {
+            todoVerifications.set(todoId, verification);
+          }
+        }
+      } catch (error) {
+        console.error('Error during simple verification:', error);
+      }
+    }
+    
+    // Trigger reactivity
+    todoVerifications = todoVerifications;
+    
+    console.log('🔄 Refreshed verification states:', todoVerifications.size, 'todos verified');
+  }
+
   async function handleLogout() {
     try {
       // Clean up connections
@@ -309,6 +375,7 @@
 
       // Clear all state
       todos = [];
+      todoVerifications.clear();
       isAuthenticated = false;
       credential = null;
       database = null;
@@ -319,6 +386,7 @@
       console.error('Error during logout:', error);
       // Force clear state even if cleanup fails
       todos = [];
+      todoVerifications.clear();
       isAuthenticated = false;
       credential = null;
       database = null;
@@ -452,6 +520,14 @@
           </div>
           <div style="display: flex; gap: 0.5rem; align-self: flex-start;">
             <Button
+              on:click={refreshVerificationStates}
+              kind="tertiary"
+              size="small"
+              disabled={loading || todos.length === 0}
+            >
+              Refresh Verification
+            </Button>
+            <Button
               on:click={handleResetDatabase}
               kind="danger-tertiary"
               size="small"
@@ -535,6 +611,24 @@
               >
                 {todo.text}
               </span>
+              
+              <!-- Identity Verification Badge -->
+              {#if todoVerifications.has(todo.id)}
+                {@const verification = todoVerifications.get(todo.id)}
+                <IdentityVerificationBadge
+                  identityHash={verification.identityHash}
+                  webAuthnDID={orbitdbInstances?.identity?.id}
+                  verificationState={verification.success}
+                  timestamp={verification.timestamp}
+                />
+              {:else}
+                <IdentityVerificationBadge
+                  identityHash="pending..."
+                  webAuthnDID={orbitdbInstances?.identity?.id}
+                  verificationState={null}
+                  timestamp={Date.now()}
+                />
+              {/if}
 
               <button
                 on:click={() => handleDeleteTodo(todo)}

@@ -191,6 +191,51 @@ const credential = loadWebAuthnCredential('my-custom-key')
 
 **Why we provide these utilities**: WebAuthn credentials contain `Uint8Array` objects that don't serialize properly with `JSON.stringify()`. Without proper serialization, the public key coordinates become empty arrays after loading from localStorage, causing DID generation to fail with `did:webauthn:` (missing identifier). Our utility functions handle this complexity automatically.
 
+## Verification Utilities
+
+The library provides comprehensive verification utilities to validate database operations and identity storage without relying on external network calls:
+
+```javascript
+import { 
+  verifyDatabaseUpdate,
+  verifyIdentityStorage,
+  verifyDataEntries,
+  isValidWebAuthnDID
+} from 'orbitdb-identity-provider-webauthn-did'
+
+// Verify database update events
+const updateResult = await verifyDatabaseUpdate(database, identityHash, expectedWebAuthnDID)
+if (updateResult.success) {
+  console.log('✅ Database update verified')
+} else {
+  console.log('❌ Verification failed:', updateResult.error)
+}
+
+// Verify identity is properly stored
+const storageResult = await verifyIdentityStorage(identities, identity)
+console.log('Identity stored correctly:', storageResult.success)
+
+// Verify generic data entries with custom matching
+const dataResults = await verifyDataEntries(database, dataItems, expectedWebAuthnDID, {
+  matchFn: (dbItem, expectedItem) => dbItem.id === expectedItem.id,
+  checkLog: true
+})
+
+// DID format validation
+if (isValidWebAuthnDID(identity.id)) {
+  console.log('Valid WebAuthn DID format')
+}
+```
+
+### Verification Features
+
+- **Database-centric verification**: Uses local database state instead of unreliable IPFS gateway calls
+- **Access control validation**: Verifies write permissions and database ownership  
+- **Identity storage checking**: Confirms identities are properly stored in OrbitDB's identity store
+- **Generic data verification**: Flexible verification system that works with any data structure
+- **DID format validation**: Utility functions for WebAuthn DID validation and parsing
+- **Pragmatic fallback**: Provides fallback verification when network resources are unavailable
+
 ## Security Considerations
 
 ### Private Key Security

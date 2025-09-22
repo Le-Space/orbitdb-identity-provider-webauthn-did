@@ -74,8 +74,8 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
       <body>
         <div id="test-output"></div>
         <script type="module">
-          // Import the WebAuthn DID provider
-          const module = await import('/Users/nandi/orbitdb-storacha-bridge/orbitdb-identity-provider-webauthn-did/src/index.js');
+          // Import the WebAuthn DID provider using relative path
+          const module = await import('../src/index.js');
           window.WebAuthnModule = module;
           
           // Signal that the module is loaded
