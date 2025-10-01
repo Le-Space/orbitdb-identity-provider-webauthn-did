@@ -14,7 +14,7 @@ and biometric authentication via Passkey.
 - 🌐 **Cross-platform compatibility** - Works across modern browsers and platforms
 - 📱 **Biometric authentication** - Seamless user experience with fingerprint, face recognition, or PIN
 - 🔒 **Quantum-resistant** - P-256 elliptic curve cryptography with hardware backing
-- 🆔 **DID-based identity** - Generates deterministic DIDs based on WebAuthn credentials
+- 🆔 **DID-based identity** - Generates deterministic `did:key` DIDs based on WebAuthn credentials
 
 ## Installation
 
@@ -189,7 +189,7 @@ storeWebAuthnCredential(credential, 'my-custom-key')
 const credential = loadWebAuthnCredential('my-custom-key')
 ```
 
-**Why we provide these utilities**: WebAuthn credentials contain `Uint8Array` objects that don't serialize properly with `JSON.stringify()`. Without proper serialization, the public key coordinates become empty arrays after loading from localStorage, causing DID generation to fail with `did:webauthn:` (missing identifier). Our utility functions handle this complexity automatically.
+**Why we provide these utilities**: WebAuthn credentials contain `Uint8Array` objects that don't serialize properly with `JSON.stringify()`. Without proper serialization, the public key coordinates become empty arrays after loading from localStorage, causing DID generation to fail. Our utility functions handle this complexity automatically and ensure proper `did:key` format generation.
 
 ## Verification Utilities
 
@@ -248,7 +248,7 @@ if (isValidWebAuthnDID(identity.id)) {
 
 - DIDs are deterministically generated from the WebAuthn public key
 - Same credential always produces the same DID
-- Format: `did:webauthn:{32-char-hex-identifier}`
+- Format: `did:key:{base58btc-encoded-multikey}` (compliant with DID key specification)
 
 ### Authentication Flow
 
@@ -411,6 +411,32 @@ See the `test/` directory for comprehensive usage examples including:
 - [RFC 6090 - ECC Algorithms](https://tools.ietf.org/html/rfc6090) - Fundamental ECC operations
 - [NIST P-256 Curve](https://csrc.nist.gov/csrc/media/events/workshop-on-elliptic-curve-cryptography-standards/documents/papers/session6-adalier-mehmet.pdf) - Technical specifications
 - [WebCrypto API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API) - Browser cryptography APIs
+
+## Changelog
+
+### v0.1.0 - DID Key Format Migration (2025-01-10)
+
+**⚠️ BREAKING CHANGES**
+
+- **DID Format Change**: Migrated from custom `did:webauthn:` format to standard-compliant `did:key:` format
+- **Ucanto Compatibility**: Now compatible with ucanto's P-256 key support for UCAN delegation
+- **Standard Compliance**: Uses proper multikey encoding with P-256 multicodec prefix (0x1200)
+- **Base58btc Encoding**: Implements correct base58btc encoding for multikey representation
+
+**Technical Changes**:
+- Fixed varint encoding issues in multiformats integration
+- Updated all tests to validate `did:key:` format instead of `did:webauthn:`
+- Improved error handling and fallback mechanisms for DID generation
+- Enhanced public key compression and encoding
+
+**Migration Guide**: Existing credentials will generate new DID identifiers. Users will need to recreate their OrbitDB databases or migrate data manually.
+
+### v0.0.2 - Initial WebAuthn Implementation (2024-12-20)
+
+- Initial release with WebAuthn DID provider
+- Custom `did:webauthn:` format (deprecated in v0.1.0)
+- Basic OrbitDB integration
+- Platform authenticator support
 
 ## Contributing
 
