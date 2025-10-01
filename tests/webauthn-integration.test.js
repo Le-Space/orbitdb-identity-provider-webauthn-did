@@ -109,7 +109,7 @@ test.describe('WebAuthn DID Identity Provider Integration', () => {
     // Verify DID format
     const didElement = page.locator('code').first();
     const didText = await didElement.textContent();
-    expect(didText).toMatch(/^did:webauthn:[a-f0-9]{32}$/);
+    expect(didText).toMatch(/^did:key:z[A-Za-z0-9]+$/);
 
     // Check that TODO functionality is available
     await expect(page.locator('input[placeholder="Add a new TODO..."]')).toBeVisible();
@@ -137,7 +137,7 @@ test.describe('WebAuthn DID Identity Provider Integration', () => {
     const clipboardText = await page.evaluate(async () => {
       return await navigator.clipboard.readText();
     });
-    expect(clipboardText).toMatch(/^did:webauthn:[a-f0-9]{32}$/);
+    expect(clipboardText).toMatch(/^did:key:z[A-Za-z0-9]+$/);
   });
 
   test('should add and manage todos with WebAuthn authentication', async ({ page }) => {

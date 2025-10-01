@@ -210,26 +210,27 @@ export async function verifyDataEntries(database, dataEntries, expectedWebAuthnD
 }
 
 /**
- * Simple WebAuthn DID format validation
+ * Validate DID format for WebAuthn-generated DIDs (now using did:key format)
  * @param {string} did - The DID string to validate
- * @returns {boolean} True if the DID has valid WebAuthn format
+ * @returns {boolean} True if the DID has valid format for WebAuthn keys
  */
 export function isValidWebAuthnDID(did) {
   if (!did || typeof did !== 'string') return false;
   
-  // Check for proper WebAuthn DID format: did:webauthn:<32-char-hex>
-  const webauthnDIDRegex = /^did:webauthn:[a-f0-9]{32}$/;
-  return webauthnDIDRegex.test(did);
+  // Check for proper did:key format (WebAuthn keys now use did:key format)
+  // Pattern: did:key:z followed by base58btc encoded multikey
+  const didKeyRegex = /^did:key:z[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$/;
+  return didKeyRegex.test(did);
 }
 
 /**
- * Extract DID suffix from WebAuthn DID
- * @param {string} did - The WebAuthn DID
+ * Extract DID suffix from WebAuthn DID (now in did:key format)
+ * @param {string} did - The WebAuthn DID in did:key format
  * @returns {string|null} The suffix part of the DID, or null if invalid
  */
 export function extractWebAuthnDIDSuffix(did) {
   if (!isValidWebAuthnDID(did)) return null;
-  return did.replace('did:webauthn:', '');
+  return did.replace('did:key:', '');
 }
 
 /**

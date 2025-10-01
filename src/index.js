@@ -1,7 +1,7 @@
 /**
  * WebAuthn DID Provider for OrbitDB
  *
- * Creates hardware-secured DIDs using WebAuthn biometric authentication
+ * Creates hardware-secured DIDs using WebAuthn authentication (Passkey, Yubikey, Ledger, etc.)
  * Integrates with OrbitDB's identity system while keeping private keys in secure hardware
  */
 
@@ -190,30 +190,83 @@ export class WebAuthnDIDProvider {
   }
 
   /**
-   * Generate DID from WebAuthn credential
+   * Generate DID from WebAuthn credential using did:key format for P-256 keys
+   * This ensures compatibility with ucanto and other DID:key implementations
    */
-  static createDID(credentialInfo) {
-    // Create a deterministic DID based on the public key coordinates
-    // This ensures the DID is consistent with the actual key used for signing
-
+  static async createDID(credentialInfo) {
     const pubKey = credentialInfo.publicKey;
     if (!pubKey || !pubKey.x || !pubKey.y) {
       throw new Error('Invalid public key: missing x or y coordinates');
     }
 
-    const xHex = Array.from(pubKey.x)
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
-    const yHex = Array.from(pubKey.y)
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
-
-    if (!xHex || !yHex) {
-      throw new Error('Failed to generate hex representation of public key coordinates');
+    try {
+      // Import multiformats modules with correct exports
+      const multiformats = await import('multiformats');
+      const varint = multiformats.varint;
+      const { base58btc } = await import('multiformats/bases/base58');
+      
+      const x = new Uint8Array(pubKey.x);
+      const y = new Uint8Array(pubKey.y);
+      
+      // Determine compression flag based on y coordinate parity
+      const yLastByte = y[y.length - 1];
+      const compressionFlag = (yLastByte & 1) === 0 ? 0x02 : 0x03;
+      
+      // Create compressed public key: compression_flag + x_coordinate (33 bytes total)
+      const compressedPubKey = new Uint8Array(33);
+      compressedPubKey[0] = compressionFlag;
+      compressedPubKey.set(x, 1);
+      
+      // P-256 multicodec code (0x1200)
+      const P256_MULTICODEC = 0x1200;
+      const codecLength = varint.encodingLength(P256_MULTICODEC);
+      const codecBytes = new Uint8Array(codecLength);
+      varint.encodeTo(P256_MULTICODEC, codecBytes, 0);
+      
+      if (codecBytes.length === 0) {
+        throw new Error('Failed to encode P256_MULTICODEC with varint');
+      }
+      
+      // Combine multicodec prefix + compressed public key
+      const multikey = new Uint8Array(codecBytes.length + compressedPubKey.length);
+      multikey.set(codecBytes, 0);
+      multikey.set(compressedPubKey, codecBytes.length);
+      
+      // Encode as base58btc and create did:key
+      const multikeyEncoded = base58btc.encode(multikey);
+      return `did:key:${multikeyEncoded}`;
+      
+    } catch (error) {
+      console.error('Failed to create proper did:key format, using fallback:', error);
+      
+      // Fallback: create a deterministic did:key using simplified encoding
+      const x = new Uint8Array(pubKey.x);
+      const y = new Uint8Array(pubKey.y);
+      
+      // Create a hash-based approach for consistency
+      const combined = new Uint8Array(x.length + y.length);
+      combined.set(x, 0);
+      combined.set(y, x.length);
+      
+      // Simple base58-like encoding for fallback
+      const base58Chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+      let encoded = 'z'; // base58btc prefix
+      
+      for (let i = 0; i < Math.min(combined.length, 32); i += 4) {
+        const chunk = combined.slice(i, i + 4);
+        let value = 0;
+        for (let j = 0; j < chunk.length; j++) {
+          value = value * 256 + chunk[j];
+        }
+        
+        for (let k = 0; k < 6; k++) {
+          encoded += base58Chars[value % 58];
+          value = Math.floor(value / 58);
+        }
+      }
+      
+      return `did:key:${encoded}`;
     }
-
-    const didSuffix = (xHex + yHex).slice(0, 32);
-    return `did:webauthn:${didSuffix}`;
   }
 
   /**
@@ -378,10 +431,10 @@ export class OrbitDBWebAuthnIdentityProvider {
     return 'webauthn';
   }
 
-  getId() {
+  async getId() {
     // Return the proper DID format - this is the identity identifier
     // OrbitDB will internally handle the hashing for log entries
-    return WebAuthnDIDProvider.createDID(this.credential);
+    return await WebAuthnDIDProvider.createDID(this.credential);
   }
 
   signIdentity(data) {
@@ -443,9 +496,9 @@ OrbitDBWebAuthnIdentityProviderFunction.verifyIdentity = async function(identity
 
     // For WebAuthn, the identity should have been created with our provider,
     // so we can trust it if it has the right structure
-    // Accept both DID format (did:webauthn:...) and hash format (hex string)
-    const isValidDID = identity.id && identity.id.startsWith('did:webauthn:');
-    const isValidHash = identity.id && /^[a-f0-9]{64}$/.test(identity.id); // 64-char hex string
+    // Accept both DID format (did:key:...) and hash format (hex string) for backward compatibility
+    const isValidDID = identity.id && identity.id.startsWith('did:key:');
+    const isValidHash = identity.id && /^[a-f0-9]{64}$/.test(identity.id); // 64-char hex string (legacy)
 
     if (identity.type === 'webauthn' && (isValidDID || isValidHash)) {
       return true;

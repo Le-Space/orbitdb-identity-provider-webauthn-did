@@ -92,13 +92,13 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
 
       window.isValidWebAuthnDID = function(did) {
         if (!did || typeof did !== 'string') return false;
-        const webauthnDIDRegex = /^did:webauthn:[a-f0-9]{32}$/;
+        const webauthnDIDRegex = /^did:key:z[A-Za-z0-9]+$/;
         return webauthnDIDRegex.test(did);
       };
 
       window.extractWebAuthnDIDSuffix = function(did) {
         if (!window.isValidWebAuthnDID(did)) return null;
-        return did.replace('did:webauthn:', '');
+        return did.replace('did:key:', '');
       };
 
       window.compareWebAuthnDIDs = function(did1, did2) {
@@ -127,12 +127,12 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
   test('should validate WebAuthn DID format correctly', async ({ page }) => {
     const result = await page.evaluate(() => {
       return {
-        validDID: window.isValidWebAuthnDID('did:webauthn:1f2d3a4b5c6d7e8f90a1b2c3d4e5f607'),
-        invalidDIDNoPrefix: window.isValidWebAuthnDID('webauthn:1f2d3a4b5c6d7e8f90a1b2c3d4e5f607'),
-        invalidDIDWrongPrefix: window.isValidWebAuthnDID('did:other:1f2d3a4b5c6d7e8f90a1b2c3d4e5f607'),
-        invalidDIDShortSuffix: window.isValidWebAuthnDID('did:webauthn:1f2d3a4b'),
-        invalidDIDLongSuffix: window.isValidWebAuthnDID('did:webauthn:1f2d3a4b5c6d7e8f90a1b2c3d4e5f6071f2d3a4b'),
-        invalidDIDNonHex: window.isValidWebAuthnDID('did:webauthn:1f2d3a4b5c6d7e8f90a1b2c3d4e5f6zz'),
+        validDID: window.isValidWebAuthnDID('did:key:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP'),
+        invalidDIDNoPrefix: window.isValidWebAuthnDID('key:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP'),
+        invalidDIDWrongPrefix: window.isValidWebAuthnDID('did:other:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP'),
+        invalidDIDShortSuffix: window.isValidWebAuthnDID('did:key:z123'),
+        invalidDIDLongSuffix: window.isValidWebAuthnDID('did:key:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMPExtra'),
+        invalidDIDNonHex: window.isValidWebAuthnDID('did:key:invalid-format'),
         emptyString: window.isValidWebAuthnDID(''),
         nullValue: window.isValidWebAuthnDID(null),
         undefinedValue: window.isValidWebAuthnDID(undefined)
@@ -153,22 +153,22 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
   test('should extract WebAuthn DID suffix correctly', async ({ page }) => {
     const result = await page.evaluate(() => {
       return {
-        validSuffix: window.extractWebAuthnDIDSuffix('did:webauthn:1f2d3a4b5c6d7e8f90a1b2c3d4e5f607'),
+        validSuffix: window.extractWebAuthnDIDSuffix('did:key:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP'),
         invalidDID: window.extractWebAuthnDIDSuffix('invalid:did:format'),
         nullValue: window.extractWebAuthnDIDSuffix(null)
       };
     });
 
-    expect(result.validSuffix).toBe('1f2d3a4b5c6d7e8f90a1b2c3d4e5f607');
+    expect(result.validSuffix).toBe('zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP');
     expect(result.invalidDID).toBe(null);
     expect(result.nullValue).toBe(null);
   });
 
   test('should compare WebAuthn DIDs correctly', async ({ page }) => {
     const result = await page.evaluate(() => {
-      const did1 = 'did:webauthn:1f2d3a4b5c6d7e8f90a1b2c3d4e5f607';
-      const did2 = 'did:webauthn:1f2d3a4b5c6d7e8f90a1b2c3d4e5f607';
-      const did3 = 'did:webauthn:a1b2c3d4e5f6071f2d3a4b5c6d7e8f90';
+      const did1 = 'did:key:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP';
+      const did2 = 'did:key:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP';
+      const did3 = 'did:key:z6MkqRYqQiSgvZQdnBytw86Qbs2ZWUkGv22od935YF4s8M7V';
       
       return {
         identicalDIDs: window.compareWebAuthnDIDs(did1, did2),
@@ -229,7 +229,7 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
   test('should verify database update with matching identity', async ({ page }) => {
     const result = await page.evaluate(async () => {
       try {
-        const webauthnDID = 'did:webauthn:1f2d3a4b5c6d7e8f90a1b2c3d4e5f607';
+        const webauthnDID = 'did:key:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP';
         
         // Create mock database with matching identity
         const mockDatabase = {

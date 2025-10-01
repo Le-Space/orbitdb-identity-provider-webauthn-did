@@ -265,7 +265,7 @@ test.describe('WebAuthn Credential Creation Test', () => {
       console.log('✅ Authentication successful - TODO app loaded!');
 
       // Check for the DID being displayed
-      const didElement = page.locator('code:has-text("did:webauthn:")');
+      const didElement = page.locator('code:has-text("did:key:")');
       await expect(didElement).toBeVisible();
       const didText = await didElement.textContent();
       console.log(`🆔 DID created: ${didText}`);
@@ -332,7 +332,7 @@ test.describe('WebAuthn Credential Creation Test', () => {
     console.log('✅ Authentication successful - TODO app loaded');
 
     // Get and store the DID for comparison later
-    const didElement = page.locator('code:has-text("did:webauthn:")');
+    const didElement = page.locator('code:has-text("did:key:")');
     await expect(didElement).toBeVisible();
     const originalDID = await didElement.textContent();
     console.log(`🆔 Original DID: ${originalDID}`);
@@ -392,7 +392,7 @@ test.describe('WebAuthn Credential Creation Test', () => {
     console.log('✅ Re-authentication successful - TODO app loaded again');
 
     // Verify same DID is used
-    const reloadDidElement = page.locator('code:has-text("did:webauthn:")');
+    const reloadDidElement = page.locator('code:has-text("did:key:")');
     await expect(reloadDidElement).toBeVisible();
     const reloadDID = await reloadDidElement.textContent();
     console.log(`🆔 Reloaded DID: ${reloadDID}`);

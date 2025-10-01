@@ -147,8 +147,8 @@ describe('WebAuthn DID Identity Provider', function() {
     it('should generate deterministic DID from credential', () => {
       const did = WebAuthnDIDProvider.createDID(testCredential);
 
-      assert(did.startsWith('did:webauthn:'), 'DID should have correct prefix');
-      assert.strictEqual(did.length, 45, 'DID should have expected length'); // 'did:webauthn:' + 32 hex chars
+      assert(did.startsWith('did:key:'), 'DID should have correct prefix');
+      assert(did.length > 50, 'DID should have expected length'); // 'did:key:z' + base58btc encoded multikey
 
       // Should be deterministic
       const did2 = WebAuthnDIDProvider.createDID(testCredential);
@@ -215,7 +215,7 @@ describe('WebAuthn DID Identity Provider', function() {
     it('should return valid DID as identity ID', () => {
       const id = identityProvider.getId();
 
-      assert(id.startsWith('did:webauthn:'), 'Should return DID format');
+      assert(id.startsWith('did:key:'), 'Should return DID format');
       assert.strictEqual(typeof id, 'string', 'ID should be string');
     });
 
@@ -263,7 +263,7 @@ describe('WebAuthn DID Identity Provider', function() {
 
     it('should verify identity statically', async () => {
       const identity = {
-        id: 'did:webauthn:abcdef1234567890abcdef1234567890',
+        id: 'did:key:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP',
         type: 'webauthn'
       };
 

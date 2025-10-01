@@ -181,8 +181,8 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
     expect(result.did1).toBeTruthy();
     expect(result.did2).toBeTruthy();
     expect(result.did1).toBe(result.did2); // Should be deterministic
-    expect(result.did1).toMatch(/^did:webauthn:[a-f0-9]{32}$/);
-    expect(result.did1.length).toBe(45); // 'did:webauthn:' + 32 hex chars
+    expect(result.did1).toMatch(/^did:key:z[A-Za-z0-9]+$/);
+    expect(result.did1.length).toBeGreaterThan(50); // 'did:key:z' + base58btc encoded multikey
   });
 
   test('should create WebAuthn provider instance', async ({ page }) => {
@@ -242,7 +242,7 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
     expect(result.error).toBeUndefined();
     expect(result.type).toBe('webauthn');
     expect(result.staticType).toBe('webauthn');
-    expect(result.did).toMatch(/^did:webauthn:[a-f0-9]{32}$/);
+    expect(result.did).toMatch(/^did:key:z[A-Za-z0-9]+$/);
     expect(result.hasCredential).toBe(true);
     expect(result.hasWebAuthnProvider).toBe(true);
   });

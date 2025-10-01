@@ -55,6 +55,7 @@
   },
   "dependencies": {
     "cbor-web": "^9.0.1",
+    "multiformats": "^13.0.0",
     "vite-plugin-node-polyfills": "^0.24.0"
   },
   "devDependencies": {
