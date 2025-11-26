@@ -7,6 +7,14 @@
 A hardware-secured identity provider for OrbitDB using WebAuthn authentication. This provider enables hardware -secured database access (Ledger, Yubikey etc.) where private keys never leave the secure hardware element 
 and biometric authentication via Passkey.
 
+## Credits
+
+This project builds upon and is inspired by:
+
+- **[OrbitDB DID Identity Provider](https://github.com/orbitdb/orbitdb-identity-provider-did)** - The foundational DID-based identity provider for OrbitDB that inspired this WebAuthn implementation
+- **[OpenFort EIP-7702 WebAuthn Sample](https://github.com/openfort-xyz/sample-7702-WebAuthn/)** - Reference implementation demonstrating WebAuthn with EIP-7702 and ERC-4337 account abstraction
+- **[Passkey Wallet Demo](https://www.passkey-wallet.com/)** - Interactive demonstration of passkey-based wallet authentication and session key management
+
 ## Features
 
 - 🔐 **Hardware-secured authentication** - Uses WebAuthn with platform authenticators (Face ID, Touch ID, Windows Hello)
@@ -358,6 +366,7 @@ See the `test/` directory for comprehensive usage examples including:
 - [OrbitDB Documentation](https://orbitdb.org/docs/) - Peer-to-peer database for the decentralized web
 - [OrbitDB GitHub](https://github.com/orbitdb/orbitdb) - Source code and examples
 - [OrbitDB Liftoff Example](https://github.com/orbitdb/orbitdb/tree/main/examples/liftoff) - Complete setup guide
+- [OrbitDB DID Identity Provider](https://github.com/orbitdb/orbitdb-identity-provider-did) - DID-based identity provider for OrbitDB (foundational reference for this implementation)
 
 #### IPFS & Helia
 - [Helia Documentation](https://helia.io/) - Lean, modular, and modern implementation of IPFS for JavaScript
@@ -381,6 +390,9 @@ See the `test/` directory for comprehensive usage examples including:
 - [Apple Passkeys](https://developer.apple.com/passkeys/) - iOS/macOS passkey implementation
 - [Google Passkeys](https://developers.google.com/identity/passkeys) - Android/Chrome passkey support
 - [Microsoft Passkeys](https://docs.microsoft.com/en-us/microsoft-edge/web-platform/passkeys) - Windows Hello integration
+
+#### WebAuthn Implementation Examples
+- [OpenFort EIP-7702 WebAuthn Sample](https://github.com/openfort-xyz/sample-7702-WebAuthn/) & [Passkey Wallet Demo](https://www.passkey-wallet.com/) - Complete reference implementation of WebAuthn with EIP-7702 account abstraction, ERC-4337, session keys, and interactive demo showcasing passkey wallet implementation with sponsored transactions and batch operations
 
 #### Hardware Security Keys
 
