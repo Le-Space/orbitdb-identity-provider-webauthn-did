@@ -246,25 +246,97 @@ if (isValidWebAuthnDID(identity.id)) {
 
 ## Security Considerations
 
+⚠️ **SECURITY AUDIT WARNING**: This library has not undergone a formal security audit. While it implements industry-standard WebAuthn and cryptographic protocols, use in production environments is at your own risk. We recommend thorough testing and security review before deploying in critical applications.
+
 ### Private Key Security
 
 - Private keys are generated within the secure hardware element
 - Keys cannot be extracted, cloned, or compromised through software attacks
 - Each authentication requires user presence and verification
 
-### DID Generation
+### Current Architecture: DID Generation & Keystore
 
-- DIDs are deterministically generated from the WebAuthn public key
-- Same credential always produces the same DID
+**DID Generation (P-256 based)**:
+- DIDs are deterministically generated from the **WebAuthn P-256 public key**
+- Process:
+  1. WebAuthn credential created (P-256 key pair in hardware)
+  2. Public key coordinates (x, y) extracted from credential
+  3. DID generated: `did:key:{base58btc(multicodec(0x1200) + compressed-public-key)}`
+  4. Same credential always produces same DID (deterministic)
 - Format: `did:key:{base58btc-encoded-multikey}` (compliant with DID key specification)
+- Implementation: `src/index.js` lines 222-296 (`createDID` method)
+
+**OrbitDB Keystore**:
+- OrbitDB creates a **separate keystore** for signing database operations
+- The keystore uses **secp256k1** keys (not P-256 WebAuthn keys)
+- Keystore location: `./orbitdb/keystore/` (LevelDB/IndexedDB)
+- Current status: **Stored UNENCRYPTED** in browser IndexedDB
+- Each database operation (`db.put()`) is signed with the keystore key
+- WebAuthn only signs the identity object itself, not every operation
+
+**Why Two Keys?**:
+```
+WebAuthn P-256 Key (Hardware)
+  ├─→ Generates DID (identity)
+  └─→ Signs identity object (proves ownership)
+
+OrbitDB Keystore (Software - secp256k1)
+  └─→ Signs ALL database operations (fast, no biometric prompts)
+```
+
+**Security Issue**: The OrbitDB keystore is currently stored unencrypted, making it vulnerable to XSS attacks, malicious browser extensions, and physical device access. See [Keystore Security Architecture](./docs/KEYSTORE-SECURITY-ARCHITECTURE.md) for analysis and proposed solutions.
 
 ### Authentication Flow
 
 1. User attempts database operation
-2. WebAuthn prompt appears
-3. User provides authentication
-4. Hardware element signs the operation
-5. OrbitDB verifies the signature
+2. WebAuthn prompt appears **only for identity verification** (not every operation)
+3. User provides authentication (biometric/PIN)
+4. Hardware element signs the identity
+5. OrbitDB uses cached keystore to sign operations (fast)
+
+📖 **For detailed technical information** on how passkey authentication integrates with OrbitDB's keystore system, see:
+- [Passkey Authentication and Keystore Architecture](./docs/PASSKEY-KEYSTORE-ARCHITECTURE.md)
+- [Keystore Security Architecture](./docs/KEYSTORE-SECURITY-ARCHITECTURE.md) - Analysis of security vulnerabilities and solutions
+- [PWA & Capacitor Keystore Encryption](./docs/PWA-CAPACITOR-KEYSTORE-ENCRYPTION.md) - Practical encryption strategies
+- [Lit Protocol Integration](./docs/LIT-PROTOCOL-INTEGRATION.md) - Alternative decentralized key management
+
+### Future Roadmap
+
+**Planned Architecture Changes**:
+
+1. **DID Generation from OrbitDB Keystore** (instead of WebAuthn P-256):
+   - Generate DID from OrbitDB keystore's public key (native identity)
+   - **Advantage**: Enables UCAN delegation without P-256 support requirements
+   - **Advantage**: Better alignment with OrbitDB's cryptographic primitives
+   - WebAuthn would authenticate and unlock the keystore, not generate the DID
+
+2. **Encrypted Keystore with WebAuthn**:
+   - Encrypt OrbitDB keystore using WebAuthn signature-derived key
+   - Process:
+     1. WebAuthn signs deterministic challenge (biometric prompt)
+     2. Signature used with PBKDF2 to derive AES-256 encryption key
+     3. OrbitDB keystore encrypted with derived key
+     4. Encrypted keystore stored in IndexedDB
+     5. Session: Decrypt once, keep in memory, clear on logout
+   - **Advantage**: Hardware-backed encryption without external dependencies
+   - **Advantage**: Works offline (no Lit Protocol or centralized services)
+   - **Advantage**: One biometric prompt per session (good UX)
+
+**Target Architecture**:
+```
+WebAuthn (Hardware)
+  └─→ Signs challenge → Derives encryption key
+         ↓
+   Encrypted OrbitDB Keystore
+         ↓
+   Decrypted to memory (session only)
+         ↓
+   Signs database operations (fast)
+         ↓
+   DID generated from keystore key (UCAN-compatible)
+```
+
+See [PWA & Capacitor Keystore Encryption](./docs/PWA-CAPACITOR-KEYSTORE-ENCRYPTION.md) for full implementation details.
 
 ## Error Handling
 
@@ -377,6 +449,12 @@ See the `test/` directory for comprehensive usage examples including:
 - [libp2p Documentation](https://docs.libp2p.io/) - Modular network stack for peer-to-peer applications
 - [libp2p JavaScript](https://github.com/libp2p/js-libp2p) - JavaScript implementation
 - [libp2p Browser Examples](https://github.com/libp2p/js-libp2p/tree/main/examples) - Browser-specific configurations
+
+### Internal Documentation
+
+#### Architecture & Technical Details
+- [Passkey Authentication and Keystore Architecture](./docs/PASSKEY-KEYSTORE-ARCHITECTURE.md) - Detailed explanation of how passkey/WebAuthn authentication integrates with OrbitDB's keystore system
+- [WebAuthn DID and OrbitDB Identity Hash Relationship](./docs/WEBAUTHN-DID-AND-ORBITDB-IDENTITY.md) - Understanding the relationship between WebAuthn DIDs and OrbitDB identity hashes
 
 ### WebAuthn & Authentication
 
