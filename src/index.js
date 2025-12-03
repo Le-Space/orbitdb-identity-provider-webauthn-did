@@ -6,6 +6,12 @@
  */
 
 import { useIdentityProvider } from '@orbitdb/core';
+import { logger } from '@libp2p/logger';
+
+// Create loggers for different components
+const log = logger('orbitdb-identity-provider-webauthn-did');
+const webauthnLog = logger('orbitdb-identity-provider-webauthn-did:webauthn');
+const identityLog = logger('orbitdb-identity-provider-webauthn-did:identity');
 
 /**
  * WebAuthn DID Provider Core Implementation
@@ -52,13 +58,18 @@ export class WebAuthnDIDProvider {
       ...options
     };
 
+    webauthnLog('createCredential() called with options: %o', { userId, displayName, domain });
+
     if (!this.isSupported()) {
+      webauthnLog.error('WebAuthn is not supported in this browser');
       throw new Error('WebAuthn is not supported in this browser');
     }
 
     // Generate challenge for credential creation
     const challenge = crypto.getRandomValues(new Uint8Array(32));
     const userIdBytes = new TextEncoder().encode(userId);
+
+    webauthnLog('Calling navigator.credentials.create() for user: %s', userId);
 
     try {
       const credential = await navigator.credentials.create({
@@ -89,16 +100,30 @@ export class WebAuthnDIDProvider {
       });
 
       if (!credential) {
+        webauthnLog.error('Failed to create WebAuthn credential - credential is null');
         throw new Error('Failed to create WebAuthn credential');
       }
 
-      console.log('✅ WebAuthn credential created successfully, extracting public key...');
+      webauthnLog('Credential created successfully: %o', {
+        credentialId: this.arrayBufferToBase64url(credential.rawId).substring(0, 16) + '...',
+        type: credential.type
+      });
+
+      webauthnLog('Extracting public key from credential...');
 
       // Extract public key from credential with timeout
       const publicKey = await Promise.race([
         this.extractPublicKey(credential),
         new Promise((_, reject) => setTimeout(() => reject(new Error('Public key extraction timeout')), 10000))
       ]);
+
+      webauthnLog('Public key extracted successfully: %o', {
+        algorithm: publicKey.algorithm,
+        keyType: publicKey.keyType,
+        curve: publicKey.curve,
+        hasX: !!publicKey.x,
+        hasY: !!publicKey.y
+      });
 
       const result = {
         credentialId: WebAuthnDIDProvider.arrayBufferToBase64url(credential.rawId),
@@ -109,6 +134,7 @@ export class WebAuthnDIDProvider {
         attestationObject: new Uint8Array(credential.response.attestationObject)
       };
 
+      webauthnLog('Credential creation completed successfully');
 
       return result;
 
@@ -204,67 +230,67 @@ export class WebAuthnDIDProvider {
       const multiformats = await import('multiformats');
       const varint = multiformats.varint;
       const { base58btc } = await import('multiformats/bases/base58');
-      
+
       const x = new Uint8Array(pubKey.x);
       const y = new Uint8Array(pubKey.y);
-      
+
       // Determine compression flag based on y coordinate parity
       const yLastByte = y[y.length - 1];
       const compressionFlag = (yLastByte & 1) === 0 ? 0x02 : 0x03;
-      
+
       // Create compressed public key: compression_flag + x_coordinate (33 bytes total)
       const compressedPubKey = new Uint8Array(33);
       compressedPubKey[0] = compressionFlag;
       compressedPubKey.set(x, 1);
-      
+
       // P-256 multicodec code (0x1200)
       const P256_MULTICODEC = 0x1200;
       const codecLength = varint.encodingLength(P256_MULTICODEC);
       const codecBytes = new Uint8Array(codecLength);
       varint.encodeTo(P256_MULTICODEC, codecBytes, 0);
-      
+
       if (codecBytes.length === 0) {
         throw new Error('Failed to encode P256_MULTICODEC with varint');
       }
-      
+
       // Combine multicodec prefix + compressed public key
       const multikey = new Uint8Array(codecBytes.length + compressedPubKey.length);
       multikey.set(codecBytes, 0);
       multikey.set(compressedPubKey, codecBytes.length);
-      
+
       // Encode as base58btc and create did:key
       const multikeyEncoded = base58btc.encode(multikey);
       return `did:key:${multikeyEncoded}`;
-      
+
     } catch (error) {
       console.error('Failed to create proper did:key format, using fallback:', error);
-      
+
       // Fallback: create a deterministic did:key using simplified encoding
       const x = new Uint8Array(pubKey.x);
       const y = new Uint8Array(pubKey.y);
-      
+
       // Create a hash-based approach for consistency
       const combined = new Uint8Array(x.length + y.length);
       combined.set(x, 0);
       combined.set(y, x.length);
-      
+
       // Simple base58-like encoding for fallback
       const base58Chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
       let encoded = 'z'; // base58btc prefix
-      
+
       for (let i = 0; i < Math.min(combined.length, 32); i += 4) {
         const chunk = combined.slice(i, i + 4);
         let value = 0;
         for (let j = 0; j < chunk.length; j++) {
           value = value * 256 + chunk[j];
         }
-        
+
         for (let k = 0; k < 6; k++) {
           encoded += base58Chars[value % 58];
           value = Math.floor(value / 58);
         }
       }
-      
+
       return `did:key:${encoded}`;
     }
   }
@@ -275,22 +301,26 @@ export class WebAuthnDIDProvider {
    */
   async sign(data) {
     if (!WebAuthnDIDProvider.isSupported()) {
+      webauthnLog.error('WebAuthn is not supported in this browser');
       throw new Error('WebAuthn is not supported in this browser');
     }
 
     try {
-
-      // For OrbitDB compatibility, we need to create a signature that can be verified
-      // against different data. Since WebAuthn private keys are hardware-secured,
-      // we'll create a deterministic signature based on our credential and the data.
-
       const dataBytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
+      const dataHash = await crypto.subtle.digest('SHA-256', dataBytes);
+      const dataHashStr = Array.from(new Uint8Array(dataHash)).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
+
+      webauthnLog('sign() called with data length: %d, hash: %s...', dataBytes.length, dataHashStr);
 
       // Create a deterministic challenge based on the credential ID and data
       const combined = new Uint8Array(this.rawCredentialId.length + dataBytes.length);
       combined.set(this.rawCredentialId, 0);
       combined.set(dataBytes, this.rawCredentialId.length);
       const challenge = await crypto.subtle.digest('SHA-256', combined);
+      const challengeHashStr = Array.from(new Uint8Array(challenge)).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
+
+      webauthnLog('Challenge created: %s...', challengeHashStr);
+      webauthnLog('Calling navigator.credentials.get() - biometric prompt should appear');
 
       // Use WebAuthn to authenticate (this proves the user is present and verified)
       const assertion = await navigator.credentials.get({
@@ -306,26 +336,41 @@ export class WebAuthnDIDProvider {
       });
 
       if (!assertion) {
+        webauthnLog.error('WebAuthn authentication failed - assertion is null');
         throw new Error('WebAuthn authentication failed');
       }
 
+      webauthnLog('Assertion received from navigator.credentials.get(): %o', {
+        hasAuthenticatorData: !!assertion.response.authenticatorData,
+        hasSignature: !!assertion.response.signature,
+        signatureLength: assertion.response.signature?.byteLength || 0
+      });
 
       // Create a signature that includes the original data and credential proof
       // This allows verification without requiring WebAuthn again
+      webauthnLog('Creating proof object...');
       const webauthnProof = {
         credentialId: this.credentialId,
         dataHash: WebAuthnDIDProvider.arrayBufferToBase64url(await crypto.subtle.digest('SHA-256', dataBytes)),
         authenticatorData: WebAuthnDIDProvider.arrayBufferToBase64url(assertion.response.authenticatorData),
         clientDataJSON: new TextDecoder().decode(assertion.response.clientDataJSON),
+        signature: WebAuthnDIDProvider.arrayBufferToBase64url(assertion.response.signature),
         timestamp: Date.now()
       };
 
+      webauthnLog('Proof created successfully: %o', {
+        credentialId: webauthnProof.credentialId.substring(0, 16) + '...',
+        dataHash: webauthnProof.dataHash.substring(0, 16) + '...',
+        timestamp: webauthnProof.timestamp
+      });
 
       // Return the proof as a base64url encoded string for OrbitDB
-      return WebAuthnDIDProvider.arrayBufferToBase64url(new TextEncoder().encode(JSON.stringify(webauthnProof)));
+      const encodedProof = WebAuthnDIDProvider.arrayBufferToBase64url(new TextEncoder().encode(JSON.stringify(webauthnProof)));
+      webauthnLog('sign() completed successfully, proof length: %d', encodedProof.length);
+      return encodedProof;
 
     } catch (error) {
-      console.error('WebAuthn signing failed:', error);
+      webauthnLog.error('WebAuthn signing failed: %s', error.message);
 
       if (error.name === 'NotAllowedError') {
         throw new Error('Biometric authentication was cancelled');
@@ -339,51 +384,62 @@ export class WebAuthnDIDProvider {
    * Verify WebAuthn signature/proof for OrbitDB compatibility
    */
   async verify(signatureData) {
+    webauthnLog('verify() called with signature length: %d', signatureData.length);
+
     try {
       // Decode the WebAuthn proof object
       const proofBytes = WebAuthnDIDProvider.base64urlToArrayBuffer(signatureData);
       const proofText = new TextDecoder().decode(proofBytes);
       const webauthnProof = JSON.parse(proofText);
 
+      webauthnLog('Verification step: checking credential ID');
       // Verify this proof was created by the same credential
       if (webauthnProof.credentialId !== this.credentialId) {
-        console.warn('Credential ID mismatch in WebAuthn proof verification');
+        webauthnLog.error('Credential ID mismatch in WebAuthn proof verification');
         return false;
       }
+      webauthnLog('Verification step: credential ID check PASSED');
 
       // For OrbitDB, we need flexible verification that works with different data
       // The proof contains the original data hash, so we can verify the proof is valid
       // without requiring the exact same data to be passed to verify()
 
       // Verify the client data indicates a successful WebAuthn authentication
+      webauthnLog('Verification step: checking client data');
       try {
         const clientData = JSON.parse(webauthnProof.clientDataJSON);
         if (clientData.type !== 'webauthn.get') {
-          console.warn('Invalid WebAuthn proof type');
+          webauthnLog.error('Invalid WebAuthn proof type: %s', clientData.type);
           return false;
         }
+        webauthnLog('Verification step: client data check PASSED');
       } catch {
-        console.warn('Invalid client data in WebAuthn proof');
+        webauthnLog.error('Invalid client data in WebAuthn proof');
         return false;
       }
 
       // Verify the proof is recent (within 5 minutes)
+      webauthnLog('Verification step: checking timestamp');
       const proofAge = Date.now() - webauthnProof.timestamp;
       if (proofAge > 5 * 60 * 1000) {
-        console.warn('WebAuthn proof is too old');
+        webauthnLog.error('WebAuthn proof is too old: %d ms', proofAge);
         return false;
       }
+      webauthnLog('Verification step: timestamp check PASSED (age: %d ms)', proofAge);
 
       // Verify the authenticator data is present
+      webauthnLog('Verification step: checking authenticator data');
       if (!webauthnProof.authenticatorData) {
-        console.warn('Missing authenticator data in WebAuthn proof');
+        webauthnLog.error('Missing authenticator data in WebAuthn proof');
         return false;
       }
+      webauthnLog('Verification step: authenticator data check PASSED');
 
+      webauthnLog('Verification result: SUCCESS');
       return true;
 
     } catch (error) {
-      console.error('WebAuthn proof verification failed:', error);
+      webauthnLog.error('WebAuthn proof verification failed: %s', error.message);
       return false;
     }
   }
@@ -432,17 +488,22 @@ export class OrbitDBWebAuthnIdentityProvider {
   }
 
   async getId() {
+    identityLog('getId() called');
     // Return the proper DID format - this is the identity identifier
     // OrbitDB will internally handle the hashing for log entries
-    return await WebAuthnDIDProvider.createDID(this.credential);
+    const did = await WebAuthnDIDProvider.createDID(this.credential);
+    identityLog('getId() returning DID: %s', did.substring(0, 32) + '...');
+    return did;
   }
 
   signIdentity(data) {
-    // Return Promise directly to avoid async function issues
+    const dataLength = typeof data === 'string' ? data.length : data.byteLength;
+    identityLog('signIdentity() called with data length: %d', dataLength);
     return this.webauthnProvider.sign(data);
   }
 
   verifyIdentity(signature, data, publicKey) {
+    identityLog('verifyIdentity() called');
     return this.webauthnProvider.verify(signature, data, publicKey || this.credential.publicKey);
   }
 
@@ -452,21 +513,27 @@ export class OrbitDBWebAuthnIdentityProvider {
   static async createIdentity(options) {
     const { webauthnCredential } = options;
 
+    identityLog('createIdentity() called');
+
     const provider = new OrbitDBWebAuthnIdentityProvider({ webauthnCredential });
     const id = await provider.getId();
+
+    identityLog('Identity created successfully: %o', {
+      id: id.substring(0, 32) + '...',
+      type: 'webauthn',
+      hasPublicKey: !!webauthnCredential.publicKey
+    });
 
     return {
       id,
       publicKey: webauthnCredential.publicKey,
       type: 'webauthn',
-      // Make sure sign method is NOT async to avoid Promise serialization
       sign: (identity, data) => {
-        // Return the Promise directly, don't await here
+        identityLog('identity.sign() called from OrbitDB');
         return provider.signIdentity(data);
       },
-      // Make sure verify method is NOT async to avoid Promise serialization
       verify: (signature, data) => {
-        // Return the Promise directly, don't await here
+        identityLog('identity.verify() called from OrbitDB');
         return provider.verifyIdentity(signature, data, webauthnCredential.publicKey);
       }
     };

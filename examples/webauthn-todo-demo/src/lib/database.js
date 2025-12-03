@@ -1,4 +1,8 @@
 import { IPFSAccessController } from '@orbitdb/core';
+import { logger } from '@libp2p/logger';
+
+// Create database logger
+const dbLog = logger('orbitdb-identity-provider-webauthn-did:database');
 
 // Global store for identity verification results (not persisted)
 const identityVerifications = new Map(); // Map<todoId, {verified: boolean, timestamp: number, identityHash: string}>
@@ -205,8 +209,7 @@ export async function addTodo(database, text, credential = null) {
   }
 
   try {
-    // Direct database operation without additional WebAuthn calls
-    // (WebAuthn authentication happens automatically via OrbitDB identity provider)
+    const startTime = Date.now();
 
     const todoId = `todo-${Date.now()}`;
     const todo = {
@@ -216,8 +219,13 @@ export async function addTodo(database, text, credential = null) {
       createdAt: new Date().toISOString(),
     };
 
-    console.log('💾 Adding todo to OrbitDB database...');
+    dbLog('addTodo() called: %o', { todoId, textLength: text.trim().length });
+    dbLog('Calling database.put() - this will trigger: db.put() → identity.sign() → signIdentity() → webauthnProvider.sign()');
+
     await database.put(todoId, todo);
+
+    const endTime = Date.now();
+    dbLog('database.put() completed in %d ms', endTime - startTime);
 
     return todo;
   } catch (error) {
@@ -238,12 +246,21 @@ export async function toggleTodo(database, todo) {
   }
 
   try {
+    const startTime = Date.now();
+
     const updatedTodo = {
       ...todo,
       completed: !todo.completed,
     };
 
+    dbLog('toggleTodo() called for todo: %s', todo.id);
+    dbLog('Calling database.put() to update todo');
+
     await database.put(todo.id, updatedTodo);
+
+    const endTime = Date.now();
+    dbLog('database.put() completed in %d ms', endTime - startTime);
+
     return updatedTodo;
   } catch (error) {
     console.error('Failed to toggle todo:', error);
@@ -262,9 +279,17 @@ export async function deleteTodo(database, todo) {
   }
 
   try {
+    const startTime = Date.now();
+
+    dbLog('deleteTodo() called for todo: %s', todo.id);
+    dbLog('Calling database.del() to delete todo');
+
     await database.del(todo.id);
+
+    const endTime = Date.now();
+    dbLog('database.del() completed in %d ms', endTime - startTime);
   } catch (error) {
-    console.error('Failed to delete todo:', error);
+    dbLog.error('Failed to delete todo: %s', error.message);
     throw error;
   }
 }
