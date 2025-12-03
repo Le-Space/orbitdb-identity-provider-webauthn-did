@@ -14,6 +14,7 @@
     "test:integration": "playwright test tests/webauthn-integration.test.js",
     "test:verification": "playwright test tests/webauthn-verification.test.js --project=chromium",
     "test:ci": "playwright test tests/webauthn-verification.test.js --project=chromium --reporter=github",
+    "test:logging": "DEBUG='orbitdb-identity-provider-webauthn-did*' playwright test tests/webauthn-logging-e2e.test.js --project=chromium --reporter=line",
     "test:old": "mocha test/*.test.js",
     "test:watch": "mocha test/*.test.js --watch",
     "test:full-flow": "npm run demo:setup && npm run test:focused",
@@ -54,6 +55,7 @@
     "@orbitdb/core": "^3.0.0"
   },
   "dependencies": {
+    "@libp2p/logger": "^5.1.5",
     "cbor-web": "^9.0.1",
     "multiformats": "^13.0.0",
     "vite-plugin-node-polyfills": "^0.24.0"
