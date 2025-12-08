@@ -91,12 +91,14 @@ export async function createIdentitiesInstance() {
  * @param {Object} orbitdb - The OrbitDB instance (for keystore access)
  * @param {Object} options - Additional options
  * @param {boolean} options.useEd25519DID - Use Ed25519 DID from keystore
+ * @param {string} options.keystoreKeyType - Key type: 'secp256k1' or 'Ed25519'
  * @param {boolean} options.encryptKeystore - Enable keystore encryption
  * @param {string} options.encryptionMethod - Encryption method ('largeBlob' or 'hmac-secret')
  */
 export async function createWebAuthnIdentity(identities, credential, orbitdb = null, options = {}) {
   const {
     useEd25519DID = false,
+    keystoreKeyType = 'secp256k1',
     encryptKeystore = false,
     encryptionMethod = 'largeBlob'
   } = options;
@@ -106,6 +108,7 @@ export async function createWebAuthnIdentity(identities, credential, orbitdb = n
       webauthnCredential: credential,
       useKeystoreDID: useEd25519DID,
       keystore: orbitdb ? orbitdb.keystore : null,
+      keystoreKeyType: keystoreKeyType,
       encryptKeystore: encryptKeystore,
       keystoreEncryptionMethod: encryptionMethod,
     }),
@@ -131,6 +134,7 @@ export async function createOrbitDBInstance(ipfs, identities, identity) {
  * @param {Object} credential - The WebAuthn credential
  * @param {Object} options - Configuration options
  * @param {boolean} options.useEd25519DID - Use Ed25519 DID from keystore
+ * @param {string} options.keystoreKeyType - Key type: 'secp256k1' or 'Ed25519'
  * @param {boolean} options.encryptKeystore - Enable keystore encryption
  * @param {string} options.encryptionMethod - Encryption method
  * @returns {Object} Contains orbitdb, ipfs, identity, and identities instances
