@@ -55,9 +55,20 @@ export default defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-    command: process.env.CI 
-      ? 'cd examples/webauthn-todo-demo && npm run preview -- --port 5173 --host'
-      : 'cd examples/webauthn-todo-demo && npm run dev',
+    command: (() => {
+      // Determine which demo to run based on test file or environment variable
+      const testFile = process.env.PLAYWRIGHT_TEST_FILE || '';
+      const useEncryptedDemo = testFile.includes('ed25519-encrypted-keystore') || 
+                               process.env.USE_ENCRYPTED_DEMO === 'true';
+      
+      const demoDir = useEncryptedDemo 
+        ? 'examples/ed25519-encrypted-keystore-demo' 
+        : 'examples/webauthn-todo-demo';
+      
+      return process.env.CI 
+        ? `cd ${demoDir} && npm run preview -- --port 5173 --host`
+        : `cd ${demoDir} && npm run dev`;
+    })(),
     url: 'http://localhost:5173',
     reuseExistingServer: true, // Always reuse existing server
     timeout: 120 * 1000,
