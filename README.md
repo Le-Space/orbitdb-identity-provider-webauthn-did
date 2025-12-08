@@ -26,7 +26,8 @@ A hardware-secured identity provider for OrbitDB using WebAuthn authentication. 
 - 🌐 **Cross-platform compatibility** - Works across modern browsers and platforms
 - 📱 **Biometric authentication** - Seamless user experience with fingerprint, face recognition, or PIN
 - 🔒 **Quantum-resistant** - P-256 elliptic curve cryptography with hardware backing
-- 🆔 **DID-based identity** - Generates deterministic `did:key` DIDs based on WebAuthn credentials
+- 🆔 **Flexible DID options** - P-256 DIDs from WebAuthn OR Ed25519 DIDs from keystore
+- 🔑 **UCAN-compatible** - Ed25519 keystore DID option for better UCAN integration
 
 ## Installation
 
@@ -89,11 +90,27 @@ const db = await orbitdb.open('my-database')
 ✅ **Biometric verification** - Each WebAuthn operation requires user presence  
 ⚠️ **Keystore encryption needed** - See roadmap below
 
+### New: Ed25519 Keystore DID Option
+
+✅ **Now available!** Create Ed25519 DIDs from OrbitDB keystore for better UCAN compatibility:
+
+```javascript
+const identity = await orbitdb.identities.createIdentity({
+  provider: OrbitDBWebAuthnIdentityProviderFunction({ 
+    webauthnCredential: credential,
+    useKeystoreDID: true,        // Enable Ed25519 keystore DID
+    keystore: orbitdb.keystore
+  })
+});
+```
+
+📖 **See [Ed25519 Keystore DID Documentation](./docs/ED25519-KEYSTORE-DID.md) for details**
+
 ### Future Roadmap
 
-1. **Keystore-based DID** (instead of P-256): Better UCAN compatibility
-2. **WebAuthn-encrypted keystore**: One biometric prompt per session
-3. **Offline-first encryption**: No centralized dependencies
+1. **WebAuthn-encrypted keystore**: One biometric prompt per session
+2. **Offline-first encryption**: No centralized dependencies
+3. **Key rotation support**: Seamless key updates
 
 📖 **See [Keystore Security Architecture](./docs/KEYSTORE-SECURITY-ARCHITECTURE.md) for detailed analysis**
 
@@ -104,6 +121,7 @@ const db = await orbitdb.open('my-database')
 - [Passkey Authentication Architecture](./docs/PASSKEY-KEYSTORE-ARCHITECTURE.md) - How WebAuthn integrates with OrbitDB
 
 ### Security & Architecture
+- [Ed25519 Keystore DID](./docs/ED25519-KEYSTORE-DID.md) - **NEW!** Create Ed25519 DIDs from keystore
 - [Keystore Security Architecture](./docs/KEYSTORE-SECURITY-ARCHITECTURE.md) - Vulnerability analysis and solutions
 - [PWA & Capacitor Keystore Encryption](./docs/PWA-CAPACITOR-KEYSTORE-ENCRYPTION.md) - Encryption strategies
 - [Lit Protocol Integration](./docs/LIT-PROTOCOL-INTEGRATION.md) - Decentralized key management option

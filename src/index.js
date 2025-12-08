@@ -477,10 +477,12 @@ export class WebAuthnDIDProvider {
  * OrbitDB Identity Provider that uses WebAuthn
  */
 export class OrbitDBWebAuthnIdentityProvider {
-  constructor({ webauthnCredential }) {
+  constructor({ webauthnCredential, useKeystoreDID = false, keystore = null }) {
     this.credential = webauthnCredential;
     this.webauthnProvider = new WebAuthnDIDProvider(webauthnCredential);
     this.type = 'webauthn'; // Set instance property
+    this.useKeystoreDID = useKeystoreDID; // Flag to use Ed25519 DID from keystore
+    this.keystore = keystore; // OrbitDB keystore instance
   }
 
   static get type() {
@@ -489,11 +491,70 @@ export class OrbitDBWebAuthnIdentityProvider {
 
   async getId() {
     identityLog('getId() called');
-    // Return the proper DID format - this is the identity identifier
-    // OrbitDB will internally handle the hashing for log entries
+    
+    // If useKeystoreDID flag is set, create Ed25519 DID from keystore
+    if (this.useKeystoreDID && this.keystore) {
+      identityLog('Using Ed25519 DID from keystore');
+      const did = await this.createEd25519DIDFromKeystore();
+      identityLog('getId() returning Ed25519 DID: %s', did.substring(0, 32) + '...');
+      return did;
+    }
+    
+    // Default: Return P-256 DID from WebAuthn credential
     const did = await WebAuthnDIDProvider.createDID(this.credential);
-    identityLog('getId() returning DID: %s', did.substring(0, 32) + '...');
+    identityLog('getId() returning P-256 DID: %s', did.substring(0, 32) + '...');
     return did;
+  }
+
+  /**
+   * Create Ed25519 DID from OrbitDB keystore
+   * This uses the keystore's Ed25519 key to create a did:key DID
+   */
+  async createEd25519DIDFromKeystore() {
+    if (!this.keystore) {
+      throw new Error('Keystore is required to create Ed25519 DID');
+    }
+
+    try {
+      // Import multiformats modules
+      const multiformats = await import('multiformats');
+      const varint = multiformats.varint;
+      const { base58btc } = await import('multiformats/bases/base58');
+
+      // Get the keystore's identity ID (this will be used to retrieve the key)
+      // We'll use the WebAuthn DID as the identity ID to get/create the keystore key
+      const identityId = await WebAuthnDIDProvider.createDID(this.credential);
+      
+      // Get or create the Ed25519 key from keystore
+      const keystoreKey = await this.keystore.getKey(identityId) || await this.keystore.createKey(identityId);
+      
+      // Extract the public key bytes
+      // OrbitDB keystore stores keys in a specific format, we need the public key
+      const publicKeyBytes = keystoreKey.public.marshal();
+      
+      // Ed25519 multicodec code (0xed)
+      const ED25519_MULTICODEC = 0xed;
+      const codecLength = varint.encodingLength(ED25519_MULTICODEC);
+      const codecBytes = new Uint8Array(codecLength);
+      varint.encodeTo(ED25519_MULTICODEC, codecBytes, 0);
+
+      if (codecBytes.length === 0) {
+        throw new Error('Failed to encode ED25519_MULTICODEC with varint');
+      }
+
+      // Combine multicodec prefix + public key bytes
+      const multikey = new Uint8Array(codecBytes.length + publicKeyBytes.length);
+      multikey.set(codecBytes, 0);
+      multikey.set(publicKeyBytes, codecBytes.length);
+
+      // Encode as base58btc and create did:key
+      const multikeyEncoded = base58btc.encode(multikey);
+      return `did:key:${multikeyEncoded}`;
+
+    } catch (error) {
+      identityLog.error('Failed to create Ed25519 DID from keystore: %s', error.message);
+      throw new Error(`Failed to create Ed25519 DID from keystore: ${error.message}`);
+    }
   }
 
   signIdentity(data) {
@@ -511,16 +572,21 @@ export class OrbitDBWebAuthnIdentityProvider {
    * Create OrbitDB identity using WebAuthn
    */
   static async createIdentity(options) {
-    const { webauthnCredential } = options;
+    const { webauthnCredential, useKeystoreDID = false, keystore = null } = options;
 
-    identityLog('createIdentity() called');
+    identityLog('createIdentity() called with useKeystoreDID: %s', useKeystoreDID);
 
-    const provider = new OrbitDBWebAuthnIdentityProvider({ webauthnCredential });
+    const provider = new OrbitDBWebAuthnIdentityProvider({ 
+      webauthnCredential, 
+      useKeystoreDID,
+      keystore 
+    });
     const id = await provider.getId();
 
     identityLog('Identity created successfully: %o', {
       id: id.substring(0, 32) + '...',
       type: 'webauthn',
+      didType: useKeystoreDID ? 'Ed25519 (from keystore)' : 'P-256 (from WebAuthn)',
       hasPublicKey: !!webauthnCredential.publicKey
     });
 
@@ -544,6 +610,11 @@ export class OrbitDBWebAuthnIdentityProvider {
  * WebAuthn Identity Provider Function for OrbitDB
  * This follows the same pattern as OrbitDBIdentityProviderDID
  * Returns a function that returns a promise resolving to the provider instance
+ * 
+ * @param {Object} options - Configuration options
+ * @param {Object} options.webauthnCredential - WebAuthn credential for authentication
+ * @param {boolean} options.useKeystoreDID - If true, creates Ed25519 DID from keystore instead of P-256 DID from WebAuthn
+ * @param {Object} options.keystore - OrbitDB keystore instance (required if useKeystoreDID is true)
  */
 export function OrbitDBWebAuthnIdentityProviderFunction(options = {}) {
   // Return a function that returns a promise (as expected by OrbitDB)
