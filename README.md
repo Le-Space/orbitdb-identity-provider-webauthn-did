@@ -106,6 +106,30 @@ const identity = await orbitdb.identities.createIdentity({
 
 📖 **See [Ed25519 Keystore DID Documentation](./docs/ED25519-KEYSTORE-DID.md) for details**
 
+### New: WebAuthn-Encrypted Keystore
+
+✅ **Now available!** Protect your keystore with WebAuthn hardware security:
+
+```javascript
+const identity = await orbitdb.identities.createIdentity({
+  provider: OrbitDBWebAuthnIdentityProviderFunction({ 
+    webauthnCredential: credential,
+    useKeystoreDID: true,              // Ed25519 DID from keystore
+    keystore: orbitdb.keystore,
+    encryptKeystore: true,             // 🔐 Encrypt keystore
+    keystoreEncryptionMethod: 'largeBlob'  // or 'hmac-secret'
+  })
+});
+```
+
+**Benefits:**
+- 🔐 Keystore encrypted with AES-GCM 256-bit
+- 🔑 Secret key protected by WebAuthn hardware
+- 🛡️ Protected from XSS, malicious extensions, theft
+- 👆 One biometric prompt per session
+
+📖 **See [WebAuthn-Encrypted Keystore Integration](./docs/WEBAUTHN-ENCRYPTED-KEYSTORE-INTEGRATION.md) for details**
+
 ### Future Roadmap
 
 1. **WebAuthn-encrypted keystore**: One biometric prompt per session
