@@ -563,17 +563,81 @@ export class OrbitDBWebAuthnIdentityProvider {
       const identityId = await WebAuthnDIDProvider.createDID(this.credential);
       
       // Get or create the Ed25519 key from keystore
-      const keystoreKey = await this.keystore.getKey(identityId) || await this.keystore.createKey(identityId);
+      // Try getKey first, if it doesn't exist, createKey will create it
+      let keystoreKey = await this.keystore.getKey(identityId);
+      if (!keystoreKey) {
+        identityLog('Key not found, creating new key for: %s', identityId.substring(0, 32) + '...');
+        keystoreKey = await this.keystore.createKey(identityId);
+      }
       
-      // Extract the public key bytes
-      // OrbitDB keystore stores keys in a specific format, we need the public key
-      const publicKeyBytes = keystoreKey.public.marshal();
+      identityLog('Keystore key obtained, type: %s, keys: %o', typeof keystoreKey, Object.keys(keystoreKey || {}));
       
-      // Ed25519 multicodec code (0xed)
-      const ED25519_MULTICODEC = 0xed;
-      const codecLength = varint.encodingLength(ED25519_MULTICODEC);
+      // The keystore key should have a public property with marshal method
+      // But it seems this isn't available immediately after creation
+      // Let's try to extract the public key bytes directly
+      let publicKeyBytes;
+      
+      // Extract public key bytes from the keystore key
+      // OrbitDB uses @libp2p/crypto keys which have different structures
+      if (keystoreKey && keystoreKey.publicKey) {
+        // Modern libp2p-crypto format - has publicKey property
+        const pubKey = keystoreKey.publicKey;
+        identityLog('Found publicKey property, type: %s', pubKey.constructor.name);
+        
+        // Try to get raw bytes from the public key
+        if (pubKey.raw) {
+          publicKeyBytes = pubKey.raw;
+          identityLog('Got public key from publicKey.raw: %d bytes', publicKeyBytes.length);
+        } else if (pubKey.bytes) {
+          publicKeyBytes = pubKey.bytes;
+          identityLog('Got public key from publicKey.bytes: %d bytes', publicKeyBytes.length);
+        } else if (typeof pubKey.marshal === 'function') {
+          publicKeyBytes = pubKey.marshal();
+          identityLog('Got public key from publicKey.marshal(): %d bytes', publicKeyBytes.length);
+        } else {
+          identityLog.error('Cannot extract bytes from publicKey: %o', pubKey);
+          throw new Error('Unable to extract bytes from publicKey');
+        }
+      } else if (keystoreKey && keystoreKey.public && keystoreKey.public.bytes) {
+        // Older libp2p-crypto format
+        publicKeyBytes = keystoreKey.public.bytes;
+        identityLog('Got public key from keystoreKey.public.bytes: %d bytes', publicKeyBytes.length);
+      } else if (keystoreKey && keystoreKey.bytes) {
+        // Direct bytes
+        publicKeyBytes = keystoreKey.bytes;
+        identityLog('Got public key from keystoreKey.bytes: %d bytes', publicKeyBytes.length);
+      } else {
+        identityLog.error('Cannot extract public key from keystoreKey: %o', keystoreKey);
+        throw new Error('Unable to extract public key from keystore key');
+      }
+      
+      // Note: secp256k1 public keys are 33 or 65 bytes (compressed/uncompressed)
+      // Ed25519 public keys are 32 bytes
+      // We need to handle both
+      identityLog('Public key extracted: %d bytes, key type: %s', publicKeyBytes.length, keystoreKey.type);
+      
+      if (!publicKeyBytes || publicKeyBytes.length < 32) {
+        throw new Error(`Invalid public key length: ${publicKeyBytes ? publicKeyBytes.length : 0} bytes`);
+      }
+      
+      identityLog('Successfully extracted public key: %d bytes, type: %s', publicKeyBytes.length, keystoreKey.type);
+      
+      // Determine the correct multicodec based on key type
+      // secp256k1 multicodec code (0xe7) or Ed25519 (0xed)
+      let multicodec;
+      if (keystoreKey.type === 'secp256k1') {
+        multicodec = 0xe7; // secp256k1-pub
+        identityLog('Using secp256k1 multicodec (0xe7)');
+      } else if (keystoreKey.type === 'Ed25519' || keystoreKey.type === 'ed25519') {
+        multicodec = 0xed; // ed25519-pub
+        identityLog('Using Ed25519 multicodec (0xed)');
+      } else {
+        throw new Error(`Unsupported key type: ${keystoreKey.type}`);
+      }
+      
+      const codecLength = varint.encodingLength(multicodec);
       const codecBytes = new Uint8Array(codecLength);
-      varint.encodeTo(ED25519_MULTICODEC, codecBytes, 0);
+      varint.encodeTo(multicodec, codecBytes, 0);
 
       if (codecBytes.length === 0) {
         throw new Error('Failed to encode ED25519_MULTICODEC with varint');
