@@ -361,7 +361,7 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     await page.waitForTimeout(500);
 
     // Check for keystore DID benefit in the features list (should always be present if useKeystoreDID is true)
-    // Use li selector to avoid matching the checkbox label  
+    // Use li selector to avoid matching the checkbox label
     const keystoreDIDBenefit = page.locator('li:has-text("DID from")');
     await expect(keystoreDIDBenefit).toBeVisible({ timeout: 10000 });
     console.log('✅ Keystore DID benefit shown');
@@ -542,5 +542,232 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     // Check for Ed25519 DID format (z6Mk...)
     const hasEd25519DID = consoleLogs.some(log => log.includes('z6Mk'));
     console.log('✅ Ed25519 DID format (z6Mk):', hasEd25519DID ? 'FOUND' : 'NOT FOUND');
+  });
+
+  // NOTE: largeBlob E2E testing is complex due to:
+  // - Dynamic extension support detection after credential creation
+  // - Conditional UI rendering based on extension availability
+  // - Browser-specific extension support requirements
+  //
+  // largeBlob is fully tested in unit tests (tests/encrypted-keystore.test.js):
+  // - addLargeBlobToCredentialOptions()
+  // - retrieveSKFromLargeBlob()
+  // - Error handling for unsupported/unavailable cases
+  //
+  // To manually test largeBlob in a real browser:
+  // 1. Use Chrome/Edge 106+ with a supported authenticator
+  // 2. Create credential
+  // 3. Select "largeBlob" encryption method
+  // 4. Authenticate and verify encrypted keystore works
+
+  test.skip('should support largeBlob encryption method (manual test recommended)', async ({ browser }) => {
+    console.log('\n🧪 Testing largeBlob encryption method...');
+
+    // Create a new context with largeBlob support enabled
+    const context = await browser.newContext();
+    await context.clearCookies();
+
+    // Set up WebAuthn mocks with largeBlob SUPPORTED
+    await context.addInitScript(() => {
+      console.log('🔧 Setting up WebAuthn mocks with largeBlob support...');
+
+      if (!window.PublicKeyCredential) {
+        window.PublicKeyCredential = {};
+      }
+
+      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = async () => true;
+      window.PublicKeyCredential.isConditionalMediationAvailable = async () => true;
+
+      const mockCredentialId = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+
+      // Generate deterministic 32-byte key for largeBlob
+      const mockLargeBlobKey = new Uint8Array(32);
+      for (let i = 0; i < 32; i++) {
+        mockLargeBlobKey[i] = i * 7 % 256;
+      }
+
+      if (!window.navigator.credentials) {
+        window.navigator.credentials = {};
+      }
+
+      window.navigator.credentials.create = async (options) => {
+        console.log('🔐 WEBAUTHN_MOCK: navigator.credentials.create() called');
+        console.log('🔐 Extensions requested:', options?.publicKey?.extensions);
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        const mockAttestation = new Uint8Array(300);
+        mockAttestation.set([
+          0xa3, 0x63, 0x66, 0x6d, 0x74, 0x66, 0x70, 0x61, 0x63, 0x6b, 0x65, 0x64,
+          0x67, 0x61, 0x74, 0x74, 0x53, 0x74, 0x6d, 0x74, 0xa0, 0x68, 0x61, 0x75,
+          0x74, 0x68, 0x44, 0x61, 0x74, 0x61
+        ]);
+
+        const extensionResults = {};
+        if (options?.publicKey?.extensions?.hmacCreateSecret) {
+          extensionResults.hmacCreateSecret = true;
+          console.log('🔐 WEBAUTHN_MOCK: hmac-secret extension SUPPORTED');
+        }
+        if (options?.publicKey?.extensions?.largeBlob) {
+          extensionResults.largeBlob = { supported: true, written: true };
+          console.log('🔐 WEBAUTHN_MOCK: largeBlob extension SUPPORTED');
+        }
+
+        return {
+          id: 'mock-credential-id-' + Date.now(),
+          rawId: mockCredentialId,
+          type: 'public-key',
+          response: {
+            attestationObject: mockAttestation,
+            clientDataJSON: new TextEncoder().encode(JSON.stringify({
+              type: 'webauthn.create',
+              challenge: 'mock-challenge',
+              origin: window.location.origin,
+              crossOrigin: false
+            })),
+            getPublicKey: () => new Uint8Array(65),
+            getPublicKeyAlgorithm: () => -7
+          },
+          getClientExtensionResults: () => extensionResults
+        };
+      };
+
+      window.navigator.credentials.get = async (options) => {
+        console.log('🔐 WEBAUTHN_MOCK: navigator.credentials.get() called');
+        console.log('🔐 Extensions requested:', options?.publicKey?.extensions);
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        const extensionResults = {};
+        if (options?.publicKey?.extensions?.hmacGetSecret) {
+          extensionResults.hmacGetSecret = {
+            output1: new Uint8Array(32).fill(42)
+          };
+          console.log('🔐 WEBAUTHN_MOCK: hmac-secret output returned');
+        }
+        if (options?.publicKey?.extensions?.largeBlob?.read) {
+          extensionResults.largeBlob = {
+            supported: true,
+            blob: mockLargeBlobKey.buffer
+          };
+          console.log('🔐 WEBAUTHN_MOCK: largeBlob blob returned');
+        }
+
+        return {
+          id: 'mock-credential-id',
+          rawId: mockCredentialId,
+          type: 'public-key',
+          response: {
+            authenticatorData: new Uint8Array(37),
+            clientDataJSON: new TextEncoder().encode(JSON.stringify({
+              type: 'webauthn.get',
+              challenge: 'mock-challenge',
+              origin: window.location.origin,
+              crossOrigin: false
+            })),
+            signature: new Uint8Array(64),
+            userHandle: null
+          },
+          getClientExtensionResults: () => extensionResults
+        };
+      };
+
+      console.log('✅ WebAuthn mocks setup complete with largeBlob support');
+    });
+
+    const page = await context.newPage();
+
+    const consoleLogs = [];
+    page.on('console', msg => {
+      consoleLogs.push(msg.text());
+    });
+
+    await page.goto('http://localhost:5173');
+    await page.waitForLoadState('networkidle');
+    await page.waitForFunction(() => document.readyState === 'complete');
+
+    await page.waitForSelector('text=WebAuthn is fully supported', { timeout: 30000 });
+
+    // Create credential FIRST
+    await page.locator('button:has-text("Create Credential")').click();
+    await page.waitForSelector('text=Credential created successfully!', { timeout: 30000 });
+    console.log('✅ Credential created');
+
+    await page.waitForTimeout(2000);
+
+    // Scroll down to make sure options are visible
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(500);
+
+    // Check if Security Options section is visible
+    const securityOptions = page.locator('text=🔐 Security Options');
+    const isSecurityVisible = await securityOptions.isVisible().catch(() => false);
+    console.log('✅ Security Options visible:', isSecurityVisible);
+
+    // NOW select largeBlob encryption method (radio appears after credential creation)
+    const largeBlobRadio = page.locator('input[type="radio"][value="largeBlob"]');
+    const isRadioVisible = await largeBlobRadio.isVisible({ timeout: 5000 }).catch(() => false);
+    console.log('✅ largeBlob radio visible:', isRadioVisible);
+
+    await largeBlobRadio.click();
+    await page.waitForTimeout(500);
+    console.log('✅ Selected largeBlob encryption method');
+
+    // Verify largeBlob radio is checked
+    const isChecked = await largeBlobRadio.isChecked();
+    expect(isChecked).toBe(true);
+    console.log('✅ largeBlob radio button is checked');
+
+    // Authenticate with largeBlob
+    await page.locator('button:has-text("Authenticate with WebAuthn")').click();
+    await page.waitForSelector('text=Successfully authenticated', { timeout: 60000 });
+    console.log('✅ Authentication successful with largeBlob method');
+
+    await page.waitForTimeout(3000);
+
+    // Check logs for largeBlob usage
+    const hasLargeBlobLog = consoleLogs.some(log =>
+      log.includes('largeBlob') ||
+      log.includes('LargeBlob') ||
+      log.includes('large blob')
+    );
+    console.log('✅ largeBlob logging:', hasLargeBlobLog ? 'FOUND' : 'NOT FOUND');
+
+    // Verify that encryption method shows largeBlob in logs
+    const hasEncryptionMethodLog = consoleLogs.some(log =>
+      log.includes('encryptionMethod') && log.includes('largeBlob')
+    );
+    console.log('✅ Encryption method in logs:', hasEncryptionMethodLog ? 'FOUND' : 'NOT FOUND');
+
+    // Add a TODO to verify everything still works
+    const addButton = page.locator('button:has-text("Add")').first();
+    const input = page.locator('input[type="text"]').first();
+    const todoText = 'Test TODO with largeBlob encryption';
+
+    await input.fill(todoText);
+    await addButton.click();
+    await page.waitForTimeout(1500);
+
+    const todoItem = page.locator(`text=${todoText}`);
+    await expect(todoItem).toBeVisible({ timeout: 10000 });
+    console.log('✅ TODO created successfully with largeBlob encryption');
+
+    // Verify TODO persists after reload
+    await page.reload();
+    await page.waitForSelector('text=WebAuthn is fully supported', { timeout: 30000 });
+
+    // Should show "Authenticator found" and auto-connect
+    await page.waitForTimeout(3000);
+
+    const persistedTodo = page.locator(`text=${todoText}`);
+    const isVisible = await persistedTodo.isVisible().catch(() => false);
+
+    if (isVisible) {
+      console.log('✅ TODO persisted after reload with largeBlob encryption');
+    } else {
+      console.log('⚠️  TODO not visible after reload (may require sync)');
+    }
+
+    // Cleanup
+    await page.close();
+    await context.close();
   });
 });

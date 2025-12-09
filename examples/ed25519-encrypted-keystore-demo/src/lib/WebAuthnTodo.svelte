@@ -73,6 +73,11 @@ import {
   }
 
   onMount(async () => {
+    // Expose utilities to window for E2E testing
+    if (typeof window !== 'undefined') {
+      window.KeystoreEncryption = KeystoreEncryption;
+    }
+    
     await initializeWebAuthn();
     await checkEncryptionSupport();
   });

@@ -1053,6 +1053,22 @@ export {
   createVerificationResult
 } from './verification.js';
 
+// Re-export individual keystore encryption functions for convenience
+export {
+  generateSecretKey,
+  encryptWithAESGCM,
+  decryptWithAESGCM,
+  addLargeBlobToCredentialOptions,
+  retrieveSKFromLargeBlob,
+  addHmacSecretToCredentialOptions,
+  wrapSKWithHmacSecret,
+  unwrapSKWithHmacSecret,
+  storeEncryptedKeystore,
+  loadEncryptedKeystore,
+  clearEncryptedKeystore,
+  checkExtensionSupport
+} from './keystore-encryption.js';
+
 export default {
   WebAuthnDIDProvider,
   OrbitDBWebAuthnIdentityProvider,

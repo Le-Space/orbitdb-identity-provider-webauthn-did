@@ -11,7 +11,11 @@ import { gossipsub } from '@chainsafe/libp2p-gossipsub';
 import { all } from '@libp2p/websockets/filters';
 import { LevelBlockstore } from 'blockstore-level';
 import { LevelDatastore } from 'datastore-level';
-import { OrbitDBWebAuthnIdentityProviderFunction } from '@le-space/orbitdb-identity-provider-webauthn-did';
+import { 
+  OrbitDBWebAuthnIdentityProviderFunction,
+  OrbitDBWebAuthnIdentityProvider,
+  KeystoreEncryption
+} from '@le-space/orbitdb-identity-provider-webauthn-did';
 
 /**
  * Creates a browser-compatible libp2p instance with optimal configuration
@@ -238,3 +242,4 @@ export async function resetDatabaseState() {
     throw error;
   }
 }
+

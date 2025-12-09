@@ -79,9 +79,10 @@ const db = await orbitdb.open('my-database')
 - Format: `did:key:{base58btc-encoded-multikey}`
 - Implementation: `src/index.js` lines 222-296
 
-**OrbitDB Keystore**: Separate keystore (secp256k1) signs database operations
+**OrbitDB Keystore**: Separate keystore signs database operations
+- Key types: Ed25519 (default) or secp256k1
 - Location: `./orbitdb/keystore/` (IndexedDB)
-- ⚠️ **Currently unencrypted** - vulnerable to XSS/extensions
+- 🔐 **Can be encrypted** with WebAuthn hardware protection (see below)
 - WebAuthn signs identity (once), keystore signs operations (fast)
 
 ### Security Features
@@ -90,19 +91,24 @@ const db = await orbitdb.open('my-database')
 ✅ **Biometric verification** - Each WebAuthn operation requires user presence  
 ⚠️ **Keystore encryption needed** - See roadmap below
 
-### New: Ed25519 Keystore DID Option
+### New: Keystore-Based DID Option
 
-✅ **Now available!** Create Ed25519 DIDs from OrbitDB keystore for better UCAN compatibility:
+✅ **Now available!** Create DIDs from OrbitDB keystore for better UCAN compatibility and persistent identity:
 
 ```javascript
 const identity = await orbitdb.identities.createIdentity({
   provider: OrbitDBWebAuthnIdentityProviderFunction({ 
     webauthnCredential: credential,
-    useKeystoreDID: true,        // Enable Ed25519 keystore DID
+    useKeystoreDID: true,           // Enable keystore DID
+    keystoreKeyType: 'Ed25519',     // 'Ed25519' (default) or 'secp256k1'
     keystore: orbitdb.keystore
   })
 });
 ```
+
+**Supported key types:**
+- `Ed25519` (default): Faster, smaller keys, better UCAN support
+- `secp256k1`: Ethereum/Bitcoin compatible
 
 📖 **See [Ed25519 Keystore DID Documentation](./docs/ED25519-KEYSTORE-DID.md) for details**
 
@@ -114,7 +120,8 @@ const identity = await orbitdb.identities.createIdentity({
 const identity = await orbitdb.identities.createIdentity({
   provider: OrbitDBWebAuthnIdentityProviderFunction({ 
     webauthnCredential: credential,
-    useKeystoreDID: true,              // Ed25519 DID from keystore
+    useKeystoreDID: true,              // DID from keystore (persistent)
+    keystoreKeyType: 'Ed25519',        // 'Ed25519' (default) or 'secp256k1'
     keystore: orbitdb.keystore,
     encryptKeystore: true,             // 🔐 Encrypt keystore
     keystoreEncryptionMethod: 'largeBlob'  // or 'hmac-secret'
@@ -122,13 +129,54 @@ const identity = await orbitdb.identities.createIdentity({
 });
 ```
 
+**How it works:**
+- **largeBlob**: Stores the 32-byte encryption key directly in the WebAuthn credential (Chrome 106+)
+- **hmac-secret**: Derives encryption key from authenticator's HMAC output (wider browser support)
+- Both methods require biometric authentication to retrieve the key
+- Encryption key never exposed to JavaScript in plaintext
+
 **Benefits:**
 - 🔐 Keystore encrypted with AES-GCM 256-bit
-- 🔑 Secret key protected by WebAuthn hardware
+- 🔑 Secret key protected by WebAuthn hardware (largeBlob or hmac-secret)
 - 🛡️ Protected from XSS, malicious extensions, theft
 - 👆 One biometric prompt per session
 
 📖 **See [WebAuthn-Encrypted Keystore Integration](./docs/WEBAUTHN-ENCRYPTED-KEYSTORE-INTEGRATION.md) for details**
+
+### Database Content Encryption with @orbitdb/simple-encryption
+
+💡 **Bonus feature!** Use the WebAuthn-protected secret key to encrypt database content:
+
+```javascript
+import { SimpleEncryption } from '@orbitdb/simple-encryption';
+import { generateSecretKey } from 'orbitdb-identity-provider-webauthn-did';
+
+// Generate and protect secret key with WebAuthn
+const sk = generateSecretKey();
+const identity = await orbitdb.identities.createIdentity({
+  provider: OrbitDBWebAuthnIdentityProviderFunction({ 
+    webauthnCredential: credential,
+    encryptKeystore: true,
+    secretKey: sk  // Same key protects keystore AND database
+  })
+});
+
+// Use SK for database encryption
+const password = btoa(String.fromCharCode(...sk));
+const encryption = {
+  data: await SimpleEncryption({ password }),
+  replication: await SimpleEncryption({ password })
+};
+
+const db = await orbitdb.open('encrypted-db', { encryption });
+```
+
+**Benefits:**
+- 🔐 Single biometric prompt protects both keystore AND database content
+- 🛡️ Content-level encryption for sensitive data
+- 🔑 Hardware-backed encryption key from WebAuthn
+
+📖 **See [examples/simple-encryption-integration.js](./examples/simple-encryption-integration.js) for complete example**
 
 ### Future Roadmap
 

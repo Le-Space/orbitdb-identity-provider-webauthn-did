@@ -408,3 +408,159 @@ test.describe('Storage Management', () => {
     expect(result.indicesCorrect).toBe(true);
   });
 });
+
+test.describe('WebAuthn largeBlob Extension', () => {
+
+  test('should add largeBlob extension to credential options', async ({ page }) => {
+    await page.goto('http://localhost:5173');
+
+    const result = await page.evaluate(() => {
+      const { KeystoreEncryption } = window;
+
+      const baseOptions = {
+        challenge: new Uint8Array(32),
+        rp: { name: 'Test' },
+        user: {
+          id: new Uint8Array(16),
+          name: 'test',
+          displayName: 'Test User'
+        },
+        pubKeyCredParams: [{ alg: -7, type: 'public-key' }]
+      };
+
+      const optionsWithLargeBlob = KeystoreEncryption.addLargeBlobToCredentialOptions(baseOptions);
+
+      return {
+        hasExtensions: !!optionsWithLargeBlob.extensions,
+        hasLargeBlob: !!optionsWithLargeBlob.extensions?.largeBlob,
+        largeBlobSupport: optionsWithLargeBlob.extensions?.largeBlob?.support,
+        originalUnmodified: !baseOptions.extensions // Should not modify original
+      };
+    });
+
+    expect(result.hasExtensions).toBe(true);
+    expect(result.hasLargeBlob).toBe(true);
+    expect(result.largeBlobSupport).toBe('required');
+    expect(result.originalUnmodified).toBe(true);
+  });
+
+  test('should retrieve secret key from largeBlob (mocked)', async ({ page, context }) => {
+    // Set up mock that simulates largeBlob storage
+    await context.addInitScript(() => {
+      // Mock navigator.credentials.get with largeBlob support
+      window.navigator.credentials = window.navigator.credentials || {};
+      window.navigator.credentials.get = async () => {
+        const mockCredentialId = new Uint8Array([1, 2, 3, 4]);
+
+        // Simulate stored secret key in largeBlob (32 bytes)
+        const mockSecretKey = new Uint8Array(32);
+        for (let i = 0; i < 32; i++) {
+          mockSecretKey[i] = i * 7 % 256; // Deterministic test data
+        }
+
+        return {
+          id: 'test-credential',
+          rawId: mockCredentialId,
+          type: 'public-key',
+          response: {
+            authenticatorData: new Uint8Array(37),
+            clientDataJSON: new TextEncoder().encode(JSON.stringify({
+              type: 'webauthn.get',
+              challenge: 'test',
+              origin: window.location.origin
+            })),
+            signature: new Uint8Array(64)
+          },
+          getClientExtensionResults: () => ({
+            largeBlob: {
+              blob: mockSecretKey // Return the secret key from largeBlob
+            }
+          })
+        };
+      };
+    });
+
+    await page.goto('http://localhost:5173');
+
+    const result = await page.evaluate(async () => {
+      const { KeystoreEncryption } = window;
+
+      try {
+        // Mock credential with rawId
+        const mockCredential = {
+          rawCredentialId: new Uint8Array([1, 2, 3, 4])
+        };
+
+        const sk = await KeystoreEncryption.retrieveSKFromLargeBlob(mockCredential);
+
+        return {
+          success: true,
+          secretKeyLength: sk ? sk.length : 0,
+          isUint8Array: sk instanceof Uint8Array,
+          firstByte: sk ? sk[0] : null,
+          lastByte: sk ? sk[31] : null
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.message
+        };
+      }
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.secretKeyLength).toBe(32);
+    expect(result.isUint8Array).toBe(true);
+    expect(result.firstByte).toBe(0); // i * 7 % 256 for i=0
+    expect(result.lastByte).toBe(217); // i * 7 % 256 for i=31
+  });
+
+  test('should handle largeBlob not available', async ({ page, context }) => {
+    // Set up mock that simulates largeBlob NOT available
+    await context.addInitScript(() => {
+      window.navigator.credentials = window.navigator.credentials || {};
+      window.navigator.credentials.get = async () => {
+        return {
+          id: 'test-credential',
+          rawId: new Uint8Array([1, 2, 3, 4]),
+          type: 'public-key',
+          response: {
+            authenticatorData: new Uint8Array(37),
+            clientDataJSON: new TextEncoder().encode(JSON.stringify({
+              type: 'webauthn.get',
+              challenge: 'test',
+              origin: window.location.origin
+            })),
+            signature: new Uint8Array(64)
+          },
+          getClientExtensionResults: () => ({
+            largeBlob: null // No largeBlob support
+          })
+        };
+      };
+    });
+
+    await page.goto('http://localhost:5173');
+
+    const result = await page.evaluate(async () => {
+      const { KeystoreEncryption } = window;
+
+      try {
+        const mockCredential = {
+          rawCredentialId: new Uint8Array([1, 2, 3, 4])
+        };
+
+        await KeystoreEncryption.retrieveSKFromLargeBlob(mockCredential);
+        return { threwError: false };
+      } catch (error) {
+        return {
+          threwError: true,
+          errorMessage: error.message
+        };
+      }
+    });
+
+    expect(result.threwError).toBe(true);
+    expect(result.errorMessage).toContain('largeBlob');
+  });
+});
