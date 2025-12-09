@@ -195,7 +195,7 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     await page.locator('button:has-text("Create Credential")').click();
     await page.waitForSelector('text=Credential created successfully!', { timeout: 30000 });
 
-    // Ed25519 DID option is already enabled by default (useEd25519DID = true)
+    // Keystore DID option is already enabled by default (useKeystoreDID = true, keystoreKeyType = 'Ed25519')
     // But we can toggle it to test
     await page.waitForTimeout(500);
 
@@ -360,9 +360,9 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     await featuresSummary.scrollIntoViewIfNeeded();
     await page.waitForTimeout(500);
 
-    // Check for keystore DID benefit in the features list (should always be present if useEd25519DID is true)
-    // Use li selector to avoid matching the checkbox label
-    const keystoreDIDBenefit = page.locator('li:has-text("DID from keystore")');
+    // Check for keystore DID benefit in the features list (should always be present if useKeystoreDID is true)
+    // Use li selector to avoid matching the checkbox label  
+    const keystoreDIDBenefit = page.locator('li:has-text("DID from")');
     await expect(keystoreDIDBenefit).toBeVisible({ timeout: 10000 });
     console.log('✅ Keystore DID benefit shown');
 

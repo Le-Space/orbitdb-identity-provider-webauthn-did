@@ -48,7 +48,7 @@ import {
   // NEW: Encryption options
   let useEncryption = true; // Enable encryption by default
   let encryptionMethod = 'largeBlob'; // or 'hmac-secret'
-  let useEd25519DID = true; // Use Ed25519 DID from keystore
+  let useKeystoreDID = true; // Use persistent DID from OrbitDB keystore (instead of WebAuthn P-256)
   let keystoreKeyType = 'Ed25519'; // Key type: 'secp256k1' or 'Ed25519' (default: Ed25519)
   let extensionSupport = { largeBlob: false, hmacSecret: false };
 
@@ -191,7 +191,7 @@ import {
       status = 'Setting up OrbitDB...';
       // Use the extracted setupOrbitDB function with encryption options
       orbitdbInstances = await setupOrbitDB(credential, {
-        useEd25519DID: useEd25519DID,
+        useKeystoreDID: useKeystoreDID,
         keystoreKeyType: keystoreKeyType,
         encryptKeystore: useEncryption,
         encryptionMethod: encryptionMethod
@@ -486,20 +486,30 @@ import {
           </h3>
           
           <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-            <!-- Keystore DID Option -->
+            <!-- DID Source Selection -->
             <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
               <input
                 type="checkbox"
-                bind:checked={useEd25519DID}
+                bind:checked={useKeystoreDID}
                 disabled={loading}
                 style="cursor: pointer;"
               />
-              <span style="color: var(--cds-text-primary);">Use DID from keystore</span>
-              <span style="font-size: 0.75rem; color: var(--cds-text-secondary);">🆔 Unified identity</span>
+              <span style="color: var(--cds-text-primary);">Use persistent keystore identity</span>
+              <span style="font-size: 0.75rem; color: var(--cds-text-secondary);">🗄️ Instead of WebAuthn P-256</span>
             </label>
             
+            <!-- Show info when keystore DID is NOT selected -->
+            {#if !useKeystoreDID}
+              <div style="padding-left: 1.5rem; padding: 0.5rem; background: var(--cds-layer); border-radius: 0.25rem; border-left: 3px solid var(--cds-interactive);">
+                <span style="font-size: 0.75rem; color: var(--cds-text-secondary);">
+                  ℹ️ Will use <strong style="color: var(--cds-text-primary);">P-256 DID</strong> from WebAuthn credential
+                  <code style="font-size: 0.7rem; opacity: 0.8;">(did:key:zDna...)</code>
+                </span>
+              </div>
+            {/if}
+            
             <!-- Keystore Key Type Selection -->
-            {#if useEd25519DID}
+            {#if useKeystoreDID}
               <div style="padding-left: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
                 <span style="font-size: 0.875rem; font-weight: 500; color: var(--cds-text-primary);">Keystore Key Type:</span>
                 <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
@@ -577,17 +587,20 @@ import {
             {/if}
             
             <!-- Benefits Summary -->
-            {#if useEd25519DID || useEncryption}
+            {#if useKeystoreDID || useEncryption || !useKeystoreDID}
               <div style="margin-top: 0.5rem; padding: 0.75rem; background: var(--cds-layer); border-radius: 0.25rem;">
                 <span style="font-size: 0.75rem; font-weight: 600; color: var(--cds-text-secondary);">ENABLED FEATURES:</span>
                 <ul style="font-size: 0.75rem; color: var(--cds-text-primary); margin-top: 0.25rem; padding-left: 1.25rem;">
-                  {#if useEd25519DID}
-                    <li>DID from keystore ({keystoreKeyType}) - unified identity</li>
+                  {#if useKeystoreDID}
+                    <li>Persistent {keystoreKeyType} DID from OrbitDB keystore</li>
                     {#if keystoreKeyType === 'Ed25519'}
-                      <li>Ed25519: Faster signing, smaller keys</li>
+                      <li>Ed25519: Faster signing, smaller keys (32 bytes)</li>
                     {:else}
                       <li>secp256k1: Ethereum/Bitcoin compatible</li>
                     {/if}
+                  {:else}
+                    <li>P-256 DID from WebAuthn credential</li>
+                    <li>Hardware-backed ECDSA signatures</li>
                   {/if}
                   {#if useEncryption}
                     <li>Keystore encrypted with AES-GCM 256-bit</li>

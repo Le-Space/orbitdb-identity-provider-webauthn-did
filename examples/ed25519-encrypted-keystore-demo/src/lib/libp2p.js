@@ -90,14 +90,14 @@ export async function createIdentitiesInstance() {
  * @param {Object} credential - The WebAuthn credential
  * @param {Object} orbitdb - The OrbitDB instance (for keystore access)
  * @param {Object} options - Additional options
- * @param {boolean} options.useEd25519DID - Use Ed25519 DID from keystore
+ * @param {boolean} options.useKeystoreDID - Use persistent DID from OrbitDB keystore (instead of WebAuthn P-256)
  * @param {string} options.keystoreKeyType - Key type: 'secp256k1' or 'Ed25519'
  * @param {boolean} options.encryptKeystore - Enable keystore encryption
  * @param {string} options.encryptionMethod - Encryption method ('largeBlob' or 'hmac-secret')
  */
 export async function createWebAuthnIdentity(identities, credential, orbitdb = null, options = {}) {
   const {
-    useEd25519DID = false,
+    useKeystoreDID = false,
     keystoreKeyType = 'secp256k1',
     encryptKeystore = false,
     encryptionMethod = 'largeBlob'
@@ -106,7 +106,7 @@ export async function createWebAuthnIdentity(identities, credential, orbitdb = n
   return await identities.createIdentity({
     provider: OrbitDBWebAuthnIdentityProviderFunction({
       webauthnCredential: credential,
-      useKeystoreDID: useEd25519DID,
+      useKeystoreDID: useKeystoreDID,
       keystore: orbitdb ? orbitdb.keystore : null,
       keystoreKeyType: keystoreKeyType,
       encryptKeystore: encryptKeystore,
@@ -133,7 +133,7 @@ export async function createOrbitDBInstance(ipfs, identities, identity) {
  * Complete OrbitDB setup with WebAuthn authentication
  * @param {Object} credential - The WebAuthn credential
  * @param {Object} options - Configuration options
- * @param {boolean} options.useEd25519DID - Use Ed25519 DID from keystore
+ * @param {boolean} options.useKeystoreDID - Use persistent DID from OrbitDB keystore (instead of WebAuthn P-256)
  * @param {string} options.keystoreKeyType - Key type: 'secp256k1' or 'Ed25519'
  * @param {boolean} options.encryptKeystore - Enable keystore encryption
  * @param {string} options.encryptionMethod - Encryption method
@@ -162,7 +162,7 @@ export async function setupOrbitDB(credential, options = {}) {
     id: identity.id,
     type: identity.type,
     hash: identity.hash,
-    didType: options.useEd25519DID ? 'Ed25519 (from keystore)' : 'P-256 (from WebAuthn)',
+    didType: options.useKeystoreDID ? `${options.keystoreKeyType} (from keystore)` : 'P-256 (from WebAuthn)',
     encrypted: options.encryptKeystore ? `Yes (${options.encryptionMethod})` : 'No'
   });
   
