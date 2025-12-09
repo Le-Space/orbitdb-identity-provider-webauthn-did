@@ -49,6 +49,7 @@ import {
   let useEncryption = true; // Enable encryption by default
   let encryptionMethod = 'largeBlob'; // or 'hmac-secret'
   let useEd25519DID = true; // Use Ed25519 DID from keystore
+  let keystoreKeyType = 'secp256k1'; // Key type: 'secp256k1' or 'Ed25519'
   let extensionSupport = { largeBlob: false, hmacSecret: false };
 
   // Computed values
@@ -191,6 +192,7 @@ import {
       // Use the extracted setupOrbitDB function with encryption options
       orbitdbInstances = await setupOrbitDB(credential, {
         useEd25519DID: useEd25519DID,
+        keystoreKeyType: keystoreKeyType,
         encryptKeystore: useEncryption,
         encryptionMethod: encryptionMethod
       });
@@ -484,7 +486,7 @@ import {
           </h3>
           
           <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-            <!-- Ed25519 DID Option -->
+            <!-- Keystore DID Option -->
             <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
               <input
                 type="checkbox"
@@ -492,9 +494,42 @@ import {
                 disabled={loading}
                 style="cursor: pointer;"
               />
-              <span style="color: var(--cds-text-primary);">Use Ed25519 DID from keystore</span>
+              <span style="color: var(--cds-text-primary);">Use DID from keystore</span>
               <span style="font-size: 0.75rem; color: var(--cds-text-secondary);">🆔 Unified identity</span>
             </label>
+            
+            <!-- Keystore Key Type Selection -->
+            {#if useEd25519DID}
+              <div style="padding-left: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                <span style="font-size: 0.875rem; font-weight: 500; color: var(--cds-text-primary);">Keystore Key Type:</span>
+                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                  <input
+                    type="radio"
+                    bind:group={keystoreKeyType}
+                    value="secp256k1"
+                    disabled={loading}
+                    style="cursor: pointer;"
+                  />
+                  <span style="color: var(--cds-text-primary);">secp256k1</span>
+                  <span style="font-size: 0.75rem; color: var(--cds-text-secondary);">
+                    ⚡ Ethereum compatible, did:key:zQ3sh...
+                  </span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                  <input
+                    type="radio"
+                    bind:group={keystoreKeyType}
+                    value="Ed25519"
+                    disabled={loading}
+                    style="cursor: pointer;"
+                  />
+                  <span style="color: var(--cds-text-primary);">Ed25519</span>
+                  <span style="font-size: 0.75rem; color: var(--cds-text-secondary);">
+                    🚀 Faster, smaller, did:key:z6Mk...
+                  </span>
+                </label>
+              </div>
+            {/if}
             
             <!-- Encryption Option -->
             <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
@@ -547,7 +582,12 @@ import {
                 <span style="font-size: 0.75rem; font-weight: 600; color: var(--cds-text-secondary);">ENABLED FEATURES:</span>
                 <ul style="font-size: 0.75rem; color: var(--cds-text-primary); margin-top: 0.25rem; padding-left: 1.25rem;">
                   {#if useEd25519DID}
-                    <li>Ed25519 DID = Ed25519 keystore key (unified)</li>
+                    <li>DID from keystore ({keystoreKeyType}) - unified identity</li>
+                    {#if keystoreKeyType === 'Ed25519'}
+                      <li>Ed25519: Faster signing, smaller keys</li>
+                    {:else}
+                      <li>secp256k1: Ethereum/Bitcoin compatible</li>
+                    {/if}
                   {/if}
                   {#if useEncryption}
                     <li>Keystore encrypted with AES-GCM 256-bit</li>

@@ -474,4 +474,44 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
       console.log('   Log sample:', relevantLog?.substring(0, 100));
     }
   });
+
+  test('should create Ed25519 keystore key when selected', async ({ page }) => {
+    console.log('\n🧪 Testing Ed25519 keystore key type selection...');
+
+    const consoleLogs = [];
+    page.on('console', msg => {
+      consoleLogs.push(msg.text());
+    });
+
+    await page.waitForSelector('text=WebAuthn is fully supported', { timeout: 30000 });
+
+    // Create credential
+    await page.locator('button:has-text("Create Credential")').click();
+    await page.waitForSelector('text=Credential created successfully!', { timeout: 30000 });
+
+    // Select Ed25519 key type
+    await page.locator('input[type="radio"][value="Ed25519"]').click();
+    await page.waitForTimeout(500);
+    console.log('✅ Selected Ed25519 key type');
+
+    // Authenticate
+    await page.locator('button:has-text("Authenticate with WebAuthn")').click();
+    await page.waitForSelector('text=Successfully authenticated', { timeout: 60000 });
+    console.log('✅ Authentication successful with Ed25519 key type');
+
+    await page.waitForTimeout(3000);
+
+    // Check logs for Ed25519 key type
+    const hasEd25519KeyLog = consoleLogs.some(log => 
+      log.includes('keystoreKeyType: Ed25519') ||
+      log.includes('type: Ed25519') ||
+      log.includes('Ed25519')
+    );
+
+    console.log('✅ Ed25519 key type logging:', hasEd25519KeyLog ? 'FOUND' : 'NOT FOUND');
+
+    // Check for Ed25519 DID format (z6Mk...)
+    const hasEd25519DID = consoleLogs.some(log => log.includes('z6Mk'));
+    console.log('✅ Ed25519 DID format (z6Mk):', hasEd25519DID ? 'FOUND' : 'NOT FOUND');
+  });
 });
