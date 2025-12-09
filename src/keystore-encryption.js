@@ -1,6 +1,6 @@
 /**
  * Keystore Encryption Utilities
- * 
+ *
  * Provides AES-GCM encryption for OrbitDB keystore private keys,
  * protected by WebAuthn credentials using largeBlob or hmac-secret extensions.
  */
@@ -24,10 +24,10 @@ export function generateSecretKey() {
  */
 export async function encryptWithAESGCM(data, sk) {
   log('Encrypting data with AES-GCM');
-  
+
   // Generate random IV (12 bytes for GCM)
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  
+
   // Import secret key
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
@@ -36,16 +36,16 @@ export async function encryptWithAESGCM(data, sk) {
     false,
     ['encrypt']
   );
-  
+
   // Encrypt
   const ciphertext = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv },
     cryptoKey,
     data
   );
-  
+
   log('Encryption successful, ciphertext length: %d', ciphertext.byteLength);
-  
+
   return {
     ciphertext: new Uint8Array(ciphertext),
     iv
@@ -61,7 +61,7 @@ export async function encryptWithAESGCM(data, sk) {
  */
 export async function decryptWithAESGCM(ciphertext, sk, iv) {
   log('Decrypting data with AES-GCM');
-  
+
   try {
     // Import secret key
     const cryptoKey = await crypto.subtle.importKey(
@@ -71,16 +71,16 @@ export async function decryptWithAESGCM(ciphertext, sk, iv) {
       false,
       ['decrypt']
     );
-    
+
     // Decrypt
     const plaintext = await crypto.subtle.decrypt(
       { name: 'AES-GCM', iv },
       cryptoKey,
       ciphertext
     );
-    
+
     log('Decryption successful, plaintext length: %d', plaintext.byteLength);
-    
+
     return new Uint8Array(plaintext);
   } catch (error) {
     log.error('Decryption failed: %s', error.message);
@@ -96,7 +96,7 @@ export async function decryptWithAESGCM(ciphertext, sk, iv) {
  */
 export function addLargeBlobToCredentialOptions(credentialOptions, sk) {
   log('Adding largeBlob extension to credential options');
-  
+
   return {
     ...credentialOptions,
     extensions: {
@@ -117,7 +117,7 @@ export function addLargeBlobToCredentialOptions(credentialOptions, sk) {
  */
 export async function retrieveSKFromLargeBlob(credentialId, rpId) {
   log('Retrieving secret key from largeBlob');
-  
+
   try {
     const assertion = await navigator.credentials.get({
       publicKey: {
@@ -135,16 +135,16 @@ export async function retrieveSKFromLargeBlob(credentialId, rpId) {
         }
       }
     });
-    
+
     const extensions = assertion.getClientExtensionResults();
-    
+
     if (!extensions.largeBlob || !extensions.largeBlob.blob) {
       throw new Error('No largeBlob data found in credential');
     }
-    
+
     const sk = new Uint8Array(extensions.largeBlob.blob);
     log('Retrieved secret key from largeBlob, length: %d', sk.length);
-    
+
     return sk;
   } catch (error) {
     log.error('Failed to retrieve secret key from largeBlob: %s', error.message);
@@ -159,7 +159,7 @@ export async function retrieveSKFromLargeBlob(credentialId, rpId) {
  */
 export function addHmacSecretToCredentialOptions(credentialOptions) {
   log('Adding hmac-secret extension to credential options');
-  
+
   return {
     ...credentialOptions,
     extensions: {
@@ -178,9 +178,9 @@ export function addHmacSecretToCredentialOptions(credentialOptions) {
  */
 export async function wrapSKWithHmacSecret(credentialId, sk, rpId) {
   log('Wrapping secret key with hmac-secret');
-  
+
   const salt = crypto.getRandomValues(new Uint8Array(32));
-  
+
   try {
     const assertion = await navigator.credentials.get({
       publicKey: {
@@ -198,20 +198,20 @@ export async function wrapSKWithHmacSecret(credentialId, sk, rpId) {
         }
       }
     });
-    
+
     const extensions = assertion.getClientExtensionResults();
-    
+
     if (!extensions.hmacGetSecret || !extensions.hmacGetSecret.output1) {
       throw new Error('No hmac-secret output from credential');
     }
-    
+
     const hmacOutput = new Uint8Array(extensions.hmacGetSecret.output1);
-    
+
     // Use HMAC output as wrapping key
     const wrappedSK = await encryptWithAESGCM(sk, hmacOutput.slice(0, 32));
-    
+
     log('Secret key wrapped with hmac-secret');
-    
+
     return {
       wrappedSK: wrappedSK.ciphertext,
       wrappingIV: wrappedSK.iv,
@@ -234,7 +234,7 @@ export async function wrapSKWithHmacSecret(credentialId, sk, rpId) {
  */
 export async function unwrapSKWithHmacSecret(credentialId, wrappedSK, wrappingIV, salt, rpId) {
   log('Unwrapping secret key with hmac-secret');
-  
+
   try {
     const assertion = await navigator.credentials.get({
       publicKey: {
@@ -252,20 +252,20 @@ export async function unwrapSKWithHmacSecret(credentialId, wrappedSK, wrappingIV
         }
       }
     });
-    
+
     const extensions = assertion.getClientExtensionResults();
-    
+
     if (!extensions.hmacGetSecret || !extensions.hmacGetSecret.output1) {
       throw new Error('No hmac-secret output from credential');
     }
-    
+
     const hmacOutput = new Uint8Array(extensions.hmacGetSecret.output1);
-    
+
     // Unwrap with HMAC output
     const sk = await decryptWithAESGCM(wrappedSK, hmacOutput.slice(0, 32), wrappingIV);
-    
+
     log('Secret key unwrapped with hmac-secret');
-    
+
     return sk;
   } catch (error) {
     log.error('Failed to unwrap secret key with hmac-secret: %s', error.message);
@@ -280,9 +280,9 @@ export async function unwrapSKWithHmacSecret(credentialId, wrappedSK, wrappingIV
  */
 export async function storeEncryptedKeystore(data, credentialId) {
   log('Storing encrypted keystore in IndexedDB');
-  
+
   const storageKey = `encrypted-keystore-${credentialId}`;
-  
+
   const serializedData = {
     ciphertext: Array.from(data.ciphertext),
     iv: Array.from(data.iv),
@@ -298,7 +298,7 @@ export async function storeEncryptedKeystore(data, credentialId) {
     encryptionMethod: data.encryptionMethod || 'largeBlob',
     timestamp: Date.now()
   };
-  
+
   try {
     localStorage.setItem(storageKey, JSON.stringify(serializedData));
     log('Encrypted keystore stored successfully');
@@ -315,18 +315,18 @@ export async function storeEncryptedKeystore(data, credentialId) {
  */
 export async function loadEncryptedKeystore(credentialId) {
   log('Loading encrypted keystore from IndexedDB');
-  
+
   const storageKey = `encrypted-keystore-${credentialId}`;
-  
+
   try {
     const stored = localStorage.getItem(storageKey);
-    
+
     if (!stored) {
       throw new Error('No encrypted keystore found for this credential');
     }
-    
+
     const data = JSON.parse(stored);
-    
+
     const deserialized = {
       ciphertext: new Uint8Array(data.ciphertext),
       iv: new Uint8Array(data.iv),
@@ -342,9 +342,9 @@ export async function loadEncryptedKeystore(credentialId) {
       encryptionMethod: data.encryptionMethod || 'largeBlob',
       timestamp: data.timestamp
     };
-    
+
     log('Encrypted keystore loaded successfully');
-    
+
     return deserialized;
   } catch (error) {
     log.error('Failed to load encrypted keystore: %s', error.message);
@@ -358,9 +358,9 @@ export async function loadEncryptedKeystore(credentialId) {
  */
 export async function clearEncryptedKeystore(credentialId) {
   log('Clearing encrypted keystore from storage');
-  
+
   const storageKey = `encrypted-keystore-${credentialId}`;
-  
+
   try {
     localStorage.removeItem(storageKey);
     log('Encrypted keystore cleared successfully');
@@ -378,11 +378,11 @@ export async function checkExtensionSupport() {
     largeBlob: false,
     hmacSecret: false
   };
-  
+
   if (!window.PublicKeyCredential) {
     return support;
   }
-  
+
   try {
     // Check largeBlob support
     if (window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
@@ -390,15 +390,15 @@ export async function checkExtensionSupport() {
       // largeBlob is available in Chrome 106+, Edge 106+
       support.largeBlob = available && 'largeBlob' in PublicKeyCredential.prototype;
     }
-    
+
     // hmac-secret is more widely supported but harder to detect
     // Assume support if WebAuthn is available (will fail gracefully if not)
     support.hmacSecret = true;
-    
+
   } catch (error) {
     log.error('Failed to check extension support: %s', error.message);
   }
-  
+
   return support;
 }
 

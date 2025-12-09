@@ -49,7 +49,7 @@ import {
   let useEncryption = true; // Enable encryption by default
   let encryptionMethod = 'largeBlob'; // or 'hmac-secret'
   let useEd25519DID = true; // Use Ed25519 DID from keystore
-  let keystoreKeyType = 'secp256k1'; // Key type: 'secp256k1' or 'Ed25519'
+  let keystoreKeyType = 'Ed25519'; // Key type: 'secp256k1' or 'Ed25519' (default: Ed25519)
   let extensionSupport = { largeBlob: false, hmacSecret: false };
 
   // Computed values

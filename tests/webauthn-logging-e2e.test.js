@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 /**
  * E2E Logging Test for WebAuthn Identity Provider
- * 
+ *
  * This test analyzes the complete WebAuthn authentication flow by:
  * 1. Capturing all @libp2p/logger logs from the application
  * 2. Creating a credential and adding multiple TODOs
@@ -27,7 +27,7 @@ test.describe('WebAuthn Logging E2E Test', () => {
       // Enable @libp2p/logger debug output in browser
       // @libp2p/logger uses localStorage for debug configuration
       window.localStorage.setItem('debug', 'orbitdb-identity-provider-webauthn-did*');
-      
+
       // Also intercept console.debug to capture @libp2p/logger output
       const originalDebug = console.debug;
       console.debug = function(...args) {
@@ -57,7 +57,7 @@ test.describe('WebAuthn Logging E2E Test', () => {
         window.navigator.credentials = {};
       }
 
-      window.navigator.credentials.create = async (options) => {
+      window.navigator.credentials.create = async () => {
         console.log('🔐 WEBAUTHN_MOCK: navigator.credentials.create() called');
         await new Promise(resolve => setTimeout(resolve, 100));
 
@@ -87,7 +87,7 @@ test.describe('WebAuthn Logging E2E Test', () => {
         };
       };
 
-      window.navigator.credentials.get = async (options) => {
+      window.navigator.credentials.get = async () => {
         console.log('🔐 WEBAUTHN_MOCK: navigator.credentials.get() called - BIOMETRIC PROMPT WOULD APPEAR');
         await new Promise(resolve => setTimeout(resolve, 100));
 
@@ -320,70 +320,70 @@ function generateFindingsReport(analysis) {
   }
 
   // Report on sign() calls
-  console.log(`\n📊 SIGNATURE OPERATIONS:`);
+  console.log('\n📊 SIGNATURE OPERATIONS:');
   console.log(`   - sign() called: ${analysis.signCallCount} times`);
   console.log(`   - signIdentity() called: ${analysis.signIdentityCallCount} times`);
   console.log(`   - database.put() called: ${analysis.databasePutCallCount} times`);
 
   // Report on biometric prompts
-  console.log(`\n🔐 BIOMETRIC AUTHENTICATION:`);
+  console.log('\n🔐 BIOMETRIC AUTHENTICATION:');
   console.log(`   - navigator.credentials.get() called: ${analysis.credentialsGetCallCount} times`);
   console.log(`   - navigator.credentials.create() called: ${analysis.credentialsCreateCallCount} times`);
 
   if (analysis.credentialsGetCallCount === analysis.signCallCount) {
-    console.log(`   ✅ FINDING: Biometric prompt appears for EVERY signature operation`);
-    console.log(`      This means NO signature caching is occurring.`);
+    console.log('   ✅ FINDING: Biometric prompt appears for EVERY signature operation');
+    console.log('      This means NO signature caching is occurring.');
   } else if (analysis.credentialsGetCallCount < analysis.signCallCount) {
     console.log(`   ⚠️  FINDING: Biometric prompts (${analysis.credentialsGetCallCount}) < sign() calls (${analysis.signCallCount})`);
-    console.log(`      This suggests signature caching or browser grace period is active.`);
+    console.log('      This suggests signature caching or browser grace period is active.');
   } else {
-    console.log(`   🤔 FINDING: Unexpected behavior - more prompts than sign calls`);
+    console.log('   🤔 FINDING: Unexpected behavior - more prompts than sign calls');
   }
 
   // Report on verification
-  console.log(`\n✓ VERIFICATION:`);
+  console.log('\n✓ VERIFICATION:');
   console.log(`   - verify() called: ${analysis.verifyCallCount} times`);
 
   // Detailed flow
   if (analysis.detailedFlow.length > 0) {
-    console.log(`\n📋 DETAILED FLOW (first 10 events):`);
+    console.log('\n📋 DETAILED FLOW (first 10 events):');
     analysis.detailedFlow.slice(0, 10).forEach((event, i) => {
       console.log(`   ${i + 1}. [${event.timestamp}] ${event.event}`);
     });
   }
 
   // Answer the key questions from issue #2
-  console.log(`\n🎯 KEY FINDINGS (Issue #2 - Authentication Frequency):\n`);
+  console.log('\n🎯 KEY FINDINGS (Issue #2 - Authentication Frequency):\n');
 
-  console.log(`1. ❓ Why do we need to authenticate for every TODO?`);
+  console.log('1. ❓ Why do we need to authenticate for every TODO?');
   if (analysis.credentialsGetCallCount >= analysis.databasePutCallCount) {
-    console.log(`   ✅ Because navigator.credentials.get() is called for EACH database operation.`);
-    console.log(`      This is by design - each OrbitDB write requires a new signature.`);
+    console.log('   ✅ Because navigator.credentials.get() is called for EACH database operation.');
+    console.log('      This is by design - each OrbitDB write requires a new signature.');
   } else {
-    console.log(`   ⚠️  navigator.credentials.get() is NOT called for every operation.`);
-    console.log(`      Browser may be caching authentication for a grace period.`);
+    console.log('   ⚠️  navigator.credentials.get() is NOT called for every operation.');
+    console.log('      Browser may be caching authentication for a grace period.');
   }
 
-  console.log(`\n2. ❓ Is OrbitDB caching signatures?`);
+  console.log('\n2. ❓ Is OrbitDB caching signatures?');
   if (analysis.signCallCount === analysis.databasePutCallCount) {
-    console.log(`   ❌ NO - sign() is called for EACH database.put() operation.`);
-    console.log(`      OrbitDB is NOT caching signatures.`);
+    console.log('   ❌ NO - sign() is called for EACH database.put() operation.');
+    console.log('      OrbitDB is NOT caching signatures.');
   } else {
-    console.log(`   ⚠️  Inconsistent behavior detected - needs further investigation.`);
+    console.log('   ⚠️  Inconsistent behavior detected - needs further investigation.');
   }
 
-  console.log(`\n3. ❓ Is the browser grace period affecting authentication?`);
+  console.log('\n3. ❓ Is the browser grace period affecting authentication?');
   if (analysis.credentialsGetCallCount < analysis.signCallCount) {
-    console.log(`   ✅ YES - Browser grace period is likely active.`);
-    console.log(`      Some sign() operations don't trigger new biometric prompts.`);
+    console.log('   ✅ YES - Browser grace period is likely active.');
+    console.log('      Some sign() operations don\'t trigger new biometric prompts.');
   } else {
-    console.log(`   ❌ NO - Each sign() operation triggers a new biometric prompt.`);
-    console.log(`      No browser grace period detected.`);
+    console.log('   ❌ NO - Each sign() operation triggers a new biometric prompt.');
+    console.log('      No browser grace period detected.');
   }
 
-  console.log(`\n4. ❓ Complete flow from db.put() to oplog entry:`);
-  console.log(`   db.put() → identity.sign() → signIdentity() → webauthnProvider.sign() → navigator.credentials.get()`);
-  console.log(`   This flow is executed for EACH write operation.`);
+  console.log('\n4. ❓ Complete flow from db.put() to oplog entry:');
+  console.log('   db.put() → identity.sign() → signIdentity() → webauthnProvider.sign() → navigator.credentials.get()');
+  console.log('   This flow is executed for EACH write operation.');
 
   console.log('\n📄 ========================================\n');
 }

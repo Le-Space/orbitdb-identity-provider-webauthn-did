@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 /**
  * E2E Tests for Ed25519 DID with WebAuthn-Encrypted Keystore Demo
- * 
+ *
  * Tests the complete functionality of the new demo:
  * 1. Ed25519 DID creation and verification
  * 2. WebAuthn-encrypted keystore with both methods (hmac-secret, largeBlob)
@@ -13,11 +13,11 @@ import { test, expect } from '@playwright/test';
  */
 
 test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
-  
+
   test.beforeEach(async ({ page, context }) => {
     // Clear localStorage before each test
     await context.clearCookies();
-    
+
     // Set up WebAuthn mocks with extension support
     await context.addInitScript(() => {
       console.log('🔧 Setting up WebAuthn mocks with extension support...');
@@ -253,8 +253,8 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     const hasEncryptedData = await page.evaluate(() => {
       const keys = Object.keys(localStorage);
       // Look for encryption-related keys
-      return keys.some(key => 
-        key.includes('encrypted') || 
+      return keys.some(key =>
+        key.includes('encrypted') ||
         key.includes('keystore') ||
         key.includes('cipher')
       );
@@ -343,34 +343,34 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
 
     // Check for features summary (both Ed25519 and encryption enabled by default)
     const featuresSummary = page.locator('text=ENABLED FEATURES');
-    
+
     // Wait for features summary to exist and be visible
     const summaryExists = await featuresSummary.isVisible().catch(() => false);
-    
+
     if (!summaryExists) {
       console.log('⚠️ Features summary not visible, scrolling down...');
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
       await page.waitForTimeout(1000);
     }
-    
+
     await expect(featuresSummary).toBeVisible({ timeout: 10000 });
     console.log('✅ Features summary is displayed');
-    
+
     // Scroll to features summary to ensure it's in viewport
     await featuresSummary.scrollIntoViewIfNeeded();
     await page.waitForTimeout(500);
-    
+
     // Check for keystore DID benefit in the features list (should always be present if useEd25519DID is true)
     // Use li selector to avoid matching the checkbox label
     const keystoreDIDBenefit = page.locator('li:has-text("DID from keystore")');
     await expect(keystoreDIDBenefit).toBeVisible({ timeout: 10000 });
     console.log('✅ Keystore DID benefit shown');
-    
+
     // Check for key type specific benefits - either Ed25519 or secp256k1
     // Use a flexible check since the exact key type shown depends on state
     const hasEd25519 = await page.locator('text=Ed25519: Faster signing').isVisible().catch(() => false);
     const hasSecp256k1 = await page.locator('text=secp256k1: Ethereum').isVisible().catch(() => false);
-    
+
     if (hasEd25519) {
       console.log('✅ Ed25519 key type benefit shown');
     } else if (hasSecp256k1) {
@@ -384,7 +384,7 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     await expect(encryptionBenefit).toBeVisible({ timeout: 10000 });
     console.log('✅ Encryption benefit shown');
   });
-  test('should handle browser reload persistence (session management)', async ({ page, context }) => {
+  test('should handle browser reload persistence (session management)', async ({ page }) => {
     console.log('\n🧪 Testing session persistence after reload...');
 
     await page.waitForSelector('text=WebAuthn is fully supported', { timeout: 30000 });
@@ -464,7 +464,7 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     const finalHmacVisible = await hmacRadio.isVisible().catch(() => false);
     const finalLargeBlobVisible = await largeBlobRadio.isVisible().catch(() => false);
 
-    console.log('✅ Encryption method controls hidden after disabling encryption:', 
+    console.log('✅ Encryption method controls hidden after disabling encryption:',
       !(finalHmacVisible || finalLargeBlobVisible) ? 'YES' : 'NO');
   });
 
@@ -488,16 +488,16 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     await page.waitForTimeout(3000);
 
     // Check logs for Ed25519 DID mentions
-    const hasEd25519Log = consoleLogs.some(log => 
-      log.includes('Ed25519') || 
+    const hasEd25519Log = consoleLogs.some(log =>
+      log.includes('Ed25519') ||
       log.includes('ed25519') ||
       log.includes('z6Mk')
     );
 
     console.log('✅ Ed25519 DID logging:', hasEd25519Log ? 'FOUND' : 'NOT FOUND');
-    
+
     if (hasEd25519Log) {
-      const relevantLog = consoleLogs.find(log => 
+      const relevantLog = consoleLogs.find(log =>
         log.includes('Ed25519') || log.includes('ed25519') || log.includes('z6Mk')
       );
       console.log('   Log sample:', relevantLog?.substring(0, 100));
@@ -531,7 +531,7 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     await page.waitForTimeout(3000);
 
     // Check logs for Ed25519 key type
-    const hasEd25519KeyLog = consoleLogs.some(log => 
+    const hasEd25519KeyLog = consoleLogs.some(log =>
       log.includes('keystoreKeyType: Ed25519') ||
       log.includes('type: Ed25519') ||
       log.includes('Ed25519')

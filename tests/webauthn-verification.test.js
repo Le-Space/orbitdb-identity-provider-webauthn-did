@@ -11,19 +11,20 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
       };
 
       const mockCredentialId = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
-      const mockPublicKey = {
-        x: new Uint8Array([
-          0x1f, 0x2d, 0x3a, 0x4b, 0x5c, 0x6d, 0x7e, 0x8f, 0x90, 0xa1, 0xb2, 0xc3, 0xd4, 0xe5, 0xf6, 0x07,
-          0x18, 0x29, 0x3a, 0x4b, 0x5c, 0x6d, 0x7e, 0x8f, 0x90, 0xa1, 0xb2, 0xc3, 0xd4, 0xe5, 0xf6, 0x07
-        ]),
-        y: new Uint8Array([
-          0xa1, 0xb2, 0xc3, 0xd4, 0xe5, 0xf6, 0x07, 0x18, 0x29, 0x3a, 0x4b, 0x5c, 0x6d, 0x7e, 0x8f, 0x90,
-          0xf1, 0xe2, 0xd3, 0xc4, 0xb5, 0xa6, 0x97, 0x88, 0x79, 0x6a, 0x5b, 0x4c, 0x3d, 0x2e, 0x1f, 0x00
-        ])
-      };
+      // Mock public key available for future use if needed
+      // const mockPublicKey = {
+      //   x: new Uint8Array([
+      //     0x1f, 0x2d, 0x3a, 0x4b, 0x5c, 0x6d, 0x7e, 0x8f, 0x90, 0xa1, 0xb2, 0xc3, 0xd4, 0xe5, 0xf6, 0x07,
+      //     0x18, 0x29, 0x3a, 0x4b, 0x5c, 0x6d, 0x7e, 0x8f, 0x90, 0xa1, 0xb2, 0xc3, 0xd4, 0xe5, 0xf6, 0x07
+      //   ]),
+      //   y: new Uint8Array([
+      //     0xa1, 0xb2, 0xc3, 0xd4, 0xe5, 0xf6, 0x07, 0x18, 0x29, 0x3a, 0x4b, 0x5c, 0x6d, 0x7e, 0x8f, 0x90,
+      //     0xf1, 0xe2, 0xd3, 0xc4, 0xb5, 0xa6, 0x97, 0x88, 0x79, 0x6a, 0x5b, 0x4c, 0x3d, 0x2e, 0x1f, 0x00
+      //   ])
+      // };
 
       window.navigator.credentials = {
-        create: async (options) => ({
+        create: async () => ({
           rawId: mockCredentialId,
           response: {
             attestationObject: new Uint8Array(300),
@@ -40,7 +41,7 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
             authenticatorData: new Uint8Array(37),
             clientDataJSON: new TextEncoder().encode(JSON.stringify({
               type: 'webauthn.get',
-              challenge: 'mock-challenge', 
+              challenge: 'mock-challenge',
               origin: window.location.origin
             })),
             signature: new Uint8Array(64)
@@ -51,29 +52,29 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
 
     // Create empty page and inject verification functions directly
     await page.setContent('<!DOCTYPE html><html><head><title>Test</title></head><body></body></html>');
-    
+
     // Inject verification functions directly into page context
     await page.evaluate(() => {
       // Inline the verification functions for testing to avoid import issues
       window.verifyDatabaseUpdate = async function(database, identityHash, expectedWebAuthnDID) {
         console.log('🔄 Verifying database update event');
-        
+
         const databaseIdentity = database.identity;
         const identityMatches = databaseIdentity?.id === expectedWebAuthnDID;
-        
+
         let hasWriteAccess = false;
         try {
           const writePermissions = database.access?.write || [];
-          hasWriteAccess = writePermissions.includes(expectedWebAuthnDID) || 
+          hasWriteAccess = writePermissions.includes(expectedWebAuthnDID) ||
                            writePermissions.includes('*') ||
                            writePermissions.length === 0;
         } catch (error) {
           console.warn('Could not check write permissions:', error.message);
           hasWriteAccess = true;
         }
-        
+
         const verificationSuccess = identityMatches && hasWriteAccess;
-        
+
         return {
           success: verificationSuccess,
           identityHash,
@@ -119,7 +120,7 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
           timestamp: Date.now()
         };
       };
-      
+
       window.moduleLoaded = true;
     });
   });
@@ -169,7 +170,7 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
       const did1 = 'did:key:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP';
       const did2 = 'did:key:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP';
       const did3 = 'did:key:z6MkqRYqQiSgvZQdnBytw86Qbs2ZWUkGv22od935YF4s8M7V';
-      
+
       return {
         identicalDIDs: window.compareWebAuthnDIDs(did1, did2),
         differentDIDs: window.compareWebAuthnDIDs(did1, did3),
@@ -187,7 +188,7 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
   test('should create verification result template', async ({ page }) => {
     const result = await page.evaluate(() => {
       const template = window.createVerificationResult();
-      
+
       return {
         hasRequiredFields: !!(
           template.hasOwnProperty('success') &&
@@ -230,7 +231,7 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
     const result = await page.evaluate(async () => {
       try {
         const webauthnDID = 'did:key:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP';
-        
+
         // Create mock database with matching identity
         const mockDatabase = {
           identity: {
@@ -241,13 +242,13 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
             write: [webauthnDID]
           }
         };
-        
+
         const verification = await window.verifyDatabaseUpdate(
-          mockDatabase, 
-          'mock-identity-hash', 
+          mockDatabase,
+          'mock-identity-hash',
           webauthnDID
         );
-        
+
         return {
           success: verification.success,
           method: verification.method,

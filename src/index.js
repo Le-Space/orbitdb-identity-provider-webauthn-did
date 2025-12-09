@@ -10,7 +10,6 @@ import { logger } from '@libp2p/logger';
 import * as KeystoreEncryption from './keystore-encryption.js';
 
 // Create loggers for different components
-const log = logger('orbitdb-identity-provider-webauthn-did');
 const webauthnLog = logger('orbitdb-identity-provider-webauthn-did:webauthn');
 const identityLog = logger('orbitdb-identity-provider-webauthn-did:identity');
 
@@ -58,9 +57,9 @@ export class WebAuthnDIDProvider {
    * @param {string} options.keystoreEncryptionMethod - 'largeBlob' or 'hmac-secret'
    */
   static async createCredential(options = {}) {
-    const { 
-      userId, 
-      displayName, 
+    const {
+      userId,
+      displayName,
       domain,
       encryptKeystore = false,
       keystoreEncryptionMethod = 'largeBlob'
@@ -115,7 +114,7 @@ export class WebAuthnDIDProvider {
     // Add encryption extension if requested
     if (encryptKeystore) {
       webauthnLog('Adding encryption extension: %s', keystoreEncryptionMethod);
-      
+
       if (keystoreEncryptionMethod === 'hmac-secret') {
         credentialOptions.publicKey = KeystoreEncryption.addHmacSecretToCredentialOptions(
           credentialOptions.publicKey
@@ -505,9 +504,9 @@ export class WebAuthnDIDProvider {
  * OrbitDB Identity Provider that uses WebAuthn
  */
 export class OrbitDBWebAuthnIdentityProvider {
-  constructor({ 
-    webauthnCredential, 
-    useKeystoreDID = false, 
+  constructor({
+    webauthnCredential,
+    useKeystoreDID = false,
     keystore = null,
     keystoreKeyType = 'secp256k1',
     encryptKeystore = false,
@@ -530,7 +529,7 @@ export class OrbitDBWebAuthnIdentityProvider {
 
   async getId() {
     identityLog('getId() called');
-    
+
     // If useKeystoreDID flag is set, create Ed25519 DID from keystore
     if (this.useKeystoreDID && this.keystore) {
       identityLog('Using Ed25519 DID from keystore');
@@ -538,7 +537,7 @@ export class OrbitDBWebAuthnIdentityProvider {
       identityLog('getId() returning Ed25519 DID: %s', did.substring(0, 32) + '...');
       return did;
     }
-    
+
     // Default: Return P-256 DID from WebAuthn credential
     const did = await WebAuthnDIDProvider.createDID(this.credential);
     identityLog('getId() returning P-256 DID: %s', did.substring(0, 32) + '...');
@@ -563,7 +562,7 @@ export class OrbitDBWebAuthnIdentityProvider {
       // Get the keystore's identity ID (this will be used to retrieve the key)
       // We'll use the WebAuthn DID as the identity ID to get/create the keystore key
       const identityId = await WebAuthnDIDProvider.createDID(this.credential);
-      
+
       // Get or create the Ed25519 key from keystore
       // Try getKey first, if it doesn't exist, createKey will create it
       let keystoreKey = await this.keystore.getKey(identityId);
@@ -571,21 +570,21 @@ export class OrbitDBWebAuthnIdentityProvider {
         identityLog('Key not found, creating new key for: %s with type: %s', identityId.substring(0, 32) + '...', this.keystoreKeyType);
         keystoreKey = await this.keystore.createKey(identityId, this.keystoreKeyType);
       }
-      
+
       identityLog('Keystore key obtained, type: %s, keys: %o', typeof keystoreKey, Object.keys(keystoreKey || {}));
-      
+
       // The keystore key should have a public property with marshal method
       // But it seems this isn't available immediately after creation
       // Let's try to extract the public key bytes directly
       let publicKeyBytes;
-      
+
       // Extract public key bytes from the keystore key
       // OrbitDB uses @libp2p/crypto keys which have different structures
       if (keystoreKey && keystoreKey.publicKey) {
         // Modern libp2p-crypto format - has publicKey property
         const pubKey = keystoreKey.publicKey;
         identityLog('Found publicKey property, type: %s', pubKey.constructor.name);
-        
+
         // Try to get raw bytes from the public key
         if (pubKey.raw) {
           publicKeyBytes = pubKey.raw;
@@ -612,18 +611,18 @@ export class OrbitDBWebAuthnIdentityProvider {
         identityLog.error('Cannot extract public key from keystoreKey: %o', keystoreKey);
         throw new Error('Unable to extract public key from keystore key');
       }
-      
+
       // Note: secp256k1 public keys are 33 or 65 bytes (compressed/uncompressed)
       // Ed25519 public keys are 32 bytes
       // We need to handle both
       identityLog('Public key extracted: %d bytes, key type: %s', publicKeyBytes.length, keystoreKey.type);
-      
+
       if (!publicKeyBytes || publicKeyBytes.length < 32) {
         throw new Error(`Invalid public key length: ${publicKeyBytes ? publicKeyBytes.length : 0} bytes`);
       }
-      
+
       identityLog('Successfully extracted public key: %d bytes, type: %s', publicKeyBytes.length, keystoreKey.type);
-      
+
       // Determine the correct multicodec based on key type
       // secp256k1 multicodec code (0xe7) or Ed25519 (0xed)
       let multicodec;
@@ -636,7 +635,7 @@ export class OrbitDBWebAuthnIdentityProvider {
       } else {
         throw new Error(`Unsupported key type: ${keystoreKey.type}`);
       }
-      
+
       const codecLength = varint.encodingLength(multicodec);
       const codecBytes = new Uint8Array(codecLength);
       varint.encodeTo(multicodec, codecBytes, 0);
@@ -675,21 +674,21 @@ export class OrbitDBWebAuthnIdentityProvider {
       // Generate Ed25519 keypair (OrbitDB will generate this, we just encrypt it)
       // For now, we'll wait until OrbitDB creates the key, then encrypt it
       // This is a placeholder for the actual implementation
-      
+
       // Generate secret key
       const sk = KeystoreEncryption.generateSecretKey();
-      
+
       // Get keystore private key (will be generated by OrbitDB)
       const identityId = await WebAuthnDIDProvider.createDID(this.credential);
       const keystoreKey = await this.keystore.getKey(identityId) || await this.keystore.createKey(identityId);
-      
+
       // Export and encrypt the private key
       const privateKeyBytes = keystoreKey.marshal();
       const { ciphertext, iv } = await KeystoreEncryption.encryptWithAESGCM(privateKeyBytes, sk);
-      
+
       // Store SK in WebAuthn or wrap it
       let encryptedData;
-      
+
       if (this.keystoreEncryptionMethod === 'largeBlob') {
         // For largeBlob, we need to store SK during next authentication
         // Store it temporarily for wrapping
@@ -708,7 +707,7 @@ export class OrbitDBWebAuthnIdentityProvider {
           sk,
           window.location.hostname
         );
-        
+
         encryptedData = {
           ciphertext,
           iv,
@@ -720,12 +719,12 @@ export class OrbitDBWebAuthnIdentityProvider {
           encryptionMethod: 'hmac-secret'
         };
       }
-      
+
       // Store encrypted keystore
       await KeystoreEncryption.storeEncryptedKeystore(encryptedData, this.credential.credentialId);
-      
+
       identityLog('Encrypted keystore created and stored successfully');
-      
+
     } catch (error) {
       identityLog.error('Failed to create encrypted keystore: %s', error.message);
       throw new Error(`Failed to create encrypted keystore: ${error.message}`);
@@ -746,9 +745,9 @@ export class OrbitDBWebAuthnIdentityProvider {
     try {
       // Load encrypted keystore
       const encryptedData = await KeystoreEncryption.loadEncryptedKeystore(this.credential.credentialId);
-      
+
       let sk;
-      
+
       if (encryptedData.encryptionMethod === 'largeBlob') {
         // Retrieve SK from largeBlob
         sk = await KeystoreEncryption.retrieveSKFromLargeBlob(
@@ -765,24 +764,24 @@ export class OrbitDBWebAuthnIdentityProvider {
           window.location.hostname
         );
       }
-      
+
       // Decrypt keystore private key
       const privateKeyBytes = await KeystoreEncryption.decryptWithAESGCM(
         encryptedData.ciphertext,
         sk,
         encryptedData.iv
       );
-      
+
       // Store unlocked keypair in memory for session
       this.unlockedKeypair = {
         privateKey: privateKeyBytes,
         publicKey: encryptedData.publicKey
       };
-      
+
       identityLog('Encrypted keystore unlocked successfully');
-      
+
       return this.unlockedKeypair;
-      
+
     } catch (error) {
       identityLog.error('Failed to unlock encrypted keystore: %s', error.message);
       throw new Error(`Failed to unlock encrypted keystore: ${error.message}`);
@@ -792,14 +791,14 @@ export class OrbitDBWebAuthnIdentityProvider {
   signIdentity(data) {
     const dataLength = typeof data === 'string' ? data.length : data.byteLength;
     identityLog('signIdentity() called with data length: %d', dataLength);
-    
+
     // If using encrypted keystore and it's unlocked, use unlocked key
     if (this.encryptKeystore && this.unlockedKeypair) {
       identityLog('Using unlocked encrypted keystore for signing');
       // TODO: Implement signing with unlocked keypair
       // For now, fall back to WebAuthn
     }
-    
+
     return this.webauthnProvider.sign(data);
   }
 
@@ -812,27 +811,27 @@ export class OrbitDBWebAuthnIdentityProvider {
    * Create OrbitDB identity using WebAuthn
    */
   static async createIdentity(options) {
-    const { 
-      webauthnCredential, 
-      useKeystoreDID = false, 
+    const {
+      webauthnCredential,
+      useKeystoreDID = false,
       keystore = null,
       keystoreKeyType = 'secp256k1',
       encryptKeystore = false,
       keystoreEncryptionMethod = 'largeBlob'
     } = options;
 
-    identityLog('createIdentity() called with useKeystoreDID: %s, keystoreKeyType: %s, encryptKeystore: %s', 
+    identityLog('createIdentity() called with useKeystoreDID: %s, keystoreKeyType: %s, encryptKeystore: %s',
       useKeystoreDID, keystoreKeyType, encryptKeystore);
 
-    const provider = new OrbitDBWebAuthnIdentityProvider({ 
-      webauthnCredential, 
+    const provider = new OrbitDBWebAuthnIdentityProvider({
+      webauthnCredential,
       useKeystoreDID,
       keystore,
       keystoreKeyType,
       encryptKeystore,
       keystoreEncryptionMethod
     });
-    
+
     // If encryption is enabled, create and unlock encrypted keystore
     if (encryptKeystore && keystore) {
       try {
@@ -844,7 +843,7 @@ export class OrbitDBWebAuthnIdentityProvider {
         // Continue anyway - encryption is optional
       }
     }
-    
+
     const id = await provider.getId();
 
     identityLog('Identity created successfully: %o', {
@@ -875,7 +874,7 @@ export class OrbitDBWebAuthnIdentityProvider {
  * WebAuthn Identity Provider Function for OrbitDB
  * This follows the same pattern as OrbitDBIdentityProviderDID
  * Returns a function that returns a promise resolving to the provider instance
- * 
+ *
  * @param {Object} options - Configuration options
  * @param {Object} options.webauthnCredential - WebAuthn credential for authentication
  * @param {boolean} options.useKeystoreDID - If true, creates DID from keystore instead of P-256 DID from WebAuthn
