@@ -5,6 +5,7 @@
   "main": "src/index.js",
   "type": "module",
   "scripts": {
+    "postinstall": "patch-package",
     "test": "playwright test tests/webauthn-focused.test.js --project=chromium",
     "test:all": "playwright test",
     "test:headed": "playwright test tests/webauthn-focused.test.js --headed --project=chromium",
@@ -69,7 +70,8 @@
     "eslint": "^9.0.0",
     "helia": "^5.0.0",
     "libp2p": "^2.0.0",
-    "mocha": "^10.0.0"
+    "mocha": "^10.0.0",
+    "patch-package": "^8.0.1"
   },
   "engines": {
     "node": ">=18.0.0"
