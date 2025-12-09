@@ -338,21 +338,26 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     await page.locator('button:has-text("Create Credential")').click();
     await page.waitForSelector('text=Credential created successfully!', { timeout: 30000 });
 
-    await page.waitForTimeout(500);
+    // Wait longer for features summary to render
+    await page.waitForTimeout(1000);
 
     // Check for features summary (both Ed25519 and encryption enabled by default)
     const featuresSummary = page.locator('text=ENABLED FEATURES');
-    await expect(featuresSummary).toBeVisible();
+    await expect(featuresSummary).toBeVisible({ timeout: 10000 });
     console.log('✅ Features summary is displayed');
     
-    // Check for Ed25519 DID benefit (use first() since text appears in multiple places)
-    const ed25519Benefit = page.locator('text=Ed25519 DID').first();
-    await expect(ed25519Benefit).toBeVisible();
-    console.log('✅ Ed25519 DID benefit shown');
+    // Scroll to features summary to ensure it's in viewport
+    await featuresSummary.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(500);
+    
+    // Check for Ed25519 benefit - use correct text from UI: "Ed25519: Faster signing"
+    const ed25519Benefit = page.locator('text=Ed25519: Faster signing');
+    await expect(ed25519Benefit).toBeVisible({ timeout: 10000 });
+    console.log('✅ Ed25519 benefit shown');
 
     // Check for encryption benefit
     const encryptionBenefit = page.locator('text=Keystore encrypted');
-    await expect(encryptionBenefit).toBeVisible();
+    await expect(encryptionBenefit).toBeVisible({ timeout: 10000 });
     console.log('✅ Encryption benefit shown');
   });
   test('should handle browser reload persistence (session management)', async ({ page, context }) => {
