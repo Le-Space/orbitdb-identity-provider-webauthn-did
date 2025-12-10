@@ -19,6 +19,21 @@
    - **Mobile PWA**: Medium risk - app sandbox provides isolation
    - **Capacitor/Native**: Better isolation, but vulnerable if device is rooted/jailbroken
 
+4. **Comparison with Password-Based Security**:
+
+   WebAuthn encrypted keystore vs standard password protection:
+   
+   | Attack Vector | Password | WebAuthn Encryption |
+   |--------------|----------|--------------------|
+   | Keyloggers | ❌ Vulnerable | ✅ Immune |
+   | Phishing | ❌ Vulnerable | ✅ Immune |
+   | Weak passwords | ❌ User-dependent | ✅ Immune |
+   | Shoulder surfing | ❌ Vulnerable | ✅ Immune |
+   | XSS during session | ❌ Vulnerable | ❌ Vulnerable |
+   | Memory dumps | ❌ Vulnerable | ❌ Vulnerable |
+   
+   **WebAuthn encryption eliminates most password-related attacks** but shares in-memory vulnerability during active sessions.
+
 **Recommendations**:
 
 - **Minimum**: Use `encryptKeystore: true` for production
