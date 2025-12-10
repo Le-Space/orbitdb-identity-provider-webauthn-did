@@ -12,14 +12,17 @@
      - Memory dumps/debugging while session is active
      - XSS attacks that execute during active session
      - Compromised JavaScript environment
-   - **WebAuthn P-256 keys**: True hardware security - keys never leave secure element, but slower for database operations
+   - **WebAuthn P-256 keys**: True hardware security - keys never leave secure element
 
 3. **Platform-Specific Risks**:
    - **Browser**: Most vulnerable - XSS, extensions, DevTools access
-   - **Mobile PWA**: Medium risk - app sandbox provides some isolation
+   - **Mobile PWA**: Medium risk - app sandbox provides isolation
    - **Capacitor/Native**: Better isolation, but vulnerable if device is rooted/jailbroken
 
-**Recommendation**: Use `encryptKeystore: true` as minimum for production. Consider WebAuthn P-256 DIDs for highest security (accept slower performance).
+**Recommendations**:
+- **Minimum**: Use `encryptKeystore: true` for production
+- **Higher security**: Use WebAuthn P-256 DIDs (accept slower performance)
+- **Best practice**: Combine browser + mobile with custom OrbitDB AccessController - let browser identity propose changes, mobile identity (more secure) has final write permission. This significantly improves security against browser-based attacks.
 
 🚀 **[Try the Live Demo](https://w3s.link/ipfs/bafybeibrrqn27xgvq6kzxwlyrfdomgfvlsoojfg3odba755f3pezwqpdza)**
 
