@@ -12,7 +12,7 @@
      - Memory dumps/debugging while session is active
      - XSS attacks that execute during active session
      - Compromised JavaScript environment
-   - **WebAuthn P-256 keys**: True hardware security - keys never leave secure element
+   - **WebAuthn P-256 keys**: True hardware security - keys never leave secure element, but **not supported by OrbitDB keystore** (only for identity, requires biometric per operation)
 
 3. **Platform-Specific Risks**:
    - **Browser**: Most vulnerable - XSS, extensions, DevTools access
@@ -37,8 +37,9 @@
 **Recommendations**:
 
 - **Minimum**: Use `encryptKeystore: true` for production
-- **Higher security**: Use WebAuthn P-256 DIDs
 - **Best practice**: Combine browser + mobile with custom OrbitDB AccessController - let browser identity propose changes, mobile identity (more secure) has final write permission. This significantly improves security against browser-based attacks.
+
+**Note**: P-256 WebAuthn keys provide maximum security but require biometric authentication for every database operation (slow). OrbitDB keystore doesn't support P-256, only Ed25519/secp256k1.
 
 🚀 **[Try the Live Demo](https://w3s.link/ipfs/bafybeibrrqn27xgvq6kzxwlyrfdomgfvlsoojfg3odba755f3pezwqpdza)**
 
@@ -73,7 +74,7 @@ A hardware-secured identity provider for OrbitDB using WebAuthn authentication. 
 - 🌐 **Cross-platform compatibility** - Works across modern browsers and platforms
 - 📱 **Biometric authentication** - Seamless user experience with fingerprint, face recognition, or PIN
 - 🔒 **Quantum-resistant** - P-256 elliptic curve cryptography with hardware backing
-- 🆔 **Flexible DID options** - P-256 DIDs from WebAuthn OR Ed25519 DIDs from keystore
+- 🆔 **Flexible DID options** - P-256 DIDs from WebAuthn (identity only) OR Ed25519/secp256k1 DIDs from keystore (database operations)
 
 ## Installation
 
