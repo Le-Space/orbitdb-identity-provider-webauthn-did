@@ -20,8 +20,9 @@
    - **Capacitor/Native**: Better isolation, but vulnerable if device is rooted/jailbroken
 
 **Recommendations**:
+
 - **Minimum**: Use `encryptKeystore: true` for production
-- **Higher security**: Use WebAuthn P-256 DIDs (accept slower performance)
+- **Higher security**: Use WebAuthn P-256 DIDs
 - **Best practice**: Combine browser + mobile with custom OrbitDB AccessController - let browser identity propose changes, mobile identity (more secure) has final write permission. This significantly improves security against browser-based attacks.
 
 🚀 **[Try the Live Demo](https://w3s.link/ipfs/bafybeibrrqn27xgvq6kzxwlyrfdomgfvlsoojfg3odba755f3pezwqpdza)**
@@ -58,7 +59,6 @@ A hardware-secured identity provider for OrbitDB using WebAuthn authentication. 
 - 📱 **Biometric authentication** - Seamless user experience with fingerprint, face recognition, or PIN
 - 🔒 **Quantum-resistant** - P-256 elliptic curve cryptography with hardware backing
 - 🆔 **Flexible DID options** - P-256 DIDs from WebAuthn OR Ed25519 DIDs from keystore
-- 🔑 **UCAN-compatible** - Ed25519 keystore DID option for better UCAN integration
 
 ## Installation
 
