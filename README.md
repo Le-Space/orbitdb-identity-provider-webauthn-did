@@ -4,7 +4,7 @@
 
 ⚠️ **SECURITY WARNINGS**:
 
-1. **No Security Audit**: This library has not undergone formal security audit. Use in production at your own risk.
+1. **No Security Audit**: This library has not undergone formal security audit. Don't use in production without audit.
 
 2. **Keystore Security Levels**:
    - **Without encryption** (`encryptKeystore: false`): Keystore stored in **plaintext** in IndexedDB - vulnerable to XSS, malicious extensions, DevTools, device theft
