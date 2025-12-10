@@ -2,10 +2,28 @@
 
 [![Tests](https://github.com/le-space/orbitdb-identity-provider-webauthn-did/workflows/Tests/badge.svg)](https://github.com/le-space/orbitdb-identity-provider-webauthn-did/actions/workflows/test.yml) [![CI/CD](https://github.com/le-space/orbitdb-identity-provider-webauthn-did/workflows/CI%2FCD%20-%20Test%20and%20Publish/badge.svg)](https://github.com/le-space/orbitdb-identity-provider-webauthn-did/actions/workflows/ci-cd.yml)
 
-⚠️ **SECURITY AUDIT WARNING**: This library has not undergone a formal security audit. While it implements industry-standard WebAuthn and cryptographic protocols, use in production environments is at your own risk. We recommend thorough testing and security review before deploying in critical applications.
+⚠️ **SECURITY WARNINGS**:
 
-🚀 **[Try the Live Demo](https://w3s.link/ipfs/bafybeibrrqn27xgvq6kzxwlyrfdomgfvlsoojfg3odba755f3pezwqpdza)** - Interactive WebAuthn demo with biometric authentication
-A hardware-secured identity provider for OrbitDB using WebAuthn authentication. This provider enables hardware-secured database access (Ledger, Yubikey, etc.) where private keys never leave the secure hardware element and biometric authentication via Passkey.
+1. **No Security Audit**: This library has not undergone formal security audit. Use in production at your own risk.
+
+2. **Keystore Security Levels**:
+   - **Without encryption** (`encryptKeystore: false`): Keystore stored in **plaintext** in IndexedDB - vulnerable to XSS, malicious extensions, DevTools, device theft
+   - **With encryption** (`encryptKeystore: true`): Keystore encrypted at rest, but **decrypted key exists in memory during session** - reduces attack surface but still vulnerable to:
+     - Memory dumps/debugging while session is active
+     - XSS attacks that execute during active session
+     - Compromised JavaScript environment
+   - **WebAuthn P-256 keys**: True hardware security - keys never leave secure element, but slower for database operations
+
+3. **Platform-Specific Risks**:
+   - **Browser**: Most vulnerable - XSS, extensions, DevTools access
+   - **Mobile PWA**: Medium risk - app sandbox provides some isolation
+   - **Capacitor/Native**: Better isolation, but vulnerable if device is rooted/jailbroken
+
+**Recommendation**: Use `encryptKeystore: true` as minimum for production. Consider WebAuthn P-256 DIDs for highest security (accept slower performance).
+
+🚀 **[Try the Live Demo](https://w3s.link/ipfs/bafybeibrrqn27xgvq6kzxwlyrfdomgfvlsoojfg3odba755f3pezwqpdza)**
+
+A hardware-secured identity provider for OrbitDB using WebAuthn authentication. Supports hardware-secured database access (Ledger, Yubikey) and biometric authentication via Passkey.
 
 ## Table of Contents
 
