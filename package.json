@@ -5,6 +5,7 @@
   "main": "src/index.js",
   "type": "module",
   "scripts": {
+    "postinstall": "patch-package",
     "test": "playwright test tests/webauthn-focused.test.js --project=chromium",
     "test:all": "playwright test",
     "test:headed": "playwright test tests/webauthn-focused.test.js --headed --project=chromium",
@@ -15,8 +16,10 @@
     "test:verification": "playwright test tests/webauthn-verification.test.js --project=chromium",
     "test:ci": "playwright test tests/webauthn-verification.test.js --project=chromium --reporter=github",
     "test:logging": "DEBUG='orbitdb-identity-provider-webauthn-did*' playwright test tests/webauthn-logging-e2e.test.js --project=chromium --reporter=line",
-    "test:old": "mocha test/*.test.js",
-    "test:watch": "mocha test/*.test.js --watch",
+    "test:encrypted-keystore": "USE_ENCRYPTED_DEMO=true playwright test tests/ed25519-encrypted-keystore-e2e.test.js --project=chromium --reporter=line",
+    "test:encrypted-keystore-headed": "USE_ENCRYPTED_DEMO=true playwright test tests/ed25519-encrypted-keystore-e2e.test.js --headed --project=chromium",
+    "test:old": "mocha tests/webauthn-provider-old.test.js",
+    "test:watch": "mocha tests/webauthn-provider-old.test.js --watch",
     "test:full-flow": "npm run demo:setup && npm run test:focused",
     "lint": "eslint src/ tests/",
     "lint:fix": "eslint src/ tests/ --fix",
@@ -67,7 +70,8 @@
     "eslint": "^9.0.0",
     "helia": "^5.0.0",
     "libp2p": "^2.0.0",
-    "mocha": "^10.0.0"
+    "mocha": "^10.0.0",
+    "patch-package": "^8.0.1"
   },
   "engines": {
     "node": ">=18.0.0"

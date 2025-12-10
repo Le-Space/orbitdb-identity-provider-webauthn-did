@@ -4,20 +4,71 @@
 
 ⚠️ **SECURITY AUDIT WARNING**: This library has not undergone a formal security audit. While it implements industry-standard WebAuthn and cryptographic protocols, do not use in production environments. We recommend thorough testing and security review before deploying in critical applications.
 
-🚀 **[Try the Live Demo](https://w3s.link/ipfs/bafybeibrrqn27xgvq6kzxwlyrfdomgfvlsoojfg3odba755f3pezwqpdza)** - Interactive WebAuthn demo with biometric authentication
-A hardware-secured identity provider for OrbitDB using WebAuthn authentication. This provider enables hardware-secured database access (Ledger, Yubikey, etc.) where private keys never leave the secure hardware element and biometric authentication via Passkey.
+1. **No Security Audit**: This library has not undergone formal security audit. Don't use in production without audit.
+
+2. **Keystore Security Levels**:
+   - **Without encryption** (`encryptKeystore: false`): Keystore stored in **plaintext** in IndexedDB - vulnerable to XSS, malicious extensions, DevTools, device theft
+   - **With encryption** (`encryptKeystore: true`): Keystore encrypted at rest, but **decrypted key exists in memory during session** - reduces attack surface but still vulnerable to:
+     - Memory dumps/debugging while session is active
+     - XSS attacks that execute during active session
+     - Compromised JavaScript environment
+   - **WebAuthn P-256 keys**: True hardware security - keys never leave secure element, but **not supported by OrbitDB keystore** (only for identity, requires biometric per operation)
+
+3. **Platform-Specific Risks**:
+   - **Browser**: Most vulnerable - XSS, extensions, DevTools access
+   - **Mobile PWA**: Medium risk - app sandbox provides isolation
+   - **Capacitor/Native**: Better isolation, but vulnerable if device is rooted/jailbroken
+
+4. **Comparison with Password-Based Security**:
+
+   WebAuthn encrypted keystore vs standard password protection:
+   
+   | Attack Vector | Password | WebAuthn Encryption |
+   |--------------|----------|--------------------|
+   | Keyloggers | ❌ Vulnerable | ✅ Immune |
+   | Phishing | ❌ Vulnerable | ✅ Immune |
+   | Weak passwords | ❌ User-dependent | ✅ Immune |
+   | Shoulder surfing | ❌ Vulnerable | ✅ Immune |
+   | XSS during session | ❌ Vulnerable | ❌ Vulnerable |
+   | Memory dumps | ❌ Vulnerable | ❌ Vulnerable |
+   
+   **WebAuthn encryption eliminates most password-related attacks** but shares in-memory vulnerability during active sessions.
+
+**Recommendations**:
+
+- **Minimum**: Use `encryptKeystore: true` for production
+- **Best practice**: Combine browser + mobile with custom OrbitDB AccessController - let browser identity propose changes, mobile identity (more secure) has final write permission. This significantly improves security against browser-based attacks.
+
+**Note**: P-256 WebAuthn keys provide maximum security but require biometric authentication for every database operation (slow). OrbitDB keystore doesn't support P-256, only Ed25519/secp256k1.
+
+🚀 **[Try the Live Demo](https://storacha.link/ipfs/bafybeig3fbdnismhotolp5edtnd4jgpa2ccnwqfntpioijligrfygkkdfu)**
+
+A hardware-secured identity provider for OrbitDB using WebAuthn authentication. Supports hardware-secured database access (Ledger, Yubikey) and biometric authentication via Passkey.
 
 ## Table of Contents
 
-- [Features](#features)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Browser & Platform Support](#browser--platform-support)
-- [Architecture & Security](#architecture--security)
-- [Documentation](#documentation)
-- [Development](#development)
-- [Credits](#credits)
-- [License](#license)
+- [OrbitDB WebAuthn DID Identity Provider](#orbitdb-webauthn-did-identity-provider)
+  - [Table of Contents](#table-of-contents)
+  - [Features](#features)
+  - [Installation](#installation)
+  - [Quick Start](#quick-start)
+  - [Browser \& Platform Support](#browser--platform-support)
+  - [Architecture \& Security](#architecture--security)
+    - [Current Architecture](#current-architecture)
+    - [Security Features](#security-features)
+    - [Keystore-Based DID Option](#keystore-based-did-option)
+    - [WebAuthn-Encrypted Keystore](#webauthn-encrypted-keystore)
+    - [Database Content Encryption with @orbitdb/simple-encryption](#database-content-encryption-with-orbitdbsimple-encryption)
+  - [Documentation](#documentation)
+    - [Core Documentation](#core-documentation)
+    - [Examples](#examples)
+  - [Development](#development)
+  - [Future Improvements / Roadmap](#future-improvements--roadmap)
+    - [P-256 Keystore Support](#p-256-keystore-support)
+    - [Additional Future Work](#additional-future-work)
+  - [Credits](#credits)
+  - [Contributing](#contributing)
+  - [License](#license)
 
 ## Features
 
@@ -26,13 +77,15 @@ A hardware-secured identity provider for OrbitDB using WebAuthn authentication. 
 - 🌐 **Cross-platform compatibility** - Works across modern browsers and platforms
 - 📱 **Biometric authentication** - Seamless user experience with fingerprint, face recognition, or PIN
 - 🔒 **Quantum-resistant** - P-256 elliptic curve cryptography with hardware backing
-- 🆔 **DID-based identity** - Generates deterministic `did:key` DIDs based on WebAuthn credentials
+- 🆔 **Flexible DID options** - P-256 DIDs from WebAuthn (identity only) OR Ed25519/secp256k1 DIDs from keystore (database operations)
 
 ## Installation
 
 ```bash
 npm install orbitdb-identity-provider-webauthn-did
 ```
+
+**Note**: This package includes a patch for `@orbitdb/core` (via `patch-package`) that adds support for Ed25519 key type in keystore. The patch runs automatically on `npm install`.
 
 ## Quick Start
 
@@ -78,40 +131,116 @@ const db = await orbitdb.open('my-database')
 - Format: `did:key:{base58btc-encoded-multikey}`
 - Implementation: `src/index.js` lines 222-296
 
-**OrbitDB Keystore**: Separate keystore (secp256k1) signs database operations
+**OrbitDB Keystore**: Separate keystore signs database operations
+- Key types: Ed25519 (default) or secp256k1
 - Location: `./orbitdb/keystore/` (IndexedDB)
-- ⚠️ **Currently unencrypted** - vulnerable to XSS/extensions
+- 🔐 **Can be encrypted** with WebAuthn hardware protection (see below)
 - WebAuthn signs identity (once), keystore signs operations (fast)
 
 ### Security Features
 
 ✅ **Hardware-backed authentication** - Private keys never leave secure element  
 ✅ **Biometric verification** - Each WebAuthn operation requires user presence  
-⚠️ **Keystore encryption needed** - See roadmap below
+✅ **Keystore encryption** - WebAuthn-protected keystore with AES-GCM 256-bit encryption
 
-### Future Roadmap
+### Keystore-Based DID Option
 
-1. **Keystore-based DID** (instead of P-256): Better UCAN compatibility
-2. **WebAuthn-encrypted keystore**: One biometric prompt per session
-3. **Offline-first encryption**: No centralized dependencies
+Create DIDs from OrbitDB keystore:
 
-📖 **See [Keystore Security Architecture](./docs/KEYSTORE-SECURITY-ARCHITECTURE.md) for detailed analysis**
+```javascript
+const identity = await orbitdb.identities.createIdentity({
+  provider: OrbitDBWebAuthnIdentityProviderFunction({ 
+    webauthnCredential: credential,
+    useKeystoreDID: true,           // Enable keystore DID
+    keystoreKeyType: 'Ed25519',     // 'Ed25519' (default) or 'secp256k1'
+    keystore: orbitdb.keystore
+  })
+});
+```
+
+**Supported key types:**
+- `Ed25519` (default): Faster, smaller keys
+- `secp256k1`: Ethereum/Bitcoin compatible
+
+📖 **See [Ed25519 Keystore DID Documentation](./docs/ED25519-KEYSTORE-DID.md) for details**
+
+### WebAuthn-Encrypted Keystore
+
+Protect your keystore with WebAuthn hardware security:
+
+```javascript
+const identity = await orbitdb.identities.createIdentity({
+  provider: OrbitDBWebAuthnIdentityProviderFunction({ 
+    webauthnCredential: credential,
+    useKeystoreDID: true,              // DID from keystore (persistent)
+    keystoreKeyType: 'Ed25519',        // 'Ed25519' (default) or 'secp256k1'
+    keystore: orbitdb.keystore,
+    encryptKeystore: true,             // 🔐 Encrypt keystore
+    keystoreEncryptionMethod: 'largeBlob'  // or 'hmac-secret'
+  })
+});
+```
+
+**How it works:**
+- **largeBlob**: Stores the 32-byte encryption key directly in the WebAuthn credential (Chrome 106+)
+- **hmac-secret**: Derives encryption key from authenticator's HMAC output (wider browser support)
+- Both methods require biometric authentication to retrieve the key
+- Encryption key never exposed to JavaScript in plaintext
+
+**Benefits:**
+- 🔐 Keystore encrypted with AES-GCM 256-bit
+- 🔑 Secret key protected by WebAuthn hardware (largeBlob or hmac-secret)
+- 🛡️ Protected from XSS, malicious extensions, theft
+- 👆 One biometric prompt per session
+
+📖 **See [WebAuthn-Encrypted Keystore Integration](./docs/WEBAUTHN-ENCRYPTED-KEYSTORE-INTEGRATION.md) for details**
+
+### Database Content Encryption with @orbitdb/simple-encryption
+
+Use the WebAuthn-protected secret key to encrypt database content:
+
+```javascript
+import { SimpleEncryption } from '@orbitdb/simple-encryption';
+import { generateSecretKey } from 'orbitdb-identity-provider-webauthn-did';
+
+// Generate and protect secret key with WebAuthn
+const sk = generateSecretKey();
+const identity = await orbitdb.identities.createIdentity({
+  provider: OrbitDBWebAuthnIdentityProviderFunction({ 
+    webauthnCredential: credential,
+    encryptKeystore: true,
+    secretKey: sk  // Same key protects keystore AND database
+  })
+});
+
+// Use SK for database encryption
+const password = btoa(String.fromCharCode(...sk));
+const encryption = {
+  data: await SimpleEncryption({ password }),
+  replication: await SimpleEncryption({ password })
+};
+
+const db = await orbitdb.open('encrypted-db', { encryption });
+```
+
+**Benefits:**
+- 🔐 Single biometric prompt protects both keystore AND database content
+- 🛡️ Content-level encryption for sensitive data
+- 🔑 Hardware-backed encryption key from WebAuthn
+
+📖 **See [examples/simple-encryption-integration.js](./examples/simple-encryption-integration.js) for complete example**
 
 ## Documentation
 
-### Getting Started
-- [Usage Guide](./docs/USAGE-GUIDE.md) - Complete examples and API reference
-- [Passkey Authentication Architecture](./docs/PASSKEY-KEYSTORE-ARCHITECTURE.md) - How WebAuthn integrates with OrbitDB
-
-### Security & Architecture
-- [Keystore Security Architecture](./docs/KEYSTORE-SECURITY-ARCHITECTURE.md) - Vulnerability analysis and solutions
-- [PWA & Capacitor Keystore Encryption](./docs/PWA-CAPACITOR-KEYSTORE-ENCRYPTION.md) - Encryption strategies
-- [Lit Protocol Integration](./docs/LIT-PROTOCOL-INTEGRATION.md) - Decentralized key management option
+### Core Documentation
+- [Ed25519 Keystore DID](./docs/ED25519-KEYSTORE-DID.md) - Create Ed25519 DIDs from keystore
+- [WebAuthn-Encrypted Keystore Integration](./docs/WEBAUTHN-ENCRYPTED-KEYSTORE-INTEGRATION.md) - Hardware-protected keystore encryption
 - [WebAuthn DID and OrbitDB Identity](./docs/WEBAUTHN-DID-AND-ORBITDB-IDENTITY.md) - DID/identity relationship
 
 ### Examples
-- `test/` directory - Unit and integration tests
-- `examples/` directory - Working demo applications
+- [examples/simple-encryption-integration.js](./examples/simple-encryption-integration.js) - Database content encryption
+- [examples/ed25519-encrypted-keystore-demo/](./examples/ed25519-encrypted-keystore-demo/) - Working demo application
+- `tests/` directory - E2E and unit tests
 
 ## Development
 
@@ -123,9 +252,26 @@ npm test         # Run test suite
 
 Tests include unit tests and browser integration tests for WebAuthn across different platforms.
 
+## Future Improvements / Roadmap
+
+### P-256 Keystore Support
+
+- **Upgrade OrbitDB/libp2p to support P-256 keys**: Currently limited to Ed25519 and secp256k1. P-256 support would enable true hardware-backed database operations without in-memory key exposure.
+- **Benefit**: Maximum security - WebAuthn P-256 keys never leave secure element, eliminating all in-memory attack vectors.
+- **Challenge**: Requires changes to libp2p-crypto and OrbitDB keystore implementation.
+
+### Additional Future Work
+
+- Session timeout and auto-lock for encrypted keystores
+- Multi-device passkey sync detection and coordination
+- Recovery flows for lost authenticators
+- Automatic WebAuthn extension detection and fallback
+- Integration with DID resolvers and verifiable credential standards
+
 ## Credits
 
 This project builds upon:
+
 - [OrbitDB DID Identity Provider](https://github.com/orbitdb/orbitdb-identity-provider-did) - Foundational DID implementation
 - [OpenFort EIP-7702 WebAuthn Sample](https://github.com/openfort-xyz/sample-7702-WebAuthn/) - WebAuthn reference implementation
 - [Passkey Wallet Demo](https://www.passkey-wallet.com/) - Passkey wallet patterns

@@ -31,18 +31,38 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
       
-      - name: Install demo dependencies
+      - name: Install demo dependencies (webauthn-todo-demo)
         run: |
           cd examples/webauthn-todo-demo
           npm ci
       
-      - name: Build demo application
+      - name: Build demo application (webauthn-todo-demo)
         run: |
           cd examples/webauthn-todo-demo
           npm run build
       
-      - name: Run WebAuthn tests
+      - name: Install demo dependencies (ed25519-encrypted-keystore-demo)
+        run: |
+          cd examples/ed25519-encrypted-keystore-demo
+          npm ci
+      
+      - name: Build demo application (ed25519-encrypted-keystore-demo)
+        run: |
+          cd examples/ed25519-encrypted-keystore-demo
+          npm run build
+      
+      - name: Run WebAuthn focused tests
         run: npx playwright test tests/webauthn-focused.test.js --project=chromium --reporter=github
+        env:
+          CI: true
+      
+      - name: Run Ed25519 Encrypted Keystore E2E tests
+        run: USE_ENCRYPTED_DEMO=true npx playwright test tests/ed25519-encrypted-keystore-e2e.test.js --project=chromium --reporter=github
+        env:
+          CI: true
+      
+      - name: Run Simple Encryption Integration tests
+        run: USE_ENCRYPTED_DEMO=true npx playwright test tests/simple-encryption-integration.test.js --project=chromium --reporter=github
         env:
           CI: true
       
