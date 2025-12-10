@@ -1,12 +1,10 @@
-# WebAuthn-Encrypted Keystore Integration Plan
+# WebAuthn-Encrypted Keystore
 
-## Overview
+Protect OrbitDB keystores with hardware-backed WebAuthn encryption using `largeBlob` or `hmac-secret` extensions.
 
-This document outlines the integration of **Passkey-Protected OrbitDB Identity** into the existing WebAuthn DID provider. This implements the architecture described in the keystore encryption solution using WebAuthn `largeBlob` or `hmac-secret` extensions.
+## Architecture
 
-## Current vs Proposed Architecture
-
-### Current Architecture (What We Have)
+### Without Encryption
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -25,7 +23,7 @@ This document outlines the integration of **Passkey-Protected OrbitDB Identity**
 └─────────────────────────────────────────────────────────┘
 ```
 
-### Proposed Architecture (With Encryption)
+### With Encryption (Implemented)
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -55,97 +53,59 @@ This document outlines the integration of **Passkey-Protected OrbitDB Identity**
 └─────────────────────────────────────────────────────────┘
 ```
 
-## Integration Points
+## Usage
 
-### 1. Update `OrbitDBWebAuthnIdentityProvider` Constructor
-
-```javascript
-export class OrbitDBWebAuthnIdentityProvider {
-  constructor({ 
-    webauthnCredential, 
-    useKeystoreDID = false, 
-    keystore = null,
-    // NEW: Enable encrypted keystore
-    encryptKeystore = false,
-    // NEW: WebAuthn extension to use (largeBlob or hmac-secret)
-    keystoreEncryptionMethod = 'largeBlob'
-  }) {
-    this.credential = webauthnCredential;
-    this.webauthnProvider = new WebAuthnDIDProvider(webauthnCredential);
-    this.type = 'webauthn';
-    this.useKeystoreDID = useKeystoreDID;
-    this.keystore = keystore;
-    
-    // NEW: Encrypted keystore options
-    this.encryptKeystore = encryptKeystore;
-    this.keystoreEncryptionMethod = keystoreEncryptionMethod;
-  }
-}
-```
-
-### 2. Add Encryption/Decryption Methods
+### Basic Usage
 
 ```javascript
-/**
- * Generate and encrypt OrbitDB keystore using WebAuthn-protected secret
- */
-async function createEncryptedKeystore(webauthnCredential, keystoreEncryptionMethod) {
-  // 1. Generate Ed25519 keypair for OrbitDB
-  const keypair = await generateEd25519Keypair();
-  
-  // 2. Generate random AES-GCM 256-bit secret key (SK)
-  const sk = crypto.getRandomValues(new Uint8Array(32));
-  
-  // 3. Encrypt the OrbitDB private key with SK
-  const { ciphertext, iv } = await encryptPrivateKey(keypair.privateKey, sk);
-  
-  // 4. Store SK in WebAuthn credential
-  if (keystoreEncryptionMethod === 'largeBlob') {
-    await storeSKInLargeBlob(webauthnCredential, sk);
-  } else if (keystoreEncryptionMethod === 'hmac-secret') {
-    await wrapSKWithHmacSecret(webauthnCredential, sk);
-  }
-  
-  // 5. Store encrypted data locally
-  await storeEncryptedKeystore({
-    ciphertext,
-    iv,
-    credentialId: webauthnCredential.credentialId,
-    publicKey: keypair.publicKey
-  });
-  
-  return keypair.publicKey;
-}
+import { OrbitDBWebAuthnIdentityProviderFunction } from '@le-space/orbitdb-identity-provider-webauthn-did';
 
-/**
- * Unlock encrypted keystore using WebAuthn authentication
- */
-async function unlockEncryptedKeystore(webauthnCredential, keystoreEncryptionMethod) {
-  // 1. Load encrypted keystore from IndexedDB
-  const encrypted = await loadEncryptedKeystore(webauthnCredential.credentialId);
-  
-  // 2. Authenticate with WebAuthn to get SK
-  let sk;
-  if (keystoreEncryptionMethod === 'largeBlob') {
-    sk = await retrieveSKFromLargeBlob(webauthnCredential);
-  } else if (keystoreEncryptionMethod === 'hmac-secret') {
-    sk = await unwrapSKWithHmacSecret(webauthnCredential);
-  }
-  
-  // 3. Decrypt OrbitDB private key
-  const privateKey = await decryptPrivateKey(encrypted.ciphertext, sk, encrypted.iv);
-  
-  // 4. Return decrypted keypair
-  return {
-    privateKey,
-    publicKey: encrypted.publicKey
-  };
-}
+// Create identity with encrypted keystore
+const identity = await orbitdb.identities.createIdentity({
+  provider: OrbitDBWebAuthnIdentityProviderFunction({ 
+    webauthnCredential: credential,
+    useKeystoreDID: true,              // Use Ed25519 keystore DID
+    keystoreKeyType: 'Ed25519',        // 'Ed25519' or 'secp256k1'
+    keystore: orbitdb.keystore,
+    encryptKeystore: true,             // Enable encryption
+    keystoreEncryptionMethod: 'largeBlob'  // 'largeBlob' or 'hmac-secret'
+  })
+});
 ```
 
-### 3. Implement WebAuthn Extensions
+### Database Content Encryption
 
-#### Option A: largeBlob Extension
+Use the same secret key for both keystore and database content encryption:
+
+```javascript
+import { SimpleEncryption } from '@orbitdb/simple-encryption';
+import { generateSecretKey } from '@le-space/orbitdb-identity-provider-webauthn-did';
+
+const sk = generateSecretKey();
+const identity = await orbitdb.identities.createIdentity({
+  provider: OrbitDBWebAuthnIdentityProviderFunction({ 
+    webauthnCredential: credential,
+    encryptKeystore: true,
+    secretKey: sk
+  })
+});
+
+const password = btoa(String.fromCharCode(...sk));
+const encryption = {
+  data: await SimpleEncryption({ password }),
+  replication: await SimpleEncryption({ password })
+};
+
+const db = await orbitdb.open('encrypted-db', { encryption });
+```
+
+See [examples/simple-encryption-integration.js](../examples/simple-encryption-integration.js).
+
+## Implementation Details
+
+### WebAuthn Extensions
+
+#### largeBlob Extension
 
 ```javascript
 /**
@@ -191,7 +151,7 @@ async function retrieveSKFromLargeBlob(credential) {
 }
 ```
 
-#### Option B: hmac-secret Extension
+#### hmac-secret Extension
 
 ```javascript
 /**
@@ -266,7 +226,7 @@ async function unwrapSKWithHmacSecret(credential) {
 }
 ```
 
-### 4. AES-GCM Encryption Utilities
+### AES-GCM Encryption
 
 ```javascript
 /**
@@ -314,189 +274,63 @@ async function decryptPrivateKey(ciphertext, sk, iv) {
 }
 ```
 
-### 5. Update Identity Creation Flow
+The complete implementation is available in `src/keystore-encryption.js` with the following exported utilities:
 
 ```javascript
-static async createIdentity(options) {
-  const { 
-    webauthnCredential, 
-    useKeystoreDID = false, 
-    keystore = null,
-    encryptKeystore = false,
-    keystoreEncryptionMethod = 'largeBlob'
-  } = options;
-
-  identityLog('createIdentity() called with encryption: %s', encryptKeystore);
-
-  // If encryption is enabled, create and encrypt keystore
-  if (encryptKeystore) {
-    identityLog('Creating encrypted keystore with method: %s', keystoreEncryptionMethod);
-    
-    // Create encrypted keystore
-    const publicKey = await createEncryptedKeystore(
-      webauthnCredential, 
-      keystoreEncryptionMethod
-    );
-    
-    // Unlock it immediately for this session
-    const unlockedKeypair = await unlockEncryptedKeystore(
-      webauthnCredential,
-      keystoreEncryptionMethod
-    );
-    
-    // Store unlocked keypair in session memory
-    sessionStorage.unlockedKeypair = unlockedKeypair;
-  }
-
-  const provider = new OrbitDBWebAuthnIdentityProvider({ 
-    webauthnCredential, 
-    useKeystoreDID,
-    keystore,
-    encryptKeystore,
-    keystoreEncryptionMethod
-  });
-  
-  const id = await provider.getId();
-
-  return {
-    id,
-    publicKey: webauthnCredential.publicKey,
-    type: 'webauthn',
-    sign: (identity, data) => {
-      // Use unlocked keystore if encrypted
-      if (encryptKeystore && sessionStorage.unlockedKeypair) {
-        return signWithUnlockedKey(sessionStorage.unlockedKeypair, data);
-      }
-      return provider.signIdentity(data);
-    },
-    verify: (signature, data) => {
-      return provider.verifyIdentity(signature, data, webauthnCredential.publicKey);
-    }
-  };
-}
+import {
+  generateSecretKey,
+  generateEncryptedKeystore,
+  unlockKeystore,
+  listEncryptedKeystores,
+  deleteEncryptedKeystore
+} from '@le-space/orbitdb-identity-provider-webauthn-did/keystore-encryption';
 ```
 
-## Integration with Existing Ed25519 Keystore DID Feature
-
-The encrypted keystore works **perfectly** with the Ed25519 DID feature we just implemented:
+## Ed25519/secp256k1 Keystore DIDs
 
 ```javascript
-// Use Ed25519 DID from ENCRYPTED keystore
 const identity = await orbitdb.identities.createIdentity({
   provider: OrbitDBWebAuthnIdentityProviderFunction({ 
     webauthnCredential: credential,
-    useKeystoreDID: true,              // ✅ Use Ed25519 keystore DID
+    useKeystoreDID: true,
+    keystoreKeyType: 'Ed25519',        // or 'secp256k1'
     keystore: orbitdb.keystore,
-    encryptKeystore: true,             // ✅ NEW: Encrypt the keystore
-    keystoreEncryptionMethod: 'largeBlob'  // ✅ NEW: Use WebAuthn largeBlob
+    encryptKeystore: true,
+    keystoreEncryptionMethod: 'largeBlob'
   })
 });
 ```
-
-**Result:**
-- ✅ Identity DID derived from Ed25519 keystore key
-- ✅ Keystore private key encrypted with AES-GCM
-- ✅ Encryption key (SK) protected by WebAuthn hardware
-- ✅ One biometric prompt per session to unlock
-- ✅ Database operations use decrypted key from memory
 
 ## Browser Support
 
-### largeBlob Extension
-- ✅ Chrome 106+
-- ✅ Edge 106+
-- ❌ Safari (not yet)
-- ❌ Firefox (not yet)
+**largeBlob**: Chrome 106+, Edge 106+  
+**hmac-secret**: Chrome, Firefox, Edge (with CTAP2)
 
-### hmac-secret Extension
-- ✅ Chrome (with CTAP2)
-- ✅ Firefox (with CTAP2)
-- ⚠️ Safari (limited)
-- ✅ Edge (with CTAP2)
+## Security
 
-**Recommendation:** Start with `largeBlob` for Chrome/Edge, fallback to `hmac-secret` for broader support.
+**Without encryption**: Keystore vulnerable to XSS, malicious extensions, device theft
 
-## Security Benefits
+**With encryption**:
+- Keystore encrypted with AES-GCM 256-bit
+- Secret key protected by WebAuthn hardware
+- One biometric prompt per session
 
-### Current Issues (Unencrypted)
-- ❌ Keystore in plaintext in IndexedDB
-- ❌ Vulnerable to XSS attacks
-- ❌ Vulnerable to malicious extensions
-- ❌ Vulnerable to device theft
-- ❌ No protection if IndexedDB copied
+## Status
 
-### With Encryption
-- ✅ Keystore encrypted at rest
-- ✅ Protected from XSS (SK not in memory)
-- ✅ Protected from extensions (SK in hardware)
-- ✅ Protected from device theft (biometric required)
-- ✅ IndexedDB theft useless (ciphertext only)
-- ✅ One biometric prompt per session (good UX)
+**Implemented**: AES-GCM encryption, largeBlob/hmac-secret extensions, Ed25519/secp256k1 support, simple-encryption integration, 342 tests
 
-## Implementation Phases
+**Future**: Session timeout, multi-device sync, recovery flows
 
-### Phase 1: Core Encryption (Current Branch Extension)
-- Implement AES-GCM encryption/decryption
-- Add `encryptKeystore` flag
-- Add largeBlob integration
-- Add local storage for encrypted data
+## Compatibility
 
-### Phase 2: Session Management
-- Implement session keystore unlock
-- Add session timeout handling
-- Add keystore re-lock on timeout
-- Add secure memory clearing
+Encryption is opt-in. Existing code without `encryptKeystore` continues to work.
 
-### Phase 3: Multi-Device Support
-- Add passkey sync detection
-- Handle multiple enrolled authenticators
-- Implement recovery flows
-- Add backup/restore mechanisms
+## Testing
 
-### Phase 4: hmac-secret Fallback
-- Implement hmac-secret extension
-- Add automatic method detection
-- Graceful degradation for unsupported browsers
+342 automated tests across E2E, unit, and integration scenarios.
 
-## Compatibility with Existing Code
-
-✅ **Fully backward compatible**
-
-```javascript
-// Existing code (no encryption) - still works
-const identity = await orbitdb.identities.createIdentity({
-  provider: OrbitDBWebAuthnIdentityProviderFunction({ 
-    webauthnCredential: credential
-  })
-});
-
-// New code (with encryption) - opt-in
-const identity = await orbitdb.identities.createIdentity({
-  provider: OrbitDBWebAuthnIdentityProviderFunction({ 
-    webauthnCredential: credential,
-    encryptKeystore: true
-  })
-});
+```bash
+npm run test:encrypted-keystore
+npm test
 ```
 
-## Next Steps
-
-1. **Extend current branch** with encryption implementation
-2. **Add largeBlob support** to `WebAuthnDIDProvider.createCredential()`
-3. **Implement encryption utilities** (AES-GCM)
-4. **Add session management** for unlocked keystore
-5. **Test with Chrome/Edge** (largeBlob support)
-6. **Update documentation** with encryption options
-7. **Add examples** showing encrypted keystore usage
-
-## Conclusion
-
-This solution:
-- ✅ Directly addresses the keystore security vulnerability
-- ✅ Integrates seamlessly with existing Ed25519 DID feature
-- ✅ Maintains backward compatibility
-- ✅ Uses standard WebAuthn extensions
-- ✅ Provides excellent UX (one prompt per session)
-- ✅ Achieves hardware-backed protection
-
-**This is the natural next evolution of the architecture we've built.**
