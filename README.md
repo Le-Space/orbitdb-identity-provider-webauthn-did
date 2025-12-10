@@ -41,7 +41,7 @@
 
 **Note**: P-256 WebAuthn keys provide maximum security but require biometric authentication for every database operation (slow). OrbitDB keystore doesn't support P-256, only Ed25519/secp256k1.
 
-🚀 **[Try the Live Demo](https://w3s.link/ipfs/bafybeibrrqn27xgvq6kzxwlyrfdomgfvlsoojfg3odba755f3pezwqpdza)**
+🚀 **[Try the Live Demo](https://storacha.link/ipfs/bafybeig3fbdnismhotolp5edtnd4jgpa2ccnwqfntpioijligrfygkkdfu)**
 
 A hardware-secured identity provider for OrbitDB using WebAuthn authentication. Supports hardware-secured database access (Ledger, Yubikey) and biometric authentication via Passkey.
 
@@ -81,6 +81,8 @@ A hardware-secured identity provider for OrbitDB using WebAuthn authentication. 
 ```bash
 npm install orbitdb-identity-provider-webauthn-did
 ```
+
+**Note**: This package includes a patch for `@orbitdb/core` (via `patch-package`) that adds support for Ed25519 key type in keystore. The patch runs automatically on `npm install`.
 
 ## Quick Start
 
@@ -246,6 +248,40 @@ npm test         # Run test suite
 ```
 
 Tests include unit tests and browser integration tests for WebAuthn across different platforms.
+
+## Future Improvements / Roadmap
+
+### P-256 Keystore Support
+- **Upgrade OrbitDB/libp2p to support P-256 keys**: Currently limited to Ed25519 and secp256k1. P-256 support would enable true hardware-backed database operations without in-memory key exposure.
+- **Benefit**: Maximum security - WebAuthn P-256 keys never leave secure element, eliminating all in-memory attack vectors.
+- **Challenge**: Requires changes to libp2p-crypto and OrbitDB keystore implementation.
+
+### Decentralized Credential Storage
+- **Store WebAuthn credentials on decentralized storage**: Upload credential metadata to IPFS/Filecoin/Storacha.
+- **Benefits**:
+  - Multi-device access to same identity
+  - Backup and recovery without vendor lock-in
+  - Portable credentials across platforms
+- **Implementation**: Store credential public key, metadata, and DID on IPFS, keep CID reference locally.
+
+### Hardware-Protected Credential CID
+- **Store credential CID in WebAuthn largeBlob**: Keep IPFS CID of credential in hardware authenticator.
+- **Benefits**:
+  - Single source of truth in hardware
+  - Automatic credential discovery across devices
+  - Hardware-attested credential location
+- **Flow**:
+  1. Upload credential to IPFS/Storacha
+  2. Store resulting CID in WebAuthn largeBlob extension
+  3. On new device: Retrieve CID from hardware → Fetch credential from IPFS
+- **Browser support**: Chrome 106+, Edge 106+ (largeBlob extension)
+
+### Additional Future Work
+- Session timeout and auto-lock for encrypted keystores
+- Multi-device passkey sync detection and coordination
+- Recovery flows for lost authenticators
+- Automatic WebAuthn extension detection and fallback
+- Integration with DID resolvers and verifiable credential standards
 
 ## Credits
 
