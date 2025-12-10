@@ -63,6 +63,9 @@ A hardware-secured identity provider for OrbitDB using WebAuthn authentication. 
     - [Core Documentation](#core-documentation)
     - [Examples](#examples)
   - [Development](#development)
+  - [Future Improvements / Roadmap](#future-improvements--roadmap)
+    - [P-256 Keystore Support](#p-256-keystore-support)
+    - [Additional Future Work](#additional-future-work)
   - [Credits](#credits)
   - [Contributing](#contributing)
   - [License](#license)
@@ -252,31 +255,13 @@ Tests include unit tests and browser integration tests for WebAuthn across diffe
 ## Future Improvements / Roadmap
 
 ### P-256 Keystore Support
+
 - **Upgrade OrbitDB/libp2p to support P-256 keys**: Currently limited to Ed25519 and secp256k1. P-256 support would enable true hardware-backed database operations without in-memory key exposure.
 - **Benefit**: Maximum security - WebAuthn P-256 keys never leave secure element, eliminating all in-memory attack vectors.
 - **Challenge**: Requires changes to libp2p-crypto and OrbitDB keystore implementation.
 
-### Decentralized Credential Storage
-- **Store WebAuthn credentials on decentralized storage**: Upload credential metadata to IPFS/Filecoin/Storacha.
-- **Benefits**:
-  - Multi-device access to same identity
-  - Backup and recovery without vendor lock-in
-  - Portable credentials across platforms
-- **Implementation**: Store credential public key, metadata, and DID on IPFS, keep CID reference locally.
-
-### Hardware-Protected Credential CID
-- **Store credential CID in WebAuthn largeBlob**: Keep IPFS CID of credential in hardware authenticator.
-- **Benefits**:
-  - Single source of truth in hardware
-  - Automatic credential discovery across devices
-  - Hardware-attested credential location
-- **Flow**:
-  1. Upload credential to IPFS/Storacha
-  2. Store resulting CID in WebAuthn largeBlob extension
-  3. On new device: Retrieve CID from hardware → Fetch credential from IPFS
-- **Browser support**: Chrome 106+, Edge 106+ (largeBlob extension)
-
 ### Additional Future Work
+
 - Session timeout and auto-lock for encrypted keystores
 - Multi-device passkey sync detection and coordination
 - Recovery flows for lost authenticators
@@ -286,6 +271,7 @@ Tests include unit tests and browser integration tests for WebAuthn across diffe
 ## Credits
 
 This project builds upon:
+
 - [OrbitDB DID Identity Provider](https://github.com/orbitdb/orbitdb-identity-provider-did) - Foundational DID implementation
 - [OpenFort EIP-7702 WebAuthn Sample](https://github.com/openfort-xyz/sample-7702-WebAuthn/) - WebAuthn reference implementation
 - [Passkey Wallet Demo](https://www.passkey-wallet.com/) - Passkey wallet patterns
