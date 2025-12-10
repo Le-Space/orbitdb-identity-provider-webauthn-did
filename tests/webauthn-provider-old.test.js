@@ -28,7 +28,7 @@ const setupMockWebAuthn = () => {
 
   global.navigator = {
     credentials: {
-      create: async (options) => {
+      create: async () => {
         // Mock WebAuthn credential creation
         const credentialId = new Uint8Array(32);
         crypto.getRandomValues(credentialId);
@@ -284,15 +284,6 @@ describe('WebAuthn DID Identity Provider', function() {
 
   describe('Registration', () => {
     it('should register WebAuthn provider with OrbitDB', () => {
-      // Mock useIdentityProvider to avoid actual registration
-      const mockUseIdentityProvider = (provider) => {
-        assert.strictEqual(provider, OrbitDBWebAuthnIdentityProviderFunction);
-        return true;
-      };
-
-      // Temporarily replace the import
-      const originalRegister = registerWebAuthnProvider;
-
       // Since we can't easily mock the import, we'll just test the function exists
       assert.strictEqual(typeof registerWebAuthnProvider, 'function');
     });
