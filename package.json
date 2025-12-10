@@ -18,7 +18,6 @@
     "test:logging": "DEBUG='orbitdb-identity-provider-webauthn-did*' playwright test tests/webauthn-logging-e2e.test.js --project=chromium --reporter=line",
     "test:encrypted-keystore": "USE_ENCRYPTED_DEMO=true playwright test tests/ed25519-encrypted-keystore-e2e.test.js --project=chromium --reporter=line",
     "test:encrypted-keystore-headed": "USE_ENCRYPTED_DEMO=true playwright test tests/ed25519-encrypted-keystore-e2e.test.js --headed --project=chromium",
-    "test:simple-encryption": "USE_ENCRYPTED_DEMO=true playwright test tests/simple-encryption-integration.test.js --project=chromium --reporter=line",
     "test:old": "mocha tests/webauthn-provider-old.test.js",
     "test:watch": "mocha tests/webauthn-provider-old.test.js --watch",
     "test:full-flow": "npm run demo:setup && npm run test:focused",

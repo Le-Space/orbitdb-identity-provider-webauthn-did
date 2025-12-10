@@ -10,31 +10,17 @@ import { logger } from '@libp2p/logger';
 const log = logger('orbitdb-identity-provider-webauthn-did:keystore-encryption');
 
 /**
- * Generate a cryptographically-secure random AES-GCM secret key (256-bit/32-byte)
- *
- * This key is used for:
- * - Encrypting the OrbitDB keystore (protecting private keys via AES-GCM)
- * - Encrypting database content via SimpleEncryption
- * - Protecting with WebAuthn extensions (largeBlob or hmac-secret)
- *
- * The 256-bit size matches AES-256-GCM requirements for full-strength encryption.
- *
- * @returns {Uint8Array} 32-byte cryptographically-secure random key
+ * Generate a random AES-GCM secret key (256-bit)
  */
 export function generateSecretKey() {
   return crypto.getRandomValues(new Uint8Array(32));
 }
 
 /**
- * Encrypt data with AES-GCM using a 256-bit secret key
- *
- * Generates a random 12-byte IV (nonce) for each encryption operation.
- * This function is used both for encrypting keystore data and for wrapping
- * the secret key when using hmac-secret protection.
- *
+ * Encrypt data with AES-GCM
  * @param {Uint8Array} data - Data to encrypt
- * @param {Uint8Array} sk - Secret key (32 bytes from generateSecretKey)
- * @returns {Promise<{ciphertext: Uint8Array, iv: Uint8Array}>} Encrypted data with IV
+ * @param {Uint8Array} sk - Secret key (32 bytes)
+ * @returns {Promise<{ciphertext: Uint8Array, iv: Uint8Array}>}
  */
 export async function encryptWithAESGCM(data, sk) {
   log('Encrypting data with AES-GCM');
@@ -67,16 +53,11 @@ export async function encryptWithAESGCM(data, sk) {
 }
 
 /**
- * Decrypt data with AES-GCM using a 256-bit secret key
- *
- * Counterpart to encryptWithAESGCM. Used for decrypting both keystore data
- * and for unwrapping the secret key when using hmac-secret protection.
- *
+ * Decrypt data with AES-GCM
  * @param {Uint8Array} ciphertext - Encrypted data
- * @param {Uint8Array} sk - Secret key (32 bytes from generateSecretKey)
- * @param {Uint8Array} iv - Initialization vector (must match encryption IV)
- * @returns {Promise<Uint8Array>} Decrypted plaintext data
- * @throws {Error} If decryption fails (e.g., wrong key or corrupted data)
+ * @param {Uint8Array} sk - Secret key (32 bytes)
+ * @param {Uint8Array} iv - Initialization vector
+ * @returns {Promise<Uint8Array>}
  */
 export async function decryptWithAESGCM(ciphertext, sk, iv) {
   log('Decrypting data with AES-GCM');
@@ -189,24 +170,11 @@ export function addHmacSecretToCredentialOptions(credentialOptions) {
 }
 
 /**
- * Protect the secret key using WebAuthn's hmac-secret extension
- *
- * Flow:
- * 1. Generates a random 32-byte salt
- * 2. Calls WebAuthn with salt → authenticator derives unique HMAC output
- * 3. Uses HMAC output (first 32 bytes) as a wrapping key
- * 4. Encrypts the secret key with AES-GCM using the HMAC-derived wrapping key
- * 5. Stores: wrappedSK (encrypted key), wrappingIV, and salt
- *
- * Only the authenticator with biometric verification can regenerate the same
- * HMAC output from the salt, making the wrapped key secure.
- *
- * @param {Uint8Array} credentialId - WebAuthn credential ID (authenticator identifier)
- * @param {Uint8Array} sk - Secret key from generateSecretKey to be wrapped
- * @param {string} rpId - Relying party ID (domain name for WebAuthn)
- * @returns {Promise<{wrappedSK: Uint8Array, wrappingIV: Uint8Array, salt: Uint8Array}>}
- *          Wrapped key material for storage (store alongside credentialId)
- * @throws {Error} If WebAuthn call fails or hmac-secret not supported
+ * Wrap secret key using hmac-secret extension
+ * @param {Uint8Array} credentialId - WebAuthn credential ID
+ * @param {Uint8Array} sk - Secret key to wrap
+ * @param {string} rpId - Relying party ID (domain)
+ * @returns {Promise<{wrappedSK: Uint8Array, salt: Uint8Array}>}
  */
 export async function wrapSKWithHmacSecret(credentialId, sk, rpId) {
   log('Wrapping secret key with hmac-secret');
@@ -256,26 +224,13 @@ export async function wrapSKWithHmacSecret(credentialId, sk, rpId) {
 }
 
 /**
- * Recover the secret key using WebAuthn's hmac-secret extension
- *
- * Flow:
- * 1. Calls WebAuthn with the same salt used during wrapping
- * 2. Requires user biometric verification
- * 3. Authenticator derives the same HMAC output
- * 4. Uses HMAC output as decryption key for AES-GCM
- * 5. Decrypts and returns the original secret key
- *
- * This is the inverse of wrapSKWithHmacSecret. Without the correct authenticator
- * and biometric verification, the HMAC output cannot be regenerated and the
- * wrapped key remains unrecoverable.
- *
- * @param {Uint8Array} credentialId - WebAuthn credential ID (must match wrap operation)
- * @param {Uint8Array} wrappedSK - Wrapped secret key from wrapSKWithHmacSecret
- * @param {Uint8Array} wrappingIV - IV from wrapSKWithHmacSecret result
- * @param {Uint8Array} salt - Salt from wrapSKWithHmacSecret result
- * @param {string} rpId - Relying party ID (same as wrap operation)
- * @returns {Promise<Uint8Array>} Recovered secret key (32 bytes)
- * @throws {Error} If WebAuthn verification fails, user cancels, or key cannot be unwrapped
+ * Unwrap secret key using hmac-secret extension
+ * @param {Uint8Array} credentialId - WebAuthn credential ID
+ * @param {Uint8Array} wrappedSK - Wrapped secret key
+ * @param {Uint8Array} wrappingIV - IV used for wrapping
+ * @param {Uint8Array} salt - Salt used for HMAC
+ * @param {string} rpId - Relying party ID (domain)
+ * @returns {Promise<Uint8Array>} Unwrapped secret key
  */
 export async function unwrapSKWithHmacSecret(credentialId, wrappedSK, wrappingIV, salt, rpId) {
   log('Unwrapping secret key with hmac-secret');
