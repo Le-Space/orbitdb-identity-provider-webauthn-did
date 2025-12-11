@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/le-space/orbitdb-identity-provider-webauthn-did/workflows/Tests/badge.svg)](https://github.com/le-space/orbitdb-identity-provider-webauthn-did/actions/workflows/test.yml) [![CI/CD](https://github.com/le-space/orbitdb-identity-provider-webauthn-did/workflows/CI%2FCD%20-%20Test%20and%20Publish/badge.svg)](https://github.com/le-space/orbitdb-identity-provider-webauthn-did/actions/workflows/ci-cd.yml)
 
-*** Warning: The latest keystore encryption feature is currently getting reviewed. It is possible the below announced hmac+secret encryption of is bypassed. That means the private key of the DID is still unencrypted in localstorage. You can use the library but be aware of malicious browser extensions can still the private key. This does nkt effect your passkeys or hardware wallets keys***
+*** Warning: The latest keystore encryption feature is currently getting reviewed. It is possible the below announced hmac+secret encryption is bypassed. That means the private key of the DID is still unencrypted in localstorage. You can use the library but be aware of malicious browser extensions can still the private key. This does nkt effect your passkeys or hardware wallets keys***
 
 ⚠️ **SECURITY AUDIT WARNING**: This library has not undergone a formal security audit. While it implements industry-standard WebAuthn and cryptographic protocols, do not use in production environments. We recommend thorough testing and security review before deploying in critical applications.
 
