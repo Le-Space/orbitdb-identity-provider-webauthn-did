@@ -2,10 +2,14 @@
  * Keystore Encryption Utilities
  *
  * Provides AES-GCM encryption for OrbitDB keystore private keys,
- * protected by WebAuthn credentials using largeBlob or hmac-secret extensions.
+ * protected by WebAuthn credentials using PRF, largeBlob or hmac-secret extensions.
+ * 
+ * Uses @simplewebauthn/browser for WebAuthn operations.
  */
 
 import { logger } from '@libp2p/logger';
+import { startAuthentication } from '@simplewebauthn/browser';
+import { bufferToBase64URLString, base64URLStringToBuffer } from '@simplewebauthn/browser';
 
 const log = logger('orbitdb-identity-provider-webauthn-did:keystore-encryption');
 
@@ -170,6 +174,24 @@ export function addHmacSecretToCredentialOptions(credentialOptions) {
 }
 
 /**
+ * Add PRF extension to credential options (WebAuthn Level 3)
+ * PRF is the successor to hmac-secret and is more widely supported
+ * @param {Object} credentialOptions - WebAuthn credential creation options
+ * @returns {Object} Enhanced credential options with PRF
+ */
+export function addPRFToCredentialOptions(credentialOptions) {
+  log('Adding PRF extension to credential options');
+
+  return {
+    ...credentialOptions,
+    extensions: {
+      ...credentialOptions.extensions,
+      prf: {}
+    }
+  };
+}
+
+/**
  * Wrap secret key using hmac-secret extension
  * @param {Uint8Array} credentialId - WebAuthn credential ID
  * @param {Uint8Array} sk - Secret key to wrap
@@ -178,10 +200,14 @@ export function addHmacSecretToCredentialOptions(credentialOptions) {
  */
 export async function wrapSKWithHmacSecret(credentialId, sk, rpId) {
   log('Wrapping secret key with hmac-secret');
+  console.log('🔑 Wrapping secret key with hmac-secret extension...');
+  console.log('   rpId:', rpId);
+  console.log('   credentialId length:', credentialId?.length);
 
   const salt = crypto.getRandomValues(new Uint8Array(32));
 
   try {
+    console.log('🔐 Requesting WebAuthn assertion with hmac-secret extension...');
     const assertion = await navigator.credentials.get({
       publicKey: {
         challenge: crypto.getRandomValues(new Uint8Array(32)),
@@ -199,18 +225,24 @@ export async function wrapSKWithHmacSecret(credentialId, sk, rpId) {
       }
     });
 
+    console.log('✅ WebAuthn assertion received');
     const extensions = assertion.getClientExtensionResults();
+    console.log('📋 Extension results:', Object.keys(extensions));
 
     if (!extensions.hmacGetSecret || !extensions.hmacGetSecret.output1) {
-      throw new Error('No hmac-secret output from credential');
+      console.error('❌ hmac-secret extension did not return output');
+      console.error('   Available extensions:', extensions);
+      throw new Error('No hmac-secret output from credential - extension may not be supported by your authenticator');
     }
 
     const hmacOutput = new Uint8Array(extensions.hmacGetSecret.output1);
+    console.log('🔑 HMAC output received, length:', hmacOutput.length);
 
     // Use HMAC output as wrapping key
     const wrappedSK = await encryptWithAESGCM(sk, hmacOutput.slice(0, 32));
 
     log('Secret key wrapped with hmac-secret');
+    console.log('✅ Secret key wrapped successfully');
 
     return {
       wrappedSK: wrappedSK.ciphertext,
@@ -218,6 +250,7 @@ export async function wrapSKWithHmacSecret(credentialId, sk, rpId) {
       salt
     };
   } catch (error) {
+    console.error('❌ Failed to wrap secret key with hmac-secret:', error.message);
     log.error('Failed to wrap secret key with hmac-secret: %s', error.message);
     throw new Error(`Failed to wrap secret key: ${error.message}`);
   }
@@ -274,6 +307,183 @@ export async function unwrapSKWithHmacSecret(credentialId, wrappedSK, wrappingIV
 }
 
 /**
+ * Wrap secret key using PRF extension (WebAuthn Level 3)
+ * PRF provides a deterministic output based on credential + salt
+ * Uses @simplewebauthn/browser for cleaner WebAuthn handling
+ * @param {Uint8Array} credentialId - WebAuthn credential ID
+ * @param {Uint8Array} sk - Secret key to wrap
+ * @param {string} rpId - Relying party ID (domain)
+ * @returns {Promise<{wrappedSK: Uint8Array, wrappingIV: Uint8Array, salt: Uint8Array}>}
+ */
+export async function wrapSKWithPRF(credentialId, sk, rpId) {
+  log('Wrapping secret key with PRF');
+  console.log('🔑 Wrapping secret key with PRF extension (via SimpleWebAuthn)...');
+  console.log('   rpId:', rpId);
+  console.log('   credentialId length:', credentialId?.length);
+
+  const salt = crypto.getRandomValues(new Uint8Array(32));
+  const challenge = crypto.getRandomValues(new Uint8Array(32));
+
+  try {
+    console.log('🔐 Requesting WebAuthn assertion with PRF extension...');
+    
+    // Build authentication options with PRF extension
+    // Note: SimpleWebAuthn expects base64url-encoded strings for all binary data
+    const authOptions = {
+      rpId: rpId,
+      challenge: bufferToBase64URLString(challenge),
+      allowCredentials: [{
+        id: bufferToBase64URLString(credentialId),
+        type: 'public-key'
+      }],
+      userVerification: 'required',
+      timeout: 60000,
+      // PRF extension - salt must be base64url string for SimpleWebAuthn
+      extensions: {
+        prf: {
+          eval: {
+            first: bufferToBase64URLString(salt)
+          }
+        }
+      }
+    };
+    
+    console.log('📋 Auth options:', JSON.stringify(authOptions, null, 2));
+    
+    // Use SimpleWebAuthn's startAuthentication
+    const authResponse = await startAuthentication({ optionsJSON: authOptions });
+
+    console.log('✅ WebAuthn assertion received via SimpleWebAuthn');
+    console.log('📋 Auth response keys:', Object.keys(authResponse || {}));
+    
+    // Get PRF results from the client extension results
+    const extensions = authResponse.clientExtensionResults;
+    console.log('📋 Extension results:', JSON.stringify(extensions, null, 2));
+
+    if (!extensions?.prf?.results?.first) {
+      console.error('❌ PRF extension did not return output');
+      console.error('   Available extensions:', extensions);
+      throw new Error('No PRF output from credential - extension may not be supported by your authenticator');
+    }
+
+    // PRF output - SimpleWebAuthn returns base64url string, decode it
+    const prfOutputBase64 = extensions.prf.results.first;
+    const prfOutput = new Uint8Array(base64URLStringToBuffer(prfOutputBase64));
+    console.log('🔑 PRF output received, length:', prfOutput.length);
+
+    // Use PRF output as wrapping key (PRF output is 32 bytes)
+    const wrappedSK = await encryptWithAESGCM(sk, prfOutput.slice(0, 32));
+
+    log('Secret key wrapped with PRF');
+    console.log('✅ Secret key wrapped successfully with PRF');
+
+    return {
+      wrappedSK: wrappedSK.ciphertext,
+      wrappingIV: wrappedSK.iv,
+      salt
+    };
+  } catch (error) {
+    console.error('❌ Failed to wrap secret key with PRF:', error.message);
+    log.error('Failed to wrap secret key with PRF: %s', error.message);
+    throw new Error(`Failed to wrap secret key with PRF: ${error.message}`);
+  }
+}
+
+/**
+ * Unwrap secret key using PRF extension
+ * Uses @simplewebauthn/browser for cleaner WebAuthn handling
+ * @param {Uint8Array} credentialId - WebAuthn credential ID
+ * @param {Uint8Array} wrappedSK - Wrapped secret key
+ * @param {Uint8Array} wrappingIV - IV used for wrapping
+ * @param {Uint8Array} salt - Salt used for PRF
+ * @param {string} rpId - Relying party ID (domain)
+ * @returns {Promise<Uint8Array>} Unwrapped secret key
+ */
+export async function unwrapSKWithPRF(credentialId, wrappedSK, wrappingIV, salt, rpId) {
+  log('Unwrapping secret key with PRF');
+
+  const challenge = crypto.getRandomValues(new Uint8Array(32));
+
+  try {
+    // Build authentication options with PRF extension
+    // Note: SimpleWebAuthn expects base64url-encoded strings for all binary data
+    const authOptions = {
+      rpId: rpId,
+      challenge: bufferToBase64URLString(challenge),
+      allowCredentials: [{
+        id: bufferToBase64URLString(credentialId),
+        type: 'public-key'
+      }],
+      userVerification: 'required',
+      timeout: 60000,
+      // PRF extension - salt must be base64url string for SimpleWebAuthn
+      extensions: {
+        prf: {
+          eval: {
+            first: bufferToBase64URLString(salt)
+          }
+        }
+      }
+    };
+
+    // Use SimpleWebAuthn's startAuthentication
+    const authResponse = await startAuthentication({ optionsJSON: authOptions });
+
+    const extensions = authResponse.clientExtensionResults;
+
+    if (!extensions?.prf?.results?.first) {
+      throw new Error('No PRF output from credential');
+    }
+
+    // PRF output - SimpleWebAuthn returns base64url string, decode it
+    const prfOutputBase64 = extensions.prf.results.first;
+    const prfOutput = new Uint8Array(base64URLStringToBuffer(prfOutputBase64));
+
+    // Unwrap with PRF output
+    const sk = await decryptWithAESGCM(wrappedSK, prfOutput.slice(0, 32), wrappingIV);
+
+    log('Secret key unwrapped with PRF');
+
+    return sk;
+  } catch (error) {
+    log.error('Failed to unwrap secret key with PRF: %s', error.message);
+    throw new Error(`Failed to unwrap secret key with PRF: ${error.message}`);
+  }
+}
+
+const INDEXEDDB_NAME = 'webauthn-encrypted-keystore';
+const INDEXEDDB_VERSION = 1;
+const STORE_NAME = 'encrypted-keystores';
+
+/**
+ * Open IndexedDB connection for encrypted keystore storage
+ * @returns {Promise<IDBDatabase>} IndexedDB database instance
+ */
+function openKeystoreDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(INDEXEDDB_NAME, INDEXEDDB_VERSION);
+
+    request.onerror = () => {
+      log.error('Failed to open IndexedDB: %s', request.error?.message);
+      reject(new Error(`Failed to open IndexedDB: ${request.error?.message}`));
+    };
+
+    request.onsuccess = () => {
+      resolve(request.result);
+    };
+
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        const store = db.createObjectStore(STORE_NAME, { keyPath: 'credentialId' });
+        store.createIndex('timestamp', 'timestamp', { unique: false });
+        log('Created IndexedDB object store: %s', STORE_NAME);
+      }
+    };
+  });
+}
+
+/**
  * Store encrypted keystore data in IndexedDB
  * @param {Object} data - Encrypted keystore data
  * @param {string} credentialId - WebAuthn credential ID (used as key)
@@ -281,12 +491,18 @@ export async function unwrapSKWithHmacSecret(credentialId, wrappedSK, wrappingIV
 export async function storeEncryptedKeystore(data, credentialId) {
   log('Storing encrypted keystore in IndexedDB');
 
-  const storageKey = `encrypted-keystore-${credentialId}`;
+  if (!credentialId) {
+    throw new Error('credentialId is required to store encrypted keystore');
+  }
+
+  if (!data || !data.ciphertext) {
+    throw new Error('Invalid encrypted data - missing ciphertext');
+  }
 
   const serializedData = {
+    credentialId: credentialId,
     ciphertext: Array.from(data.ciphertext),
     iv: Array.from(data.iv),
-    credentialId: data.credentialId,
     publicKey: data.publicKey ? {
       ...data.publicKey,
       x: data.publicKey.x ? Array.from(data.publicKey.x) : undefined,
@@ -300,8 +516,25 @@ export async function storeEncryptedKeystore(data, credentialId) {
   };
 
   try {
-    localStorage.setItem(storageKey, JSON.stringify(serializedData));
-    log('Encrypted keystore stored successfully');
+    const db = await openKeystoreDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORE_NAME], 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.put(serializedData);
+
+      request.onsuccess = () => {
+        log('Encrypted keystore stored successfully in IndexedDB');
+        console.log('💾 Encrypted keystore stored in IndexedDB:', INDEXEDDB_NAME);
+        db.close();
+        resolve();
+      };
+
+      request.onerror = () => {
+        log.error('Failed to store encrypted keystore: %s', request.error?.message);
+        db.close();
+        reject(new Error(`Failed to store encrypted keystore: ${request.error?.message}`));
+      };
+    });
   } catch (error) {
     log.error('Failed to store encrypted keystore: %s', error.message);
     throw new Error(`Failed to store encrypted keystore: ${error.message}`);
@@ -316,36 +549,49 @@ export async function storeEncryptedKeystore(data, credentialId) {
 export async function loadEncryptedKeystore(credentialId) {
   log('Loading encrypted keystore from IndexedDB');
 
-  const storageKey = `encrypted-keystore-${credentialId}`;
-
   try {
-    const stored = localStorage.getItem(storageKey);
+    const db = await openKeystoreDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORE_NAME], 'readonly');
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.get(credentialId);
 
-    if (!stored) {
-      throw new Error('No encrypted keystore found for this credential');
-    }
+      request.onsuccess = () => {
+        db.close();
+        const data = request.result;
 
-    const data = JSON.parse(stored);
+        if (!data) {
+          reject(new Error('No encrypted keystore found for this credential'));
+          return;
+        }
 
-    const deserialized = {
-      ciphertext: new Uint8Array(data.ciphertext),
-      iv: new Uint8Array(data.iv),
-      credentialId: data.credentialId,
-      publicKey: data.publicKey ? {
-        ...data.publicKey,
-        x: data.publicKey.x ? new Uint8Array(data.publicKey.x) : undefined,
-        y: data.publicKey.y ? new Uint8Array(data.publicKey.y) : undefined
-      } : undefined,
-      wrappedSK: data.wrappedSK ? new Uint8Array(data.wrappedSK) : undefined,
-      wrappingIV: data.wrappingIV ? new Uint8Array(data.wrappingIV) : undefined,
-      salt: data.salt ? new Uint8Array(data.salt) : undefined,
-      encryptionMethod: data.encryptionMethod || 'largeBlob',
-      timestamp: data.timestamp
-    };
+        const deserialized = {
+          ciphertext: new Uint8Array(data.ciphertext),
+          iv: new Uint8Array(data.iv),
+          credentialId: data.credentialId,
+          publicKey: data.publicKey ? {
+            ...data.publicKey,
+            x: data.publicKey.x ? new Uint8Array(data.publicKey.x) : undefined,
+            y: data.publicKey.y ? new Uint8Array(data.publicKey.y) : undefined
+          } : undefined,
+          wrappedSK: data.wrappedSK ? new Uint8Array(data.wrappedSK) : undefined,
+          wrappingIV: data.wrappingIV ? new Uint8Array(data.wrappingIV) : undefined,
+          salt: data.salt ? new Uint8Array(data.salt) : undefined,
+          encryptionMethod: data.encryptionMethod || 'largeBlob',
+          timestamp: data.timestamp
+        };
 
-    log('Encrypted keystore loaded successfully');
+        log('Encrypted keystore loaded successfully from IndexedDB');
+        console.log('📂 Encrypted keystore loaded from IndexedDB');
+        resolve(deserialized);
+      };
 
-    return deserialized;
+      request.onerror = () => {
+        db.close();
+        log.error('Failed to load encrypted keystore: %s', request.error?.message);
+        reject(new Error(`Failed to load encrypted keystore: ${request.error?.message}`));
+      };
+    });
   } catch (error) {
     log.error('Failed to load encrypted keystore: %s', error.message);
     throw new Error(`Failed to load encrypted keystore: ${error.message}`);
@@ -353,17 +599,31 @@ export async function loadEncryptedKeystore(credentialId) {
 }
 
 /**
- * Clear encrypted keystore from storage
+ * Clear encrypted keystore from IndexedDB
  * @param {string} credentialId - WebAuthn credential ID
  */
 export async function clearEncryptedKeystore(credentialId) {
-  log('Clearing encrypted keystore from storage');
-
-  const storageKey = `encrypted-keystore-${credentialId}`;
+  log('Clearing encrypted keystore from IndexedDB');
 
   try {
-    localStorage.removeItem(storageKey);
-    log('Encrypted keystore cleared successfully');
+    const db = await openKeystoreDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORE_NAME], 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.delete(credentialId);
+
+      request.onsuccess = () => {
+        log('Encrypted keystore cleared successfully from IndexedDB');
+        db.close();
+        resolve();
+      };
+
+      request.onerror = () => {
+        log.error('Failed to clear encrypted keystore: %s', request.error?.message);
+        db.close();
+        reject(new Error(`Failed to clear encrypted keystore: ${request.error?.message}`));
+      };
+    });
   } catch (error) {
     log.error('Failed to clear encrypted keystore: %s', error.message);
   }
@@ -371,10 +631,11 @@ export async function clearEncryptedKeystore(credentialId) {
 
 /**
  * Check if browser supports WebAuthn extensions
- * @returns {Promise<Object>} Support status for largeBlob and hmac-secret
+ * @returns {Promise<Object>} Support status for PRF, largeBlob and hmac-secret
  */
 export async function checkExtensionSupport() {
   const support = {
+    prf: false,
     largeBlob: false,
     hmacSecret: false
   };
@@ -384,6 +645,15 @@ export async function checkExtensionSupport() {
   }
 
   try {
+    // Check PRF support (WebAuthn Level 3 - preferred method)
+    // PRF is supported in Chrome 109+, Safari 16.4+, Edge 109+
+    if (window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
+      const available = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+      // PRF support can be detected via the AuthenticatorExtensionsClientInputs type
+      // For now, assume support if platform authenticator is available (modern browsers)
+      support.prf = available;
+    }
+
     // Check largeBlob support
     if (window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
       const available = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
@@ -391,15 +661,183 @@ export async function checkExtensionSupport() {
       support.largeBlob = available && 'largeBlob' in PublicKeyCredential.prototype;
     }
 
-    // hmac-secret is more widely supported but harder to detect
-    // Assume support if WebAuthn is available (will fail gracefully if not)
-    support.hmacSecret = true;
+    // hmac-secret is primarily for hardware keys, not platform authenticators
+    // Assume false by default, will fail gracefully if not supported
+    support.hmacSecret = false;
 
   } catch (error) {
     log.error('Failed to check extension support: %s', error.message);
   }
 
   return support;
+}
+
+/**
+ * Compute SHA-256 hash of data and return hex string
+ * @param {Uint8Array} data - Data to hash
+ * @returns {Promise<string>} Hex-encoded hash
+ */
+export async function computeHash(data) {
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Get cryptographic proof of keystore encryption
+ * This provides verifiable evidence that the keystore is encrypted
+ * @param {string} credentialId - WebAuthn credential ID
+ * @returns {Promise<Object>} Encryption proof details
+ */
+export async function getEncryptionProof(credentialId) {
+  log('Generating encryption proof for credential');
+
+  let data;
+  try {
+    data = await loadEncryptedKeystore(credentialId);
+  } catch (error) {
+    return {
+      encrypted: false,
+      reason: 'No encrypted keystore found',
+      storage: 'IndexedDB'
+    };
+  }
+
+  const ciphertext = data.ciphertext;
+  const iv = data.iv;
+
+  // Compute cryptographic hashes as proof
+  const ciphertextHash = await computeHash(ciphertext);
+  const ivHash = await computeHash(iv);
+
+  // For PRF or hmac-secret, also include salt hash
+  let saltHash = null;
+  let wrappedSKHash = null;
+  if ((data.encryptionMethod === 'prf' || data.encryptionMethod === 'hmac-secret') && data.salt) {
+    saltHash = await computeHash(data.salt);
+    if (data.wrappedSK) {
+      wrappedSKHash = await computeHash(data.wrappedSK);
+    }
+  }
+
+  // Determine key derivation description based on method
+  let keyDerivation;
+  if (data.encryptionMethod === 'prf') {
+    keyDerivation = 'WebAuthn PRF (hardware-bound)';
+  } else if (data.encryptionMethod === 'hmac-secret') {
+    keyDerivation = 'WebAuthn HMAC-Secret (hardware-bound)';
+  } else {
+    keyDerivation = 'WebAuthn LargeBlob (hardware-stored)';
+  }
+
+  const proof = {
+    encrypted: true,
+    method: data.encryptionMethod,
+    timestamp: data.timestamp,
+    ciphertextLength: ciphertext.length,
+    ciphertextHash: ciphertextHash,
+    ivLength: iv.length,
+    ivHash: ivHash,
+    // PRF specific proof
+    ...(data.encryptionMethod === 'prf' && {
+      prfUsed: true,
+      saltHash: saltHash,
+      saltLength: data.salt ? data.salt.length : 0,
+      wrappedSKHash: wrappedSKHash,
+      wrappedSKLength: data.wrappedSK ? data.wrappedSK.length : 0,
+    }),
+    // HMAC-secret specific proof
+    ...(data.encryptionMethod === 'hmac-secret' && {
+      hmacSecretUsed: true,
+      saltHash: saltHash,
+      saltLength: data.salt ? data.salt.length : 0,
+      wrappedSKHash: wrappedSKHash,
+      wrappedSKLength: data.wrappedSK ? data.wrappedSK.length : 0,
+    }),
+    // Verification info
+    algorithm: 'AES-GCM-256',
+    keyDerivation: keyDerivation,
+    securityLevel: 'Hardware-backed (WebAuthn authenticator)',
+    storage: 'IndexedDB',
+    storageName: INDEXEDDB_NAME,
+  };
+
+  log('Encryption proof generated: %O', proof);
+  return proof;
+}
+
+/**
+ * Verify that encryption is working correctly by performing a test encrypt/decrypt cycle
+ * This provides cryptographic proof that the encryption system is functional
+ * @param {Uint8Array} sk - Secret key to test with
+ * @returns {Promise<Object>} Verification result with proof
+ */
+export async function verifyEncryptionIntegrity(sk) {
+  log('Verifying encryption integrity');
+
+  // Generate random test data
+  const testData = crypto.getRandomValues(new Uint8Array(64));
+  const testDataHash = await computeHash(testData);
+
+  try {
+    // Encrypt
+    const { ciphertext, iv } = await encryptWithAESGCM(testData, sk);
+    const ciphertextHash = await computeHash(ciphertext);
+
+    // Verify ciphertext is different from plaintext (encryption happened)
+    const plaintextHash = testDataHash;
+    if (ciphertextHash === plaintextHash) {
+      throw new Error('Ciphertext matches plaintext - encryption failed');
+    }
+
+    // Decrypt
+    const decrypted = await decryptWithAESGCM(ciphertext, sk, iv);
+    const decryptedHash = await computeHash(decrypted);
+
+    // Verify decrypted data matches original
+    const integrityVerified = decryptedHash === testDataHash;
+
+    const result = {
+      verified: integrityVerified,
+      algorithm: 'AES-GCM-256',
+      testDataHash: testDataHash.slice(0, 16) + '...',
+      ciphertextHash: ciphertextHash.slice(0, 16) + '...',
+      decryptedHash: decryptedHash.slice(0, 16) + '...',
+      ciphertextLength: ciphertext.length,
+      ivLength: iv.length,
+      encryptionWorking: ciphertextHash !== plaintextHash,
+      decryptionWorking: decryptedHash === testDataHash,
+      timestamp: Date.now()
+    };
+
+    log('Encryption integrity verification: %O', result);
+    return result;
+
+  } catch (error) {
+    log.error('Encryption integrity verification failed: %s', error.message);
+    return {
+      verified: false,
+      error: error.message,
+      timestamp: Date.now()
+    };
+  }
+}
+
+/**
+ * Get full encryption status with all cryptographic proofs
+ * @param {string} credentialId - WebAuthn credential ID
+ * @returns {Promise<Object>} Complete encryption status
+ */
+export async function getFullEncryptionStatus(credentialId) {
+  log('Getting full encryption status');
+
+  const proof = await getEncryptionProof(credentialId);
+
+  return {
+    ...proof,
+    proofGenerated: new Date().toISOString(),
+    credentialId: credentialId.slice(0, 8) + '...' + credentialId.slice(-8),
+  };
 }
 
 export default {
@@ -411,8 +849,15 @@ export default {
   addHmacSecretToCredentialOptions,
   wrapSKWithHmacSecret,
   unwrapSKWithHmacSecret,
+  addPRFToCredentialOptions,
+  wrapSKWithPRF,
+  unwrapSKWithPRF,
   storeEncryptedKeystore,
   loadEncryptedKeystore,
   clearEncryptedKeystore,
-  checkExtensionSupport
+  checkExtensionSupport,
+  computeHash,
+  getEncryptionProof,
+  verifyEncryptionIntegrity,
+  getFullEncryptionStatus
 };

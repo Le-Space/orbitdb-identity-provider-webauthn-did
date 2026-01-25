@@ -59,6 +59,7 @@
     "@libp2p/webrtc": "^5.2.24",
     "@libp2p/websockets": "^9.2.19",
     "@orbitdb/core": "^3.0.2",
+    "@simplewebauthn/browser": "^13.2.2",
     "blockstore-core": "^5.0.4",
     "blockstore-level": "^2.0.5",
     "buffer": "^6.0.3",

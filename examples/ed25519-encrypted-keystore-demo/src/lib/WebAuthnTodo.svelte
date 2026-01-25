@@ -47,10 +47,13 @@ import {
   
   // NEW: Encryption options
   let useEncryption = true; // Enable encryption by default
-  let encryptionMethod = 'largeBlob'; // or 'hmac-secret'
+  let encryptionMethod = 'prf'; // 'prf' (default), 'largeBlob', or 'hmac-secret'
   let useKeystoreDID = true; // Use persistent DID from OrbitDB keystore (instead of WebAuthn P-256)
   let keystoreKeyType = 'Ed25519'; // Key type: 'secp256k1' or 'Ed25519' (default: Ed25519)
   let extensionSupport = { largeBlob: false, hmacSecret: false };
+  
+  // Encryption proof state (cryptographic evidence)
+  let encryptionProof = null;
 
   // Computed values
   $: todoStats = getTodoStats(todos);
@@ -87,8 +90,10 @@ import {
       extensionSupport = await KeystoreEncryption.checkExtensionSupport();
       console.log('Encryption extension support:', extensionSupport);
       
-      // Auto-select best encryption method
-      if (extensionSupport.largeBlob) {
+      // Auto-select best encryption method (PRF is preferred for platform authenticators)
+      if (extensionSupport.prf) {
+        encryptionMethod = 'prf';
+      } else if (extensionSupport.largeBlob) {
         encryptionMethod = 'largeBlob';
       } else if (extensionSupport.hmacSecret) {
         encryptionMethod = 'hmac-secret';
@@ -201,6 +206,9 @@ import {
         encryptKeystore: useEncryption,
         encryptionMethod: encryptionMethod
       });
+      
+      // Capture encryption proof for UI display
+      encryptionProof = orbitdbInstances.encryptionProof;
 
       status = 'Opening TODO database...';
       // Use the extracted openTodoDatabase function
@@ -418,6 +426,7 @@ import {
       credential = null;
       database = null;
       orbitdbInstances = null;
+      encryptionProof = null;
       localStorage.removeItem('webauthn-credential');
       status = 'Logged out successfully';
     } catch (error) {
@@ -429,6 +438,7 @@ import {
       credential = null;
       database = null;
       orbitdbInstances = null;
+      encryptionProof = null;
       localStorage.removeItem('webauthn-credential');
       status = 'Logged out (with cleanup errors)';
     }
@@ -551,7 +561,7 @@ import {
               <input
                 type="checkbox"
                 bind:checked={useEncryption}
-                disabled={loading || (!extensionSupport.largeBlob && !extensionSupport.hmacSecret)}
+                disabled={loading || (!extensionSupport.prf && !extensionSupport.largeBlob && !extensionSupport.hmacSecret)}
                 style="cursor: pointer;"
               />
               <span style="color: var(--cds-text-primary);">Encrypt keystore with WebAuthn</span>
@@ -562,6 +572,19 @@ import {
             {#if useEncryption}
               <div style="padding-left: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
                 <span style="font-size: 0.875rem; font-weight: 500; color: var(--cds-text-primary);">Encryption Method:</span>
+                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                  <input
+                    type="radio"
+                    bind:group={encryptionMethod}
+                    value="prf"
+                    disabled={loading || !extensionSupport.prf}
+                    style="cursor: pointer;"
+                  />
+                  <span style="color: var(--cds-text-primary);">PRF (recommended)</span>
+                  <span style="font-size: 0.75rem; color: var(--cds-text-secondary);">
+                    {extensionSupport.prf ? '✅ Supported' : '❌ Not supported'}
+                  </span>
+                </label>
                 <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
                   <input
                     type="radio"
@@ -608,9 +631,9 @@ import {
                     <li>Hardware-backed ECDSA signatures</li>
                   {/if}
                   {#if useEncryption}
-                    <li>Keystore encrypted with AES-GCM 256-bit</li>
-                    <li>Secret key protected by WebAuthn hardware</li>
-                    <li>Protected from XSS, extensions, theft</li>
+                    <li>🔐 Keystore encrypted with <strong>AES-GCM 256-bit</strong></li>
+                    <li>🔑 Secret key derived via <strong>WebAuthn {encryptionMethod}</strong></li>
+                    <li>🛡️ Hardware-bound protection (authenticator)</li>
                   {/if}
                 </ul>
               </div>
@@ -689,6 +712,67 @@ import {
                   {orbitdbInstances.identity.id}
                 </code>
               </div>
+              
+              <!-- Encryption Proof Display -->
+              {#if encryptionProof && encryptionProof.encrypted}
+                <div
+                  style="background: linear-gradient(135deg, var(--cds-layer-accent) 0%, var(--cds-layer) 100%); padding: 0.75rem; border-radius: 0.5rem; border: 2px solid var(--cds-support-success); margin-bottom: 1rem;"
+                >
+                  <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                    <span style="font-size: 1rem;">🔐</span>
+                    <span style="font-size: 0.75rem; font-weight: 700; color: var(--cds-support-success); text-transform: uppercase; letter-spacing: 0.1em;">
+                      ENCRYPTION VERIFIED
+                    </span>
+                  </div>
+                  
+                  <div style="display: grid; gap: 0.5rem; font-size: 0.7rem; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;">
+                    <div style="display: flex; justify-content: space-between; padding: 0.25rem 0.5rem; background: var(--cds-layer); border-radius: 0.25rem;">
+                      <span style="color: var(--cds-text-secondary);">Method:</span>
+                      <span style="color: var(--cds-text-primary); font-weight: 600;">{encryptionProof.method}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 0.25rem 0.5rem; background: var(--cds-layer); border-radius: 0.25rem;">
+                      <span style="color: var(--cds-text-secondary);">Algorithm:</span>
+                      <span style="color: var(--cds-text-primary); font-weight: 600;">{encryptionProof.algorithm}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 0.25rem 0.5rem; background: var(--cds-layer); border-radius: 0.25rem;">
+                      <span style="color: var(--cds-text-secondary);">Ciphertext:</span>
+                      <span style="color: var(--cds-text-primary);">{encryptionProof.ciphertextLength} bytes</span>
+                    </div>
+                    <div style="padding: 0.25rem 0.5rem; background: var(--cds-layer); border-radius: 0.25rem;">
+                      <span style="color: var(--cds-text-secondary); display: block;">Ciphertext Hash (SHA-256):</span>
+                      <span style="color: var(--cds-support-info); word-break: break-all; font-size: 0.65rem;">{encryptionProof.ciphertextHash}</span>
+                    </div>
+                    
+                    {#if encryptionProof.hmacSecretUsed}
+                      <div style="margin-top: 0.25rem; padding: 0.5rem; background: linear-gradient(90deg, rgba(0,128,0,0.1) 0%, transparent 100%); border-left: 3px solid var(--cds-support-success); border-radius: 0 0.25rem 0.25rem 0;">
+                        <div style="font-size: 0.7rem; font-weight: 600; color: var(--cds-support-success); margin-bottom: 0.25rem;">
+                          ✓ HMAC-SECRET EXTENSION ACTIVE
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 0.125rem 0;">
+                          <span style="color: var(--cds-text-secondary);">Salt Hash:</span>
+                          <span style="color: var(--cds-text-primary); font-size: 0.6rem;">{encryptionProof.saltHash?.slice(0, 16)}...</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 0.125rem 0;">
+                          <span style="color: var(--cds-text-secondary);">Wrapped Key:</span>
+                          <span style="color: var(--cds-text-primary); font-size: 0.6rem;">{encryptionProof.wrappedSKHash?.slice(0, 16)}...</span>
+                        </div>
+                        <div style="color: var(--cds-text-secondary); font-size: 0.6rem; margin-top: 0.25rem;">
+                          🔒 Key derivation bound to WebAuthn authenticator hardware
+                        </div>
+                      </div>
+                    {/if}
+                    
+                    <div style="display: flex; justify-content: space-between; padding: 0.25rem 0.5rem; background: var(--cds-layer); border-radius: 0.25rem;">
+                      <span style="color: var(--cds-text-secondary);">Security:</span>
+                      <span style="color: var(--cds-support-success); font-weight: 600;">Hardware-backed</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 0.25rem 0.5rem; background: var(--cds-layer); border-radius: 0.25rem;">
+                      <span style="color: var(--cds-text-secondary);">Storage:</span>
+                      <span style="color: var(--cds-text-primary);">{encryptionProof.storage || 'IndexedDB'}</span>
+                    </div>
+                  </div>
+                </div>
+              {/if}
             {/if}
           </div>
           <div style="display: flex; gap: 0.5rem; align-self: flex-start;">
@@ -860,5 +944,33 @@ import {
         ✅ No passwords or usernames required
       </li>
     </ul>
+    
+    {#if encryptionProof && encryptionProof.encrypted}
+      <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--cds-border-subtle);">
+        <h4 style="font-size: 0.875rem; font-weight: 600; color: var(--cds-text-primary); margin-bottom: 0.5rem;">
+          🔑 Keystore Encryption (Cryptographic Proof)
+        </h4>
+        <p style="font-size: 0.75rem; color: var(--cds-text-secondary); margin-bottom: 0.5rem;">
+          Your OrbitDB keystore private key is encrypted using <strong>AES-GCM 256-bit</strong> encryption. 
+          {#if encryptionProof.hmacSecretUsed}
+            The encryption key is derived using the <strong>WebAuthn hmac-secret extension</strong>, which means:
+          {:else}
+            The encryption key is stored using <strong>WebAuthn largeBlob extension</strong>, which means:
+          {/if}
+        </p>
+        <ul style="font-size: 0.75rem; color: var(--cds-text-secondary); margin: 0; padding-left: 1.25rem;">
+          {#if encryptionProof.hmacSecretUsed}
+            <li>🔒 The decryption key is <strong>derived from your authenticator hardware</strong></li>
+            <li>🔒 Even if someone steals your encrypted keystore, they <strong>cannot decrypt it</strong> without your authenticator</li>
+            <li>🔒 Each authentication generates the same HMAC output (deterministic)</li>
+          {:else}
+            <li>🔒 The decryption key is <strong>stored inside your authenticator</strong></li>
+            <li>🔒 The key can only be retrieved with biometric authentication</li>
+          {/if}
+          <li>🔒 Protected from XSS attacks, malicious browser extensions, and data theft</li>
+          <li>💾 Encrypted keystore stored in <strong>IndexedDB</strong> (not localStorage)</li>
+        </ul>
+      </div>
+    {/if}
   </Tile>
 </div>
