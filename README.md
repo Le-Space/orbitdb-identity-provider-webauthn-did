@@ -240,6 +240,7 @@ const db = await orbitdb.open('encrypted-db', { encryption });
 ### Examples
 - [examples/simple-encryption-integration.js](./examples/simple-encryption-integration.js) - Database content encryption
 - [examples/ed25519-encrypted-keystore-demo/](./examples/ed25519-encrypted-keystore-demo/) - Working demo application
+- [examples/webauthn-varsig-demo/](./examples/webauthn-varsig-demo/) - WebAuthn varsig demo without OrbitDB keystore
 - `tests/` directory - E2E and unit tests
 
 ## Development

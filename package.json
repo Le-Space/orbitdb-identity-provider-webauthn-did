@@ -58,8 +58,15 @@
     "@orbitdb/core": "^3.0.0"
   },
   "dependencies": {
+    "@ipld/dag-cbor": "^9.2.5",
     "@libp2p/logger": "^5.1.5",
+    "@simplewebauthn/browser": "^13.0.0",
     "cbor-web": "^9.0.1",
+    "iso-base": "file:/Users/nandi/ucan-upload-wall/iso-repo/packages/iso-base/iso-base-4.3.0.tgz",
+    "iso-web": "file:/Users/nandi/ucan-upload-wall/iso-repo/packages/iso-web/iso-web-2.1.0.local.tgz",
+    "iso-did": "file:/Users/nandi/ucan-upload-wall/iso-repo/packages/iso-did/iso-did-2.1.1.local.tgz",
+    "iso-passkeys": "file:/Users/nandi/ucan-upload-wall/iso-repo/packages/iso-passkeys/iso-passkeys-0.3.1.local.tgz",
+    "iso-webauthn-varsig": "file:/Users/nandi/ucan-upload-wall/iso-repo/packages/iso-webauthn-varsig/iso-webauthn-varsig-0.1.0.local.tgz",
     "multiformats": "^13.0.0",
     "vite-plugin-node-polyfills": "^0.24.0"
   },

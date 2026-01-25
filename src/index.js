@@ -8,6 +8,14 @@
 import { useIdentityProvider } from '@orbitdb/core';
 import { logger } from '@libp2p/logger';
 import * as KeystoreEncryption from './keystore-encryption.js';
+import {
+  WebAuthnVarsigProvider,
+  createWebAuthnVarsigIdentity,
+  createWebAuthnVarsigIdentities,
+  storeWebAuthnVarsigCredential,
+  loadWebAuthnVarsigCredential,
+  clearWebAuthnVarsigCredential
+} from './varsig.js';
 
 // Create loggers for different components
 const webauthnLog = logger('orbitdb-identity-provider-webauthn-did:webauthn');
@@ -54,7 +62,7 @@ export class WebAuthnDIDProvider {
    * @param {string} options.displayName - Display name
    * @param {string} options.domain - Domain/RP ID
    * @param {boolean} options.encryptKeystore - Enable keystore encryption
-   * @param {string} options.keystoreEncryptionMethod - 'largeBlob' or 'hmac-secret'
+   * @param {string} options.keystoreEncryptionMethod - 'prf' (default), 'hmac-secret', or 'largeBlob'
    */
   static async createCredential(options = {}) {
     const {
@@ -62,7 +70,7 @@ export class WebAuthnDIDProvider {
       displayName,
       domain,
       encryptKeystore = false,
-      keystoreEncryptionMethod = 'largeBlob'
+      keystoreEncryptionMethod = 'prf'
     } = {
       userId: `orbitdb-user-${Date.now()}`,
       displayName: 'Local-First Peer-to-Peer OrbitDB User',
@@ -115,7 +123,11 @@ export class WebAuthnDIDProvider {
     if (encryptKeystore) {
       webauthnLog('Adding encryption extension: %s', keystoreEncryptionMethod);
 
-      if (keystoreEncryptionMethod === 'hmac-secret') {
+      if (keystoreEncryptionMethod === 'prf') {
+        credentialOptions.publicKey = KeystoreEncryption.addPRFToCredentialOptions(
+          credentialOptions.publicKey
+        );
+      } else if (keystoreEncryptionMethod === 'hmac-secret') {
         credentialOptions.publicKey = KeystoreEncryption.addHmacSecretToCredentialOptions(
           credentialOptions.publicKey
         );
@@ -510,7 +522,7 @@ export class OrbitDBWebAuthnIdentityProvider {
     keystore = null,
     keystoreKeyType = 'secp256k1',
     encryptKeystore = false,
-    keystoreEncryptionMethod = 'largeBlob'
+    keystoreEncryptionMethod = 'prf'
   }) {
     this.credential = webauthnCredential;
     this.webauthnProvider = new WebAuthnDIDProvider(webauthnCredential);
@@ -665,9 +677,11 @@ export class OrbitDBWebAuthnIdentityProvider {
    */
   async createEncryptedKeystore() {
     if (!this.encryptKeystore) {
+      console.log('ℹ️ Keystore encryption not enabled, skipping');
       return;
     }
 
+    console.log('🔐 Creating encrypted keystore with method:', this.keystoreEncryptionMethod);
     identityLog('Creating encrypted keystore with method: %s', this.keystoreEncryptionMethod);
 
     try {
@@ -683,20 +697,38 @@ export class OrbitDBWebAuthnIdentityProvider {
       const keystoreKey = await this.keystore.getKey(identityId) || await this.keystore.createKey(identityId);
 
       // Export and encrypt the private key
-      const privateKeyBytes = keystoreKey.marshal();
+      const privateKeyBytes = keystoreKey.raw;
       const { ciphertext, iv } = await KeystoreEncryption.encryptWithAESGCM(privateKeyBytes, sk);
 
       // Store SK in WebAuthn or wrap it
       let encryptedData;
 
-      if (this.keystoreEncryptionMethod === 'largeBlob') {
+      if (this.keystoreEncryptionMethod === 'prf') {
+        // Wrap SK with PRF (WebAuthn Level 3 - preferred method)
+        const wrapped = await KeystoreEncryption.wrapSKWithPRF(
+          this.credential.rawCredentialId,
+          sk,
+          window.location.hostname
+        );
+
+        encryptedData = {
+          ciphertext,
+          iv,
+          credentialId: this.credential.credentialId,
+          publicKey: keystoreKey.publicKey.raw,
+          wrappedSK: wrapped.wrappedSK,
+          wrappingIV: wrapped.wrappingIV,
+          salt: wrapped.salt,
+          encryptionMethod: 'prf'
+        };
+      } else if (this.keystoreEncryptionMethod === 'largeBlob') {
         // For largeBlob, we need to store SK during next authentication
         // Store it temporarily for wrapping
         encryptedData = {
           ciphertext,
           iv,
           credentialId: this.credential.credentialId,
-          publicKey: keystoreKey.public.marshal(),
+          publicKey: keystoreKey.publicKey.raw,
           secretKey: sk, // Will be moved to largeBlob
           encryptionMethod: 'largeBlob'
         };
@@ -712,7 +744,7 @@ export class OrbitDBWebAuthnIdentityProvider {
           ciphertext,
           iv,
           credentialId: this.credential.credentialId,
-          publicKey: keystoreKey.public.marshal(),
+          publicKey: keystoreKey.publicKey.raw,
           wrappedSK: wrapped.wrappedSK,
           wrappingIV: wrapped.wrappingIV,
           salt: wrapped.salt,
@@ -721,7 +753,9 @@ export class OrbitDBWebAuthnIdentityProvider {
       }
 
       // Store encrypted keystore
+      console.log('💾 Storing encrypted keystore with credentialId:', this.credential.credentialId?.substring(0, 16) + '...');
       await KeystoreEncryption.storeEncryptedKeystore(encryptedData, this.credential.credentialId);
+      console.log('✅ Encrypted keystore stored successfully');
 
       identityLog('Encrypted keystore created and stored successfully');
 
@@ -748,7 +782,16 @@ export class OrbitDBWebAuthnIdentityProvider {
 
       let sk;
 
-      if (encryptedData.encryptionMethod === 'largeBlob') {
+      if (encryptedData.encryptionMethod === 'prf') {
+        // Unwrap SK with PRF
+        sk = await KeystoreEncryption.unwrapSKWithPRF(
+          this.credential.rawCredentialId,
+          encryptedData.wrappedSK,
+          encryptedData.wrappingIV,
+          encryptedData.salt,
+          window.location.hostname
+        );
+      } else if (encryptedData.encryptionMethod === 'largeBlob') {
         // Retrieve SK from largeBlob
         sk = await KeystoreEncryption.retrieveSKFromLargeBlob(
           this.credential.rawCredentialId,
@@ -817,7 +860,7 @@ export class OrbitDBWebAuthnIdentityProvider {
       keystore = null,
       keystoreKeyType = 'secp256k1',
       encryptKeystore = false,
-      keystoreEncryptionMethod = 'largeBlob'
+      keystoreEncryptionMethod = 'prf'
     } = options;
 
     identityLog('createIdentity() called with useKeystoreDID: %s, keystoreKeyType: %s, encryptKeystore: %s',
@@ -835,12 +878,18 @@ export class OrbitDBWebAuthnIdentityProvider {
     // If encryption is enabled, create and unlock encrypted keystore
     if (encryptKeystore && keystore) {
       try {
+        console.log('🔐 Creating encrypted keystore with', keystoreEncryptionMethod, '...');
         await provider.createEncryptedKeystore();
+        console.log('🔓 Unlocking encrypted keystore...');
         await provider.unlockEncryptedKeystore();
+        console.log('✅ Encrypted keystore created and unlocked successfully');
         identityLog('Encrypted keystore created and unlocked');
       } catch (error) {
+        // Log error visibly so users know encryption failed
+        console.error('❌ Failed to setup encrypted keystore:', error.message);
+        console.error('   Full error:', error);
         identityLog.error('Failed to setup encrypted keystore: %s', error.message);
-        // Continue anyway - encryption is optional
+        // Continue anyway - encryption is optional but user should know it failed
       }
     }
 
@@ -1042,6 +1091,15 @@ export {
   KeystoreEncryption,
 };
 
+export {
+  WebAuthnVarsigProvider,
+  createWebAuthnVarsigIdentity,
+  createWebAuthnVarsigIdentities,
+  storeWebAuthnVarsigCredential,
+  loadWebAuthnVarsigCredential,
+  clearWebAuthnVarsigCredential
+} from './varsig.js';
+
 // Re-export individual verification functions for convenience
 export {
   verifyDatabaseUpdate,
@@ -1066,7 +1124,11 @@ export {
   storeEncryptedKeystore,
   loadEncryptedKeystore,
   clearEncryptedKeystore,
-  checkExtensionSupport
+  checkExtensionSupport,
+  computeHash,
+  getEncryptionProof,
+  verifyEncryptionIntegrity,
+  getFullEncryptionStatus
 } from './keystore-encryption.js';
 
 export default {
@@ -1078,6 +1140,12 @@ export default {
   storeWebAuthnCredential,
   loadWebAuthnCredential,
   clearWebAuthnCredential,
+  WebAuthnVarsigProvider,
+  createWebAuthnVarsigIdentity,
+  createWebAuthnVarsigIdentities,
+  storeWebAuthnVarsigCredential,
+  loadWebAuthnVarsigCredential,
+  clearWebAuthnVarsigCredential,
   // Include verification utilities in default export
   VerificationUtils
 };
