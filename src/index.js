@@ -15,7 +15,7 @@ import {
   storeWebAuthnVarsigCredential,
   loadWebAuthnVarsigCredential,
   clearWebAuthnVarsigCredential
-} from './varsig.js';
+} from './varsig/index.js';
 
 // Create loggers for different components
 const webauthnLog = logger('orbitdb-identity-provider-webauthn-did:webauthn');
@@ -1098,7 +1098,7 @@ export {
   storeWebAuthnVarsigCredential,
   loadWebAuthnVarsigCredential,
   clearWebAuthnVarsigCredential
-} from './varsig.js';
+} from './varsig/index.js';
 
 // Re-export individual verification functions for convenience
 export {
@@ -1124,11 +1124,7 @@ export {
   storeEncryptedKeystore,
   loadEncryptedKeystore,
   clearEncryptedKeystore,
-  checkExtensionSupport,
-  computeHash,
-  getEncryptionProof,
-  verifyEncryptionIntegrity,
-  getFullEncryptionStatus
+  checkExtensionSupport
 } from './keystore-encryption.js';
 
 export default {
