@@ -1,6 +1,6 @@
 {
   "name": "@le-space/orbitdb-identity-provider-webauthn-did",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "WebAuthn-based DID identity provider for OrbitDB for hardware-secured wallets and biometric Passkey authentication",
   "main": "src/index.js",
   "type": "module",
@@ -58,8 +58,14 @@
     "@orbitdb/core": "^3.0.0"
   },
   "dependencies": {
+    "@ipld/dag-cbor": "^9.2.5",
     "@libp2p/logger": "^5.1.5",
+    "@simplewebauthn/browser": "^13.0.0",
     "cbor-web": "^9.0.1",
+    "iso-base": "npm:@le-space/iso-base",
+    "iso-did": "npm:@le-space/iso-did@2.1.2",
+    "iso-web": "^2.1.0",
+    "iso-webauthn-varsig": "npm:@le-space/iso-webauthn-varsig",
     "multiformats": "^13.0.0",
     "vite-plugin-node-polyfills": "^0.24.0"
   },
@@ -85,6 +91,13 @@
     "LICENSE",
     "package.json"
   ],
+  "pnpm": {
+    "overrides": {
+      "iso-base": "npm:@le-space/iso-base",
+      "iso-did": "npm:@le-space/iso-did@2.1.2",
+      "iso-webauthn-varsig": "npm:@le-space/iso-webauthn-varsig"
+    }
+  },
   "publishConfig": {
     "access": "public"
   }

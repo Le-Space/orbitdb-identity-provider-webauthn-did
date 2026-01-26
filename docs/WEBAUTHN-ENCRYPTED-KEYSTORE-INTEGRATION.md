@@ -274,7 +274,7 @@ async function decryptPrivateKey(ciphertext, sk, iv) {
 }
 ```
 
-The complete implementation is available in `src/keystore-encryption.js` with the following exported utilities:
+The complete implementation is available in `src/keystore/encryption.js` with the following exported utilities:
 
 ```javascript
 import {
@@ -283,7 +283,7 @@ import {
   unlockKeystore,
   listEncryptedKeystores,
   deleteEncryptedKeystore
-} from '@le-space/orbitdb-identity-provider-webauthn-did/keystore-encryption';
+} from '@le-space/orbitdb-identity-provider-webauthn-did/keystore';
 ```
 
 ## Ed25519/secp256k1 Keystore DIDs
@@ -333,4 +333,3 @@ Encryption is opt-in. Existing code without `encryptKeystore` continues to work.
 npm run test:encrypted-keystore
 npm test
 ```
-

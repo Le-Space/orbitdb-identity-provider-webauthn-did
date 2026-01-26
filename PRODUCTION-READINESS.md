@@ -31,7 +31,7 @@ This is a **solid, well-tested project** with good documentation and comprehensi
 - Clear installation and usage instructions
 
 ### 3. **Clean Code Structure**
-- Modular separation: `index.js`, `keystore-encryption.js`, `verification.js`
+- Modular separation: `index.js`, `keystore/encryption.js`, `verification.js`
 - Consistent ESLint configuration (ES2022, 2-space indent, single quotes)
 - Proper ES module usage throughout
 - Structured logging with `@libp2p/logger`
@@ -72,7 +72,7 @@ src/
   utils/
     crypto.js                     (base64url conversions)
     did.js                        (DID creation logic)
-  keystore-encryption.js          (existing)
+  keystore/encryption.js          (existing)
   verification.js                 (existing)
   index.js                        (exports only)
 ```
@@ -158,7 +158,7 @@ Missing modern Node.js `exports` field for subpath imports.
   },
   "exports": {
     ".": "./src/index.js",
-    "./keystore-encryption": "./src/keystore-encryption.js",
+    "./keystore": "./src/keystore/encryption.js",
     "./verification": "./src/verification.js"
   }
 }
@@ -473,8 +473,8 @@ export const MULTICODEC = {
       "import": "./src/index.js",
       "types": "./types/index.d.ts"
     },
-    "./keystore-encryption": {
-      "import": "./src/keystore-encryption.js",
+    "./keystore": {
+      "import": "./src/keystore/encryption.js",
       "types": "./types/keystore-encryption.d.ts"
     },
     "./verification": {

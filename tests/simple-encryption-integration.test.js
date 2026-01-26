@@ -1,5 +1,13 @@
 import { test, expect } from '@playwright/test';
 
+async function waitForKeystoreEncryption(page) {
+  await page.waitForFunction(() =>
+    window.KeystoreEncryption &&
+    typeof window.KeystoreEncryption.generateSecretKey === 'function' &&
+    typeof window.KeystoreEncryption.encryptWithAESGCM === 'function'
+  );
+}
+
 /**
  * E2E Test for @orbitdb/simple-encryption Integration
  *
@@ -106,6 +114,7 @@ test.describe('Simple Encryption Integration', () => {
 
   test('should use WebAuthn-protected SK with simple-encryption pattern', async ({ page }) => {
     console.log('\n🧪 Testing simple-encryption integration pattern...');
+    await waitForKeystoreEncryption(page);
 
     const result = await page.evaluate(async () => {
       const { generateSecretKey, encryptWithAESGCM, decryptWithAESGCM } = window.KeystoreEncryption;
@@ -154,6 +163,7 @@ test.describe('Simple Encryption Integration', () => {
     console.log('\n🧪 Testing dual-layer encryption pattern...');
 
     await page.waitForSelector('text=WebAuthn is fully supported', { timeout: 30000 });
+    await waitForKeystoreEncryption(page);
 
     const result = await page.evaluate(async () => {
       const { generateSecretKey, encryptWithAESGCM, decryptWithAESGCM } = window.KeystoreEncryption;
@@ -215,6 +225,7 @@ test.describe('Simple Encryption Integration', () => {
 
   test('should verify password derivation is consistent', async ({ page }) => {
     console.log('\n🧪 Testing password derivation consistency...');
+    await waitForKeystoreEncryption(page);
 
     const result = await page.evaluate(() => {
       const { generateSecretKey } = window.KeystoreEncryption;
@@ -247,6 +258,7 @@ test.describe('Simple Encryption Integration', () => {
 
   test('should handle encryption with different secret keys', async ({ page }) => {
     console.log('\n🧪 Testing encryption isolation with different keys...');
+    await waitForKeystoreEncryption(page);
 
     const result = await page.evaluate(async () => {
       const { generateSecretKey, encryptWithAESGCM, decryptWithAESGCM } = window.KeystoreEncryption;

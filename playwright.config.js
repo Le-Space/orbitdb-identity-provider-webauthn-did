@@ -60,8 +60,13 @@ export default defineConfig({
     command: (() => {
       // Determine which demo to run based on test file or environment variable
       const testFile = process.env.PLAYWRIGHT_TEST_FILE || '';
-      const useEncryptedDemo = testFile.includes('ed25519-encrypted-keystore') || 
-                               process.env.USE_ENCRYPTED_DEMO === 'true';
+      const cliArgs = process.argv.join(' ');
+      const useEncryptedDemo = testFile.includes('encrypted-keystore') ||
+        testFile.includes('simple-encryption') ||
+        cliArgs.includes('ed25519-encrypted-keystore') ||
+        cliArgs.includes('encrypted-keystore') ||
+        cliArgs.includes('simple-encryption') ||
+        process.env.USE_ENCRYPTED_DEMO === 'true';
       
       const demoDir = useEncryptedDemo 
         ? 'examples/ed25519-encrypted-keystore-demo' 
