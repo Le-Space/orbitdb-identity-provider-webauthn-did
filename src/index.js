@@ -7,7 +7,7 @@
 
 import { useIdentityProvider } from '@orbitdb/core';
 import { logger } from '@libp2p/logger';
-import * as KeystoreEncryption from './keystore-encryption.js';
+import * as KeystoreEncryption from './keystore/encryption.js';
 import {
   WebAuthnVarsigProvider,
   createWebAuthnVarsigIdentity,
@@ -25,6 +25,12 @@ const identityLog = logger('orbitdb-identity-provider-webauthn-did:identity');
  * WebAuthn DID Provider Core Implementation
  */
 export class WebAuthnDIDProvider {
+  /**
+   * @param {Object} credentialInfo - WebAuthn credential material.
+   * @param {string} credentialInfo.credentialId - Credential ID (base64url).
+   * @param {Object} credentialInfo.publicKey - P-256 public key details.
+   * @param {Uint8Array} credentialInfo.rawCredentialId - Raw credential ID bytes.
+   */
   constructor(credentialInfo) {
     this.credentialId = credentialInfo.credentialId;
     this.publicKey = credentialInfo.publicKey;
@@ -34,6 +40,7 @@ export class WebAuthnDIDProvider {
 
   /**
    * Check if WebAuthn is supported in current browser
+   * @returns {boolean} True if supported.
    */
   static isSupported() {
     return window.PublicKeyCredential &&
@@ -42,6 +49,7 @@ export class WebAuthnDIDProvider {
 
   /**
    * Check if platform authenticator (Face ID, Touch ID, Windows Hello) is available
+   * @returns {Promise<boolean>} True if available.
    */
   static async isPlatformAuthenticatorAvailable() {
     if (!this.isSupported()) return false;
@@ -63,6 +71,7 @@ export class WebAuthnDIDProvider {
    * @param {string} options.domain - Domain/RP ID
    * @param {boolean} options.encryptKeystore - Enable keystore encryption
    * @param {string} options.keystoreEncryptionMethod - 'prf' (default), 'hmac-secret', or 'largeBlob'
+   * @returns {Promise<Object>} Credential info with public key and metadata.
    */
   static async createCredential(options = {}) {
     const {
@@ -197,6 +206,11 @@ export class WebAuthnDIDProvider {
    * Extract P-256 public key from WebAuthn credential
    * Parses the CBOR attestation object to get the real public key
    */
+  /**
+   * Extract and normalize WebAuthn public key data from a credential response.
+   * @param {PublicKeyCredential} credential - WebAuthn credential response.
+   * @returns {Promise<Object>} Parsed credential info with public key.
+   */
   static async extractPublicKey(credential) {
     try {
       // Import CBOR decoder for parsing attestation object
@@ -257,6 +271,11 @@ export class WebAuthnDIDProvider {
   /**
    * Generate DID from WebAuthn credential using did:key format for P-256 keys
    * This ensures compatibility with ucanto and other DID:key implementations
+   */
+  /**
+   * Create a did:key DID from a WebAuthn P-256 public key.
+   * @param {Object} credentialInfo - WebAuthn credential info.
+   * @returns {Promise<string>} DID string.
    */
   static async createDID(credentialInfo) {
     const pubKey = credentialInfo.publicKey;
@@ -337,6 +356,11 @@ export class WebAuthnDIDProvider {
   /**
    * Sign data using WebAuthn (requires biometric authentication)
    * Creates a persistent signature that can be verified multiple times
+   */
+  /**
+   * Sign arbitrary data with WebAuthn.
+   * @param {string|Uint8Array} data - Data to sign.
+   * @returns {Promise<string>} Base64url-encoded signature envelope.
    */
   async sign(data) {
     if (!WebAuthnDIDProvider.isSupported()) {
@@ -421,6 +445,11 @@ export class WebAuthnDIDProvider {
 
   /**
    * Verify WebAuthn signature/proof for OrbitDB compatibility
+   */
+  /**
+   * Verify a WebAuthn signature envelope.
+   * @param {string} signatureData - Base64url signature envelope.
+   * @returns {Promise<boolean>} True if verification succeeds.
    */
   async verify(signatureData) {
     webauthnLog('verify() called with signature length: %d', signatureData.length);
@@ -516,6 +545,15 @@ export class WebAuthnDIDProvider {
  * OrbitDB Identity Provider that uses WebAuthn
  */
 export class OrbitDBWebAuthnIdentityProvider {
+  /**
+   * @param {Object} options - Provider configuration.
+   * @param {Object} options.webauthnCredential - WebAuthn credential info.
+   * @param {boolean} [options.useKeystoreDID=false] - Use keystore DID instead of WebAuthn DID.
+   * @param {Object|null} [options.keystore=null] - OrbitDB keystore instance.
+   * @param {string} [options.keystoreKeyType='secp256k1'] - Keystore key type.
+   * @param {boolean} [options.encryptKeystore=false] - Encrypt keystore at rest.
+   * @param {string} [options.keystoreEncryptionMethod='prf'] - Encryption method.
+   */
   constructor({
     webauthnCredential,
     useKeystoreDID = false,
@@ -539,6 +577,10 @@ export class OrbitDBWebAuthnIdentityProvider {
     return 'webauthn';
   }
 
+  /**
+   * Resolve the identity DID.
+   * @returns {Promise<string>} DID string.
+   */
   async getId() {
     identityLog('getId() called');
 
@@ -831,6 +873,11 @@ export class OrbitDBWebAuthnIdentityProvider {
     }
   }
 
+  /**
+   * Sign data for OrbitDB identity operations.
+   * @param {string|Uint8Array} data - Payload to sign.
+   * @returns {Promise<string>} Signature envelope.
+   */
   signIdentity(data) {
     const dataLength = typeof data === 'string' ? data.length : data.byteLength;
     identityLog('signIdentity() called with data length: %d', dataLength);
@@ -845,6 +892,13 @@ export class OrbitDBWebAuthnIdentityProvider {
     return this.webauthnProvider.sign(data);
   }
 
+  /**
+   * Verify identity signature.
+   * @param {string} signature - Signature envelope.
+   * @param {string|Uint8Array} data - Payload that was signed.
+   * @param {Object} [publicKey] - Optional public key override.
+   * @returns {Promise<boolean>} True if valid.
+   */
   verifyIdentity(signature, data, publicKey) {
     identityLog('verifyIdentity() called');
     return this.webauthnProvider.verify(signature, data, publicKey || this.credential.publicKey);
@@ -852,6 +906,8 @@ export class OrbitDBWebAuthnIdentityProvider {
 
   /**
    * Create OrbitDB identity using WebAuthn
+   * @param {Object} options - Provider options.
+   * @returns {Promise<Object>} OrbitDB identity object.
    */
   static async createIdentity(options) {
     const {
@@ -931,6 +987,7 @@ export class OrbitDBWebAuthnIdentityProvider {
  * @param {string} options.keystoreKeyType - Key type for keystore: 'secp256k1' (default) or 'Ed25519'
  * @param {boolean} options.encryptKeystore - If true, encrypts the keystore with WebAuthn-protected secret
  * @param {string} options.keystoreEncryptionMethod - Encryption method: 'largeBlob' or 'hmac-secret'
+ * @returns {Function} Provider factory for OrbitDB.
  */
 export function OrbitDBWebAuthnIdentityProviderFunction(options = {}) {
   // Return a function that returns a promise (as expected by OrbitDB)
@@ -968,6 +1025,7 @@ OrbitDBWebAuthnIdentityProviderFunction.verifyIdentity = async function(identity
 
 /**
  * Register WebAuthn identity provider with OrbitDB
+ * @returns {boolean} True if registration succeeded.
  */
 export function registerWebAuthnProvider() {
   try {
@@ -981,6 +1039,7 @@ export function registerWebAuthnProvider() {
 
 /**
  * Check WebAuthn support and provide user-friendly messages
+ * @returns {Promise<Object>} Support status and message.
  */
 export async function checkWebAuthnSupport() {
   const support = {
@@ -1125,7 +1184,7 @@ export {
   loadEncryptedKeystore,
   clearEncryptedKeystore,
   checkExtensionSupport
-} from './keystore-encryption.js';
+} from './keystore/encryption.js';
 
 export default {
   WebAuthnDIDProvider,

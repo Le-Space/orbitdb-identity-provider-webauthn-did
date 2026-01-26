@@ -1,3 +1,6 @@
+/**
+ * Build and verify WebAuthn varsig assertions for payloads.
+ */
 import { unwrapEC2Signature } from 'iso-passkeys';
 import {
   bytesToBase64url,
@@ -11,6 +14,13 @@ import {
 } from 'iso-webauthn-varsig';
 import { buildChallengeBytes, toArrayBuffer, toBytes } from './utils.js';
 
+/**
+ * Run a WebAuthn assertion for a payload.
+ * @param {Object} credential - WebAuthn credential info.
+ * @param {Uint8Array} payloadBytes - Payload to sign.
+ * @param {string} domainLabel - Challenge domain label.
+ * @returns {Promise<Object>} Assertion metadata and bytes.
+ */
 async function runWebAuthnAssertionForPayload(credential, payloadBytes, domainLabel) {
   const rpId = window.location.hostname;
   const origin = window.location.origin;
@@ -50,6 +60,11 @@ async function runWebAuthnAssertionForPayload(credential, payloadBytes, domainLa
   };
 }
 
+/**
+ * Build varsig envelope and validate the assertion.
+ * @param {Object} assertionData - Assertion metadata from WebAuthn.
+ * @returns {Promise<{varsig: Uint8Array, clientData: Object, verification: Object, signatureValid: boolean}>}
+ */
 async function buildVarsigOutput(assertionData) {
   const { assertion, algorithm, origin, rpId, challengeBytes, publicKey } =
     assertionData;
@@ -87,6 +102,11 @@ async function buildVarsigOutput(assertionData) {
   return { varsig, clientData, verification, signatureValid };
 }
 
+/**
+ * Resolve algorithm name from a public key.
+ * @param {Uint8Array} publicKey - Raw public key bytes.
+ * @returns {string} Algorithm name.
+ */
 function algorithmFromPublicKey(publicKey) {
   if (publicKey.length === 32) {
     return 'Ed25519';
@@ -97,6 +117,14 @@ function algorithmFromPublicKey(publicKey) {
   throw new Error('Unsupported public key format');
 }
 
+/**
+ * Verify varsig signature for a payload and domain.
+ * @param {Uint8Array} signature - Varsig signature.
+ * @param {Uint8Array} publicKey - Public key bytes.
+ * @param {Uint8Array} payloadBytes - Signed payload bytes.
+ * @param {string} domainLabel - Challenge domain label.
+ * @returns {Promise<boolean>} True if valid.
+ */
 async function verifyVarsigForPayload(signature, publicKey, payloadBytes, domainLabel) {
   const decoded = decodeWebAuthnVarsigV1(signature);
   const clientData = parseClientDataJSON(decoded.clientDataJSON);

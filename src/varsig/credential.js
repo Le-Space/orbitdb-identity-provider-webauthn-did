@@ -1,7 +1,15 @@
+/**
+ * WebAuthn varsig credential creation and parsing utilities.
+ */
 import { DIDKey } from 'iso-did';
 import { parseAttestationObject } from 'iso-passkeys';
 import { toArrayBuffer } from './utils.js';
 
+/**
+ * Extract public key info from a WebAuthn attestation object.
+ * @param {Uint8Array} attestationObject - Raw attestation object bytes.
+ * @returns {{algorithm: string|null, publicKey: Uint8Array|null, kty: number, alg: number, crv: number}}
+ */
 function extractCredentialInfo(attestationObject) {
   const parsed = parseAttestationObject(toArrayBuffer(attestationObject));
   const coseKey = parsed.authData.credentialPublicKey;
@@ -41,6 +49,14 @@ function extractCredentialInfo(attestationObject) {
   return { algorithm: null, publicKey: null, kty, alg, crv };
 }
 
+/**
+ * Create a WebAuthn credential for varsig usage.
+ * @param {Object} [options] - WebAuthn creation options.
+ * @param {string} [options.userId] - User identifier.
+ * @param {string} [options.displayName] - Display name.
+ * @param {string} [options.domain] - RP ID / domain.
+ * @returns {Promise<Object>} Credential info including public key and DID.
+ */
 async function createWebAuthnVarsigCredential(options = {}) {
   const {
     userId,

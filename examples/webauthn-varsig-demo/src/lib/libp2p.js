@@ -11,6 +11,7 @@ import { gossipsub } from '@chainsafe/libp2p-gossipsub';
 import { all } from '@libp2p/websockets/filters';
 import { LevelBlockstore } from 'blockstore-level';
 import { LevelDatastore } from 'datastore-level';
+import { CID } from 'multiformats/cid';
 import {
   createWebAuthnVarsigIdentity,
   createWebAuthnVarsigIdentities
@@ -101,7 +102,19 @@ export async function setupOrbitDB(credential) {
 
   // Create WebAuthn Varsig identity (no OrbitDB keystore)
   const identity = await createWebAuthnVarsigIdentity({ credential });
-  const identities = createWebAuthnVarsigIdentities(identity);
+  const identityStorage = {
+    get: async (hash) => {
+      try {
+        return await ipfs.blockstore.get(CID.parse(hash));
+      } catch {
+        return undefined;
+      }
+    },
+    put: async (hash, bytes) => {
+      await ipfs.blockstore.put(CID.parse(hash), bytes);
+    }
+  };
+  const identities = createWebAuthnVarsigIdentities(identity, {}, identityStorage);
   
   console.log('🔍 Created WebAuthn varsig identity:', {
     id: identity.id,
