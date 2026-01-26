@@ -115,3 +115,45 @@ sequenceDiagram
   App->>DB: db.put() (encrypted content)
   DB->>KS: sign entry
 ```
+
+## `examples/webauthn-varsig-demo`
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant User
+  participant App as Web UI
+  participant WebAuthn as WebAuthn API
+  participant Auth as Authenticator
+  participant LS as LocalStorage
+  participant Prov as WebAuthn Varsig Provider
+  participant DB as OrbitDB Database
+
+  User->>App: Create credential
+  App->>WebAuthn: navigator.credentials.create()
+  WebAuthn->>Auth: Create passkey
+  Auth-->>WebAuthn: Attestation
+  WebAuthn-->>App: Credential (rawId, publicKey)
+  App->>LS: Store credentialId
+
+  User->>App: Authenticate / create varsig identity
+  App->>Prov: createIdentity()
+  Prov->>WebAuthn: navigator.credentials.get()
+  WebAuthn->>Auth: User verification
+  Auth-->>WebAuthn: Assertion
+  WebAuthn-->>Prov: Assertion
+  Prov->>Prov: build varsig envelope (encodeWebAuthnVarsigV1)
+  Prov-->>App: Identity (publicKey + varsig signature)
+
+  User->>App: Add TODO
+  App->>DB: db.put()
+  DB->>Prov: signIdentity(payload)
+  Prov->>WebAuthn: navigator.credentials.get()
+  WebAuthn->>Auth: User verification
+  Auth-->>WebAuthn: Assertion
+  WebAuthn-->>Prov: Assertion
+  Prov->>Prov: build varsig envelope (encodeWebAuthnVarsigV1)
+  Prov-->>DB: Varsig signature
+
+  Note over App,DB: No OrbitDB keystore, no PRF/keystore encryption in this demo.
+```

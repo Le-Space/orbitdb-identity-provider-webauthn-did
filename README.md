@@ -8,9 +8,9 @@
 
 Two WebAuthn-based OrbitDB identity providers with distinct trade-offs:
 
-- **Varsig**: No OrbitDB keystore at all. Each entry is signed by WebAuthn (varsig envelope), so keys never leave the authenticator, at the cost of a WebAuthn prompt per write.
+- **WebAuthn-Varsig**: No insecure OrbitDB keystore at all. Each entry is signed by WebAuthn (varsig envelope), so keys never leave the authenticator, one WebAuthn prompt per write.
 
-- **Keystore-based DID**: Generates an Ed25519/secp256k1 keystore keypair for OrbitDB signing. When `encryptKeystore` is enabled, the private key is encrypted with AES-GCM and only rehydrated in memory after a WebAuthn unlock (PRF, largeBlob, or hmac-secret). 
+- **Keystore-based DID**: Generates an Ed25519/secp256k1 keystore keypair for OrbitDB signing in browser memory. When `encryptKeystore` is enabled, the private key is encrypted with AES-GCM and only rehydrated in memory after a WebAuthn unlock (PRF, largeBlob, or hmac-secret). 
 
 **Recommendation (security-first):**
 
@@ -151,7 +151,7 @@ sequenceDiagram
 Svelte demos:
 - `examples/webauthn-todo-demo/` - WebAuthn DID (no keystore signing; identity-only).
 - `examples/ed25519-encrypted-keystore-demo/` - Ed25519 keystore DID with optional WebAuthn encryption.
-- `examples/webauthn-varsig-demo/` - Varsig provider with passkey signing for each entry.
+- `examples/webauthn-varsig-demo/` - Varsig provider with passkey signing for each entry. Live demo: https://dweb.link/ipfs/bafybeib6tpwiby7pik67ufb3lxpr3j4by2l7r3ov3zzk6hjbzjzgsvckhy
 
 Scripted examples:
 - `examples/ed25519-keystore-did-example.js` - Keystore DID flow.

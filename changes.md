@@ -1,5 +1,11 @@
 # Changes
 
+## 0.2.1
+- Add WebAuthn varsig demo E2E coverage and test-mode stubs for CI.
+- Update CI to focus on Chromium-only runs and disable failing encrypted keystore tests.
+- Add @libp2p/crypto dependency and update lockfile.
+- Publish varsig demo build to Storacha and link in README.
+
 ## 0.2.0
 - Switch iso dependencies to the published `@le-space` fork and pin `@le-space/iso-did@2.1.2`.
 - Restore unscoped `iso-web` from npm to satisfy `iso-did` runtime deps.

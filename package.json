@@ -1,12 +1,12 @@
 {
   "name": "@le-space/orbitdb-identity-provider-webauthn-did",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "WebAuthn-based DID identity provider for OrbitDB for hardware-secured wallets and biometric Passkey authentication",
   "main": "src/index.js",
   "type": "module",
   "scripts": {
     "postinstall": "patch-package",
-    "test": "playwright test tests/webauthn-focused.test.js --project=chromium",
+    "test": "npm run test:all",
     "test:all": "playwright test",
     "test:headed": "playwright test tests/webauthn-focused.test.js --headed --project=chromium",
     "test:ui": "playwright test --ui",
