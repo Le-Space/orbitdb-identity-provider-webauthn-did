@@ -93,7 +93,7 @@ jobs:
       
       # Run Ed25519 Encrypted Keystore E2E tests (disabled)
       - name: Run Ed25519 Encrypted Keystore E2E tests (chromium only)
-        run: USE_ENCRYPTED_DEMO=true playwright test tests/ed25519-encrypted-keystore-e2e.test.js --project=chromium --reporter=github
+        run: USE_ENCRYPTED_DEMO=true pnpm exec playwright test tests/ed25519-encrypted-keystore-e2e.test.js --project=chromium --reporter=github
         env:
           CI: true
       
