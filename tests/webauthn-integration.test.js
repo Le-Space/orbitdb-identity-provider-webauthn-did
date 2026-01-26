@@ -169,7 +169,12 @@ test.describe('WebAuthn DID Identity Provider Integration', () => {
     await expect(page.locator('button:has-text("Add")')).toBeVisible();
   });
 
-  test('should copy DID to clipboard', async ({ page, context }) => {
+  test('should copy DID to clipboard', async ({ page, context, browserName }) => {
+    test.skip(
+      browserName !== 'chromium',
+      'clipboard permissions are only supported in Chromium'
+    );
+
     // Grant clipboard permissions
     await context.grantPermissions(['clipboard-write', 'clipboard-read']);
 
