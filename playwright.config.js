@@ -67,10 +67,16 @@ export default defineConfig({
         cliArgs.includes('encrypted-keystore') ||
         cliArgs.includes('simple-encryption') ||
         process.env.USE_ENCRYPTED_DEMO === 'true';
+
+      const useVarsigDemo = testFile.includes('varsig') ||
+        cliArgs.includes('varsig') ||
+        process.env.USE_VARSIG_DEMO === 'true';
       
-      const demoDir = useEncryptedDemo 
-        ? 'examples/ed25519-encrypted-keystore-demo' 
-        : 'examples/webauthn-todo-demo';
+      const demoDir = useEncryptedDemo
+        ? 'examples/ed25519-encrypted-keystore-demo'
+        : useVarsigDemo
+          ? 'examples/webauthn-varsig-demo'
+          : 'examples/webauthn-todo-demo';
       
       return process.env.CI 
         ? `cd ${demoDir} && npm run preview -- --port 5173 --host`

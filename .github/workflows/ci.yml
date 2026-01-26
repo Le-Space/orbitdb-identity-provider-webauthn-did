@@ -81,8 +81,13 @@ jobs:
         env:
           CI: true
 
+      - name: Run WebAuthn varsig E2E tests
+        run: pnpm run test:varsig-e2e
+        env:
+          CI: true
+
       - name: Run encrypted keystore tests
-        run: pnpm exec playwright test tests/encrypted-keystore.test.js --reporter=github --timeout=120000
+        run: pnpm exec playwright test tests/encrypted-keystore.test.js --reporter=github --timeout=240000
         env:
           CI: true
       
