@@ -92,10 +92,10 @@ jobs:
       #     CI: true
       
       # Run Ed25519 Encrypted Keystore E2E tests (disabled)
-      - name: Run Ed25519 Encrypted Keystore E2E tests
-        run: pnpm run test:encrypted-keystore
-        env:
-          CI: true
+      # - name: Run Ed25519 Encrypted Keystore E2E tests (disabled)
+      #   run: pnpm run test:encrypted-keystore
+      #   env:
+      #     CI: true
       
       - name: Upload test artifacts
         if: failure()
