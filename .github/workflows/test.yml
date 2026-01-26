@@ -19,50 +19,63 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22.x'
-          cache: 'npm'
+          cache: 'pnpm'
+
+      - name: Enable Corepack
+        run: corepack enable
       
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
       
       - name: Run linting
-        run: npm run lint --if-present
+        run: pnpm run lint --if-present
         continue-on-error: true
       
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chromium
       
       - name: Install demo dependencies (webauthn-todo-demo)
         run: |
           cd examples/webauthn-todo-demo
-          npm ci
+          pnpm install --frozen-lockfile
       
       - name: Build demo application (webauthn-todo-demo)
         run: |
           cd examples/webauthn-todo-demo
-          npm run build
+          pnpm run build
       
       - name: Install demo dependencies (ed25519-encrypted-keystore-demo)
         run: |
           cd examples/ed25519-encrypted-keystore-demo
-          npm ci
+          pnpm install --frozen-lockfile
+
+      - name: Install demo dependencies (webauthn-varsig-demo)
+        run: |
+          cd examples/webauthn-varsig-demo
+          pnpm install --frozen-lockfile
       
       - name: Build demo application (ed25519-encrypted-keystore-demo)
         run: |
           cd examples/ed25519-encrypted-keystore-demo
-          npm run build
+          pnpm run build
+
+      - name: Build demo application (webauthn-varsig-demo)
+        run: |
+          cd examples/webauthn-varsig-demo
+          pnpm run build
       
       - name: Run WebAuthn focused tests
-        run: npx playwright test tests/webauthn-focused.test.js --project=chromium --reporter=github
+        run: pnpm exec playwright test tests/webauthn-focused.test.js --project=chromium --reporter=github
         env:
           CI: true
       
       - name: Run Ed25519 Encrypted Keystore E2E tests
-        run: USE_ENCRYPTED_DEMO=true npx playwright test tests/ed25519-encrypted-keystore-e2e.test.js --project=chromium --reporter=github
+        run: USE_ENCRYPTED_DEMO=true pnpm exec playwright test tests/ed25519-encrypted-keystore-e2e.test.js --project=chromium --reporter=github
         env:
           CI: true
       
       - name: Run Simple Encryption Integration tests
-        run: USE_ENCRYPTED_DEMO=true npx playwright test tests/simple-encryption-integration.test.js --project=chromium --reporter=github
+        run: USE_ENCRYPTED_DEMO=true pnpm exec playwright test tests/simple-encryption-integration.test.js --project=chromium --reporter=github
         env:
           CI: true
       
@@ -88,16 +101,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22.x'
-          cache: 'npm'
+          cache: 'pnpm'
+
+      - name: Enable Corepack
+        run: corepack enable
       
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
       
       - name: Check code formatting
-        run: npm run format:check --if-present || echo "No format:check script found"
+        run: pnpm run format:check --if-present || echo "No format:check script found"
       
       - name: Run linting
-        run: npm run lint --if-present || echo "No lint script found"
+        run: pnpm run lint --if-present || echo "No lint script found"
       
       - name: Type checking
-        run: npm run type-check --if-present || echo "No type-check script found"
+        run: pnpm run type-check --if-present || echo "No type-check script found"
