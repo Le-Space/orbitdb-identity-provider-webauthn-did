@@ -118,13 +118,16 @@ export class WebAuthnDIDProvider {
     };
 
     // Add encryption extension if requested
+    let prfInput = null;
     if (encryptKeystore) {
       webauthnLog('Adding encryption extension: %s', keystoreEncryptionMethod);
 
       if (keystoreEncryptionMethod === 'prf') {
-        credentialOptions.publicKey = KeystoreEncryption.addPRFToCredentialOptions(
+        const prfConfig = KeystoreEncryption.addPRFToCredentialOptions(
           credentialOptions.publicKey
         );
+        credentialOptions.publicKey = prfConfig.credentialOptions;
+        prfInput = prfConfig.prfInput;
       } else if (keystoreEncryptionMethod === 'hmac-secret') {
         credentialOptions.publicKey = KeystoreEncryption.addHmacSecretToCredentialOptions(
           credentialOptions.publicKey
@@ -168,7 +171,8 @@ export class WebAuthnDIDProvider {
         publicKey,
         userId,
         displayName,
-        attestationObject: new Uint8Array(credential.response.attestationObject)
+        attestationObject: new Uint8Array(credential.response.attestationObject),
+        prfInput: prfInput || undefined
       };
 
       webauthnLog('Credential creation completed successfully');
@@ -357,6 +361,11 @@ export class WebAuthnDIDProvider {
     }
 
     try {
+      webauthnLog('Signer context: %o', {
+        signer: 'webauthn',
+        credentialIdPrefix: this.credentialId?.slice?.(0, 12),
+        rawCredentialIdLength: this.rawCredentialId?.length
+      });
       const dataBytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
       const dataHash = await crypto.subtle.digest('SHA-256', dataBytes);
       const dataHashStr = Array.from(new Uint8Array(dataHash)).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);

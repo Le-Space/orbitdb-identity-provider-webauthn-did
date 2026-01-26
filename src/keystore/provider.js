@@ -401,6 +401,17 @@ export class OrbitDBWebAuthnIdentityProvider {
   signIdentity(data) {
     const dataLength = typeof data === 'string' ? data.length : data.byteLength;
     identityLog('signIdentity() called with data length: %d', dataLength);
+    identityLog('Signer context: %o', {
+      useKeystoreDID: this.useKeystoreDID,
+      encryptKeystore: this.encryptKeystore,
+      keystoreEncryptionMethod: this.keystoreEncryptionMethod,
+      hasKeystore: Boolean(this.keystore),
+      hasUnlockedKeypair: Boolean(this.unlockedKeypair)
+    });
+
+    const signerSelection =
+      this.encryptKeystore && this.unlockedKeypair ? 'encrypted-keystore' : 'webauthn';
+    identityLog('Signer selection: %s', signerSelection);
 
     // If using encrypted keystore and it's unlocked, use unlocked key
     if (this.encryptKeystore && this.unlockedKeypair) {

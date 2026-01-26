@@ -12,11 +12,11 @@
  */
 
 // Import verification utilities from the main package
-import { 
-  verifyDataEntries, 
+import {
+  verifyDataEntries,
   verifyDatabaseUpdate as packageVerifyDatabaseUpdate,
-  verifyIdentityStorage as packageVerifyIdentityStorage 
-} from '@le-space/orbitdb-identity-provider-webauthn-did';
+  verifyIdentityStorage as packageVerifyIdentityStorage
+} from '@le-space/orbitdb-identity-provider-webauthn-did/verification';
 
 /**
  * Todo-specific match function for data verification

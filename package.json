@@ -4,6 +4,10 @@
   "description": "WebAuthn-based DID identity provider for OrbitDB for hardware-secured wallets and biometric Passkey authentication",
   "main": "src/index.js",
   "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./verification": "./verification.js"
+  },
   "scripts": {
     "postinstall": "patch-package",
     "test": "npm run test:all",
@@ -88,6 +92,7 @@
   },
   "files": [
     "src/",
+    "verification.js",
     "README.md",
     "LICENSE",
     "package.json"

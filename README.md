@@ -106,6 +106,8 @@ sequenceDiagram
   App->>DB: db.put()
   DB->>KS: sign entry with keystore key
   KS-->>DB: Entry signature
+
+  Note over App,KS: Keystore private key is stored encrypted at rest.
 ```
 
 ### Varsig (no keystore)
@@ -150,7 +152,7 @@ sequenceDiagram
 
 Svelte demos:
 - `examples/webauthn-todo-demo/` - WebAuthn DID (no keystore signing; identity-only).
-- `examples/ed25519-encrypted-keystore-demo/` - Ed25519 keystore DID with optional WebAuthn encryption.
+- `examples/ed25519-encrypted-keystore-demo/` - Ed25519 keystore DID; keystore encrypted at rest with WebAuthn (PRF when available, otherwise largeBlob/hmac-secret).
 - `examples/webauthn-varsig-demo/` - Varsig provider with passkey signing for each entry. Live demo: https://dweb.link/ipfs/bafybeib6tpwiby7pik67ufb3lxpr3j4by2l7r3ov3zzk6hjbzjzgsvckhy
 
 Scripted examples:

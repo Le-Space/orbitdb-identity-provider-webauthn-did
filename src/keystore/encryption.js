@@ -2,12 +2,54 @@
  * Keystore Encryption Utilities
  *
  * Provides AES-GCM encryption for OrbitDB keystore private keys,
- * protected by WebAuthn credentials using largeBlob or hmac-secret extensions.
+ * protected by WebAuthn credentials using PRF, largeBlob, or hmac-secret extensions.
  */
 
 import { logger } from '@libp2p/logger';
 
 const log = logger('orbitdb-identity-provider-webauthn-did:keystore-encryption');
+const PRF_INFO = new TextEncoder().encode('orbitdb/keystore-prf');
+
+async function deriveKeyFromPrfSeed(prfSeed) {
+  const saltHash = await crypto.subtle.digest('SHA-256', prfSeed);
+  const salt = new Uint8Array(saltHash).slice(0, 16);
+  const baseKey = await crypto.subtle.importKey(
+    'raw',
+    prfSeed,
+    'HKDF',
+    false,
+    ['deriveBits']
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt,
+      info: PRF_INFO
+    },
+    baseKey,
+    256
+  );
+  return new Uint8Array(bits);
+}
+
+function getPrfSeed(credential, rawCredentialId) {
+  if (credential) {
+    try {
+      const extensions = credential.getClientExtensionResults();
+      const prfResults = extensions?.prf;
+      if (prfResults?.results?.first) {
+        log('Using WebAuthn PRF extension for key derivation');
+        return { seed: new Uint8Array(prfResults.results.first), source: 'prf' };
+      }
+    } catch (error) {
+      log('Error reading PRF extension results: %s', error.message);
+    }
+  }
+
+  log('PRF extension not available, using rawCredentialId for key derivation');
+  return { seed: rawCredentialId, source: 'credentialId' };
+}
 
 /**
  * Generate a random AES-GCM secret key (256-bit)
@@ -107,6 +149,29 @@ export function addLargeBlobToCredentialOptions(credentialOptions, sk) {
         write: sk
       }
     }
+  };
+}
+
+/**
+ * Add PRF extension to credential options
+ * @param {Object} credentialOptions - WebAuthn credential creation options
+ * @param {Uint8Array} [prfInput] - Optional PRF input (salt)
+ * @returns {{credentialOptions: Object, prfInput: Uint8Array}}
+ */
+export function addPRFToCredentialOptions(credentialOptions, prfInput = crypto.getRandomValues(new Uint8Array(32))) {
+  log('Adding PRF extension to credential options');
+
+  return {
+    credentialOptions: {
+      ...credentialOptions,
+      extensions: {
+        ...credentialOptions.extensions,
+        prf: {
+          eval: { first: prfInput }
+        }
+      }
+    },
+    prfInput
   };
 }
 
@@ -225,6 +290,55 @@ export async function wrapSKWithHmacSecret(credentialId, sk, rpId) {
 }
 
 /**
+ * Wrap secret key using PRF extension
+ * @param {Uint8Array} credentialId - WebAuthn credential ID
+ * @param {Uint8Array} sk - Secret key to wrap
+ * @param {string} rpId - Relying party ID (domain)
+ * @param {Uint8Array} [prfInput] - PRF input (salt) for deterministic output
+ * @returns {Promise<{wrappedSK: Uint8Array, wrappingIV: Uint8Array, salt: Uint8Array, prfSource: string}>}
+ */
+export async function wrapSKWithPRF(credentialId, sk, rpId, prfInput) {
+  log('Wrapping secret key with PRF');
+
+  const prfEval = prfInput || crypto.getRandomValues(new Uint8Array(32));
+
+  try {
+    const assertion = await navigator.credentials.get({
+      publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        allowCredentials: [{
+          id: credentialId,
+          type: 'public-key'
+        }],
+        rpId: rpId,
+        userVerification: 'required',
+        extensions: {
+          prf: {
+            eval: { first: prfEval }
+          }
+        }
+      }
+    });
+
+    const { seed, source } = getPrfSeed(assertion, credentialId);
+    const prfKey = await deriveKeyFromPrfSeed(seed);
+    const wrapped = await encryptWithAESGCM(sk, prfKey);
+
+    log('Secret key wrapped with PRF (%s)', source);
+
+    return {
+      wrappedSK: wrapped.ciphertext,
+      wrappingIV: wrapped.iv,
+      salt: prfEval,
+      prfSource: source
+    };
+  } catch (error) {
+    log.error('Failed to wrap secret key with PRF: %s', error.message);
+    throw new Error(`Failed to wrap secret key: ${error.message}`);
+  }
+}
+
+/**
  * Unwrap secret key using hmac-secret extension
  * @param {Uint8Array} credentialId - WebAuthn credential ID
  * @param {Uint8Array} wrappedSK - Wrapped secret key
@@ -270,6 +384,50 @@ export async function unwrapSKWithHmacSecret(credentialId, wrappedSK, wrappingIV
     return sk;
   } catch (error) {
     log.error('Failed to unwrap secret key with hmac-secret: %s', error.message);
+    throw new Error(`Failed to unwrap secret key: ${error.message}`);
+  }
+}
+
+/**
+ * Unwrap secret key using PRF extension
+ * @param {Uint8Array} credentialId - WebAuthn credential ID
+ * @param {Uint8Array} wrappedSK - Wrapped secret key
+ * @param {Uint8Array} wrappingIV - IV used for wrapping
+ * @param {Uint8Array} salt - PRF input (salt)
+ * @param {string} rpId - Relying party ID (domain)
+ * @returns {Promise<Uint8Array>} Unwrapped secret key
+ */
+export async function unwrapSKWithPRF(credentialId, wrappedSK, wrappingIV, salt, rpId) {
+  log('Unwrapping secret key with PRF');
+
+  const prfEval = salt || crypto.getRandomValues(new Uint8Array(32));
+
+  try {
+    const assertion = await navigator.credentials.get({
+      publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        allowCredentials: [{
+          id: credentialId,
+          type: 'public-key'
+        }],
+        rpId: rpId,
+        userVerification: 'required',
+        extensions: {
+          prf: {
+            eval: { first: prfEval }
+          }
+        }
+      }
+    });
+
+    const { seed, source } = getPrfSeed(assertion, credentialId);
+    const prfKey = await deriveKeyFromPrfSeed(seed);
+    const sk = await decryptWithAESGCM(wrappedSK, prfKey, wrappingIV);
+
+    log('Secret key unwrapped with PRF (%s)', source);
+    return sk;
+  } catch (error) {
+    log.error('Failed to unwrap secret key with PRF: %s', error.message);
     throw new Error(`Failed to unwrap secret key: ${error.message}`);
   }
 }

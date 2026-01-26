@@ -75,7 +75,14 @@ import {
   onMount(async () => {
     // Expose utilities to window for E2E testing
     if (typeof window !== 'undefined') {
-      window.KeystoreEncryption = KeystoreEncryption;
+      const { addPRFToCredentialOptions, wrapSKWithPRF, unwrapSKWithPRF } =
+        KeystoreEncryption;
+      window.KeystoreEncryption = {
+        ...KeystoreEncryption,
+        addPRFToCredentialOptions,
+        wrapSKWithPRF,
+        unwrapSKWithPRF
+      };
     }
     
     await initializeWebAuthn();

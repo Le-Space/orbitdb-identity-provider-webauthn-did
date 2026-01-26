@@ -91,6 +91,7 @@ export function storeWebAuthnCredential(credential, key = 'webauthn-credential')
       ...credential,
       rawCredentialId: Array.from(credential.rawCredentialId),
       attestationObject: Array.from(credential.attestationObject),
+      prfInput: credential.prfInput ? Array.from(credential.prfInput) : undefined,
       publicKey: {
         ...credential.publicKey,
         x: Array.from(credential.publicKey.x),
@@ -118,6 +119,7 @@ export function loadWebAuthnCredential(key = 'webauthn-credential') {
         ...parsed,
         rawCredentialId: new Uint8Array(parsed.rawCredentialId),
         attestationObject: new Uint8Array(parsed.attestationObject),
+        prfInput: parsed.prfInput ? new Uint8Array(parsed.prfInput) : undefined,
         publicKey: {
           ...parsed.publicKey,
           x: new Uint8Array(parsed.publicKey.x),
@@ -180,8 +182,11 @@ export {
   encryptWithAESGCM,
   decryptWithAESGCM,
   addLargeBlobToCredentialOptions,
+  addPRFToCredentialOptions,
   retrieveSKFromLargeBlob,
   addHmacSecretToCredentialOptions,
+  wrapSKWithPRF,
+  unwrapSKWithPRF,
   wrapSKWithHmacSecret,
   unwrapSKWithHmacSecret,
   storeEncryptedKeystore,

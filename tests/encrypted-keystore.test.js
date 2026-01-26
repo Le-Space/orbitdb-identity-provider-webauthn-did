@@ -361,6 +361,116 @@ test.describe('Encryption Utilities', () => {
     expect(result.bothDecryptCorrectly).toBe(true);
   });
 
+  test('should add PRF extension to credential options', async ({ page }) => {
+    await page.goto('http://localhost:5173');
+    await waitForKeystoreEncryption(page);
+
+    const result = await page.evaluate(() => {
+      const { KeystoreEncryption } = window;
+
+      const baseOptions = {
+        challenge: new Uint8Array(32),
+        rp: { name: 'Test' },
+        user: {
+          id: new Uint8Array(16),
+          name: 'test',
+          displayName: 'Test User'
+        },
+        pubKeyCredParams: [{ alg: -7, type: 'public-key' }]
+      };
+
+      const { credentialOptions, prfInput } =
+        KeystoreEncryption.addPRFToCredentialOptions(baseOptions);
+
+      return {
+        hasPrf: !!credentialOptions.extensions?.prf,
+        hasEval: !!credentialOptions.extensions?.prf?.eval?.first,
+        prfInputLength: prfInput ? prfInput.length : 0,
+        originalUnmodified: !baseOptions.extensions
+      };
+    });
+
+    expect(result.hasPrf).toBe(true);
+    expect(result.hasEval).toBe(true);
+    expect(result.prfInputLength).toBe(32);
+    expect(result.originalUnmodified).toBe(true);
+  });
+
+  test('should wrap and unwrap secret key with PRF (mocked)', async ({ page, context }) => {
+    await context.addInitScript(() => {
+      if (!window.navigator.credentials) {
+        Object.defineProperty(window.navigator, 'credentials', {
+          value: {},
+          configurable: true
+        });
+      }
+
+      const prfSeed = new Uint8Array(32);
+      for (let i = 0; i < prfSeed.length; i++) {
+        prfSeed[i] = 255 - i;
+      }
+
+      Object.defineProperty(window.navigator.credentials, 'get', {
+        value: async () => ({
+          id: 'test-credential',
+          rawId: new Uint8Array([1, 2, 3, 4]),
+          type: 'public-key',
+          response: {
+            authenticatorData: new Uint8Array(37),
+            clientDataJSON: new TextEncoder().encode(JSON.stringify({
+              type: 'webauthn.get',
+              challenge: 'test',
+              origin: window.location.origin
+            })),
+            signature: new Uint8Array(64)
+          },
+          getClientExtensionResults: () => ({
+            prf: { results: { first: prfSeed.buffer } }
+          })
+        }),
+        configurable: true,
+        writable: true
+      });
+    });
+
+    await page.goto('http://localhost:5173');
+    await waitForKeystoreEncryption(page);
+
+    const result = await page.evaluate(async () => {
+      const { KeystoreEncryption } = window;
+      const sk = KeystoreEncryption.generateSecretKey();
+      const prfInput = new Uint8Array(32);
+      for (let i = 0; i < prfInput.length; i++) {
+        prfInput[i] = i;
+      }
+
+      const wrapped = await KeystoreEncryption.wrapSKWithPRF(
+        new Uint8Array([1, 2, 3, 4]),
+        sk,
+        window.location.hostname,
+        prfInput
+      );
+
+      const unwrapped = await KeystoreEncryption.unwrapSKWithPRF(
+        new Uint8Array([1, 2, 3, 4]),
+        wrapped.wrappedSK,
+        wrapped.wrappingIV,
+        wrapped.salt,
+        window.location.hostname
+      );
+
+      return {
+        matches: Array.from(sk).join(',') === Array.from(unwrapped).join(','),
+        prfSource: wrapped.prfSource,
+        saltLength: wrapped.salt ? wrapped.salt.length : 0
+      };
+    });
+
+    expect(result.matches).toBe(true);
+    expect(result.prfSource).toBe('prf');
+    expect(result.saltLength).toBe(32);
+  });
+
   test('should handle large data encryption', async ({ page }) => {
     await page.goto('http://localhost:5173');
     await waitForKeystoreEncryption(page);

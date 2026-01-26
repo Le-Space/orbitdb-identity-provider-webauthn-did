@@ -220,6 +220,12 @@ export async function addTodo(database, text, credential = null) {
     };
 
     dbLog('addTodo() called: %o', { todoId, textLength: text.trim().length });
+    dbLog('Identity context: %o', {
+      providerType: database.identity?.type,
+      providerIdPrefix: database.identity?.id?.slice?.(0, 16),
+      hasKeystore: Boolean(database.identities?.keystore),
+      keystoreType: database.identities?.keystore?.type || null
+    });
     dbLog('Calling database.put() - this will trigger: db.put() → identity.sign() → signIdentity() → webauthnProvider.sign()');
 
     await database.put(todoId, todo);
@@ -254,7 +260,13 @@ export async function toggleTodo(database, todo) {
     };
 
     dbLog('toggleTodo() called for todo: %s', todo.id);
-    dbLog('Calling database.put() to update todo');
+    dbLog('Identity context: %o', {
+      providerType: database.identity?.type,
+      providerIdPrefix: database.identity?.id?.slice?.(0, 16),
+      hasKeystore: Boolean(database.identities?.keystore),
+      keystoreType: database.identities?.keystore?.type || null
+    });
+    dbLog('Calling database.put() - this will trigger: db.put() → identity.sign() → signIdentity() → webauthnProvider.sign()');
 
     await database.put(todo.id, updatedTodo);
 
@@ -282,7 +294,13 @@ export async function deleteTodo(database, todo) {
     const startTime = Date.now();
 
     dbLog('deleteTodo() called for todo: %s', todo.id);
-    dbLog('Calling database.del() to delete todo');
+    dbLog('Identity context: %o', {
+      providerType: database.identity?.type,
+      providerIdPrefix: database.identity?.id?.slice?.(0, 16),
+      hasKeystore: Boolean(database.identities?.keystore),
+      keystoreType: database.identities?.keystore?.type || null
+    });
+    dbLog('Calling database.del() - this will trigger: db.del() → identity.sign() → signIdentity() → webauthnProvider.sign()');
 
     await database.del(todo.id);
 
