@@ -23,7 +23,10 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
       console.log('🔧 Setting up WebAuthn mocks with extension support...');
 
       if (!window.PublicKeyCredential) {
-        window.PublicKeyCredential = {};
+        window.PublicKeyCredential = function PublicKeyCredential() {};
+      }
+      if (!window.PublicKeyCredential.prototype) {
+        window.PublicKeyCredential.prototype = {};
       }
 
       window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = async () => {

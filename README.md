@@ -4,9 +4,18 @@
 
 Two WebAuthn-based OrbitDB identity providers:
 - **Keystore-based DID**: WebAuthn for identity, OrbitDB keystore for fast entry signing (optional encryption).
-- **Varsig**: No OrbitDB keystore; each entry is signed by WebAuthn with a varsig envelope.
+- **Varsig**: No OrbitDB keystore; each entry is signed by WebAuthn with a varsig envelope - with the hardware secured passkey
 
-⚠️ **Security**: No formal audit. Use only after your own review.
+## Variant Overview
+
+**Recommendation (security-first):**
+- **Best security:** Varsig provider. Keys never leave the authenticator; every write requires a WebAuthn assertion.
+- **Best balance:** Keystore provider with WebAuthn-encrypted keystore. One prompt per session, fast writes, but the key exists in memory while unlocked.
+
+⚠️ **Security**: Highly experimental release. No formal audit. Use only after your own review.
+
+Note: WebAuthn varsig support in this repo relies on our forked `@le-space/iso-*` packages of [Hugo Dias iso-repo](https://github.com/hugomrdias/iso-repo/) (notably `@le-space/iso-did` and `@le-space/iso-webauthn-varsig`) to align with the updated varsig flow.
+
 
 ## Install
 
@@ -31,11 +40,6 @@ const identity = await identities.createIdentity({
 });
 ```
 
-## Variant Overview
-
-**Recommendation (security-first):**
-- **Best security:** Varsig provider. Keys never leave the authenticator; every write requires a WebAuthn assertion.
-- **Best balance:** Keystore provider with WebAuthn-encrypted keystore. One prompt per session, fast writes, but the key exists in memory while unlocked.
 
 ### Keystore-based DID (WebAuthn + OrbitDB keystore)
 

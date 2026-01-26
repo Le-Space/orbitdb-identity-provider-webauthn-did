@@ -6,11 +6,21 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { OrbitDBWebAuthnIdentityProvider } from '../src/index.js';
+
+async function waitForKeystoreEncryption(page) {
+  await page.waitForFunction(() =>
+    window.KeystoreEncryption &&
+    typeof window.KeystoreEncryption.generateSecretKey === 'function' &&
+    typeof window.KeystoreEncryption.checkExtensionSupport === 'function'
+  );
+}
 
 test.describe('WebAuthn-Encrypted Keystore Feature', () => {
 
   test('should check encryption extension support', async ({ page }) => {
     await page.goto('http://localhost:5173');
+    await waitForKeystoreEncryption(page);
 
     const support = await page.evaluate(async () => {
       const { KeystoreEncryption } = window;
@@ -27,6 +37,7 @@ test.describe('WebAuthn-Encrypted Keystore Feature', () => {
 
   test('should generate secret key', async ({ page }) => {
     await page.goto('http://localhost:5173');
+    await waitForKeystoreEncryption(page);
 
     const result = await page.evaluate(() => {
       const { KeystoreEncryption } = window;
@@ -44,6 +55,7 @@ test.describe('WebAuthn-Encrypted Keystore Feature', () => {
 
   test('should encrypt and decrypt data with AES-GCM', async ({ page }) => {
     await page.goto('http://localhost:5173');
+    await waitForKeystoreEncryption(page);
 
     const result = await page.evaluate(async () => {
       const { KeystoreEncryption } = window;
@@ -83,6 +95,7 @@ test.describe('WebAuthn-Encrypted Keystore Feature', () => {
 
   test('should fail decryption with wrong key', async ({ page }) => {
     await page.goto('http://localhost:5173');
+    await waitForKeystoreEncryption(page);
 
     const result = await page.evaluate(async () => {
       const { KeystoreEncryption } = window;
@@ -115,6 +128,7 @@ test.describe('WebAuthn-Encrypted Keystore Feature', () => {
 
   test('should store and load encrypted keystore', async ({ page }) => {
     await page.goto('http://localhost:5173');
+    await waitForKeystoreEncryption(page);
 
     const result = await page.evaluate(async () => {
       const { KeystoreEncryption } = window;
@@ -158,8 +172,30 @@ test.describe('WebAuthn-Encrypted Keystore Feature', () => {
   });
 
   test('should create identity with encrypted keystore option', async ({ page }) => {
+    await page.addInitScript(() => {
+      if (!window.PublicKeyCredential) {
+        window.PublicKeyCredential = function PublicKeyCredential() {};
+      }
+      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = async () => true;
+
+      const storedCredential = {
+        credentialId: 'test-credential-id',
+        rawCredentialId: Array.from(new Uint8Array([1, 2, 3, 4])),
+        attestationObject: Array.from(new Uint8Array([1, 2, 3])),
+        publicKey: {
+          algorithm: -7,
+          keyType: 2,
+          curve: 1,
+          x: Array.from(new Uint8Array(32)),
+          y: Array.from(new Uint8Array(32))
+        }
+      };
+
+      localStorage.setItem('webauthn-credential', JSON.stringify(storedCredential));
+    });
     await page.goto('http://localhost:5173');
-    await page.waitForSelector('h1:has-text("WebAuthn Identity Provider Demo")');
+    await waitForKeystoreEncryption(page);
+    await page.waitForSelector('text=Encrypt keystore with WebAuthn');
 
     // Check if encryption option is available in UI
     const hasEncryptionOption = await page.evaluate(() => {
@@ -171,40 +207,34 @@ test.describe('WebAuthn-Encrypted Keystore Feature', () => {
     expect(hasEncryptionOption).toBe(true);
   });
 
-  test('should handle encryption flag in provider options', async ({ page }) => {
-    await page.goto('http://localhost:5173');
+  test('should handle encryption flag in provider options', async () => {
+    // Create mock credential
+    const mockCredential = {
+      credentialId: 'mock-id',
+      rawCredentialId: new Uint8Array([1, 2, 3]),
+      publicKey: {
+        x: new Uint8Array(32),
+        y: new Uint8Array(32)
+      }
+    };
 
-    const result = await page.evaluate(() => {
-      const { OrbitDBWebAuthnIdentityProvider } = window;
-
-      // Create mock credential
-      const mockCredential = {
-        credentialId: 'mock-id',
-        rawCredentialId: new Uint8Array([1, 2, 3]),
-        publicKey: {
-          x: new Uint8Array(32),
-          y: new Uint8Array(32)
-        }
-      };
-
-      // Test without encryption
-      const provider1 = new OrbitDBWebAuthnIdentityProvider({
-        webauthnCredential: mockCredential
-      });
-
-      // Test with encryption
-      const provider2 = new OrbitDBWebAuthnIdentityProvider({
-        webauthnCredential: mockCredential,
-        encryptKeystore: true,
-        keystoreEncryptionMethod: 'largeBlob'
-      });
-
-      return {
-        provider1HasEncryption: provider1.encryptKeystore,
-        provider2HasEncryption: provider2.encryptKeystore,
-        provider2Method: provider2.keystoreEncryptionMethod
-      };
+    // Test without encryption
+    const provider1 = new OrbitDBWebAuthnIdentityProvider({
+      webauthnCredential: mockCredential
     });
+
+    // Test with encryption
+    const provider2 = new OrbitDBWebAuthnIdentityProvider({
+      webauthnCredential: mockCredential,
+      encryptKeystore: true,
+      keystoreEncryptionMethod: 'largeBlob'
+    });
+
+    const result = {
+      provider1HasEncryption: provider1.encryptKeystore,
+      provider2HasEncryption: provider2.encryptKeystore,
+      provider2Method: provider2.keystoreEncryptionMethod
+    };
 
     expect(result.provider1HasEncryption).toBe(false);
     expect(result.provider2HasEncryption).toBe(true);
@@ -216,6 +246,7 @@ test.describe('Encryption Utilities', () => {
 
   test('should generate different keys each time', async ({ page }) => {
     await page.goto('http://localhost:5173');
+    await waitForKeystoreEncryption(page);
 
     const result = await page.evaluate(() => {
       const { KeystoreEncryption } = window;
@@ -238,6 +269,7 @@ test.describe('Encryption Utilities', () => {
 
   test('should produce different ciphertext for same data', async ({ page }) => {
     await page.goto('http://localhost:5173');
+    await waitForKeystoreEncryption(page);
 
     const result = await page.evaluate(async () => {
       const { KeystoreEncryption } = window;
@@ -273,6 +305,7 @@ test.describe('Encryption Utilities', () => {
 
   test('should handle large data encryption', async ({ page }) => {
     await page.goto('http://localhost:5173');
+    await waitForKeystoreEncryption(page);
 
     const result = await page.evaluate(async () => {
       const { KeystoreEncryption } = window;
@@ -322,6 +355,7 @@ test.describe('Storage Management', () => {
 
   test('should clear encrypted keystore', async ({ page }) => {
     await page.goto('http://localhost:5173');
+    await waitForKeystoreEncryption(page);
 
     const result = await page.evaluate(async () => {
       const { KeystoreEncryption } = window;
@@ -362,6 +396,7 @@ test.describe('Storage Management', () => {
 
   test('should handle multiple encrypted keystores', async ({ page }) => {
     await page.goto('http://localhost:5173');
+    await waitForKeystoreEncryption(page);
 
     const result = await page.evaluate(async () => {
       const { KeystoreEncryption } = window;
@@ -381,8 +416,7 @@ test.describe('Storage Management', () => {
         await KeystoreEncryption.storeEncryptedKeystore({
           ciphertext: encrypted.ciphertext,
           iv: encrypted.iv,
-          credentialId,
-          index: i
+          credentialId
         }, credentialId);
       }
 
@@ -399,13 +433,13 @@ test.describe('Storage Management', () => {
         storedCount: count,
         loadedCount: loaded.length,
         allLoaded: loaded.every(d => !!d),
-        indicesCorrect: loaded.every((d, i) => d.index === i)
+        credentialIdsMatch: loaded.every((d, i) => d.credentialId === credentialIds[i])
       };
     });
 
     expect(result.loadedCount).toBe(result.storedCount);
     expect(result.allLoaded).toBe(true);
-    expect(result.indicesCorrect).toBe(true);
+    expect(result.credentialIdsMatch).toBe(true);
   });
 });
 
@@ -413,6 +447,7 @@ test.describe('WebAuthn largeBlob Extension', () => {
 
   test('should add largeBlob extension to credential options', async ({ page }) => {
     await page.goto('http://localhost:5173');
+    await waitForKeystoreEncryption(page);
 
     const result = await page.evaluate(() => {
       const { KeystoreEncryption } = window;
@@ -481,6 +516,7 @@ test.describe('WebAuthn largeBlob Extension', () => {
     });
 
     await page.goto('http://localhost:5173');
+    await waitForKeystoreEncryption(page);
 
     const result = await page.evaluate(async () => {
       const { KeystoreEncryption } = window;
@@ -541,6 +577,7 @@ test.describe('WebAuthn largeBlob Extension', () => {
     });
 
     await page.goto('http://localhost:5173');
+    await waitForKeystoreEncryption(page);
 
     const result = await page.evaluate(async () => {
       const { KeystoreEncryption } = window;
