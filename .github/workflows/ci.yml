@@ -34,7 +34,7 @@ jobs:
       # Run linting (disabled)
       
       - name: Install Playwright browsers
-        run: pnpm exec playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps
       
       - name: Install demo dependencies (webauthn-todo-demo)
         run: |
@@ -78,6 +78,11 @@ jobs:
 
       - name: Run WebAuthn integration tests
         run: pnpm run test:integration
+        env:
+          CI: true
+
+      - name: Run encrypted keystore tests
+        run: pnpm exec playwright test tests/encrypted-keystore.test.js --reporter=github --timeout=120000
         env:
           CI: true
       
