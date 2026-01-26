@@ -203,7 +203,12 @@ export class WebAuthnDIDProvider {
   static async extractPublicKey(credential) {
     try {
       // Import CBOR decoder for parsing attestation object
-      const { decode } = await import('cbor-web');
+      const cbor = await import('cbor-web');
+      const decode = cbor.decode || cbor.default?.decode || cbor.default;
+
+      if (typeof decode !== 'function') {
+        throw new Error('CBOR decoder not available from cbor-web');
+      }
 
       const attestationObject = decode(new Uint8Array(credential.response.attestationObject));
       const authData = attestationObject.authData;

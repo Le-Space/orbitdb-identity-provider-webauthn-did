@@ -394,9 +394,9 @@ export async function checkExtensionSupport() {
       support.largeBlob = available && 'largeBlob' in PublicKeyCredential.prototype;
     }
 
-    // hmac-secret is more widely supported but harder to detect
-    // Assume support if WebAuthn is available (will fail gracefully if not)
-    support.hmacSecret = true;
+    // hmac-secret support cannot be reliably detected without a real credential.
+    // Keep it false by default and let users opt-in explicitly.
+    support.hmacSecret = false;
 
   } catch (error) {
     log.error('Failed to check extension support: %s', error.message);

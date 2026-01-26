@@ -575,6 +575,7 @@ import {
               style="display: flex; align-items: center; gap: 0.75rem; padding: 1rem; background-color: var(--cds-layer-accent); border-radius: 0.5rem; border: 1px solid var(--cds-border-subtle);"
             >
               <button
+                data-testid="toggle-todo"
                 on:click={() => handleToggleTodo(todo)}
                 style="flex-shrink: 0; background: none; border: none; cursor: pointer;"
                 disabled={loading}

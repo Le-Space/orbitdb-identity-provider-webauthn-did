@@ -158,6 +158,8 @@ import {
       credential = await WebAuthnDIDProvider.createCredential({
         userId: `todo-user-${Date.now()}`,
         displayName: 'TODO App User',
+        encryptKeystore: useEncryption,
+        keystoreEncryptionMethod: encryptionMethod
       });
 
       // Store credential for future use
@@ -231,6 +233,13 @@ import {
         errorCount: error.errors?.length,
       });
 
+      const hasHmacErrors = error.errors?.some(
+        (e) => e.message?.includes('hmac-secret')
+      );
+      if (hasHmacErrors) {
+        return 'hmac-secret is not available for this credential. Recreate the credential with hmac-secret enabled or use largeBlob.';
+      }
+
       const hasLoadingErrors = error.errors?.some(
         (e) =>
           e.message?.includes('all') ||
@@ -243,9 +252,13 @@ import {
       } else {
         return `Multiple errors occurred: ${error.errors?.map((e) => e.message).join(', ')}`;
       }
-    } else {
-      return `Authentication failed: ${error.message}`;
     }
+
+    if (error?.message?.includes('hmac-secret')) {
+      return 'hmac-secret is not available for this credential. Recreate the credential with hmac-secret enabled or use largeBlob.';
+    }
+
+    return `Authentication failed: ${error.message}`;
   }
 
   async function refreshTodos() {

@@ -55,6 +55,9 @@ export class OrbitDBWebAuthnIdentityProvider {
 
     // If useKeystoreDID flag is set, create Ed25519 DID from keystore
     if (this.useKeystoreDID && this.keystore) {
+      if (this.encryptKeystore) {
+        await this.ensureEncryptedKeystore();
+      }
       identityLog('Using Ed25519 DID from keystore');
       const did = await this.createEd25519DIDFromKeystore();
       identityLog('getId() returning Ed25519 DID: %s', did.substring(0, 32) + '...');
@@ -65,6 +68,21 @@ export class OrbitDBWebAuthnIdentityProvider {
     const did = await WebAuthnDIDProvider.createDID(this.credential);
     identityLog('getId() returning P-256 DID: %s', did.substring(0, 32) + '...');
     return did;
+  }
+
+  async ensureEncryptedKeystore() {
+    if (this.unlockedKeypair) {
+      return;
+    }
+
+    try {
+      await KeystoreEncryption.loadEncryptedKeystore(this.credential.credentialId);
+    } catch (error) {
+      identityLog('Encrypted keystore missing, creating a new one: %s', error.message);
+      await this.createEncryptedKeystore();
+    }
+
+    await this.unlockEncryptedKeystore();
   }
 
   /**

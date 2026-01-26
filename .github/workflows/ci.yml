@@ -1,10 +1,10 @@
-name: CI/CD - Test and Publish
+name: CI
 
 on:
   push:
     branches: [ main, develop ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
   release:
     types: [ created ]
 
@@ -70,8 +70,22 @@ jobs:
         run: pnpm exec playwright test tests/webauthn-focused.test.js --project=chromium --reporter=github
         env:
           CI: true
+
+      - name: Run WebAuthn logging E2E tests
+        run: pnpm run test:logging
+        env:
+          CI: true
+
+      - name: Run WebAuthn integration tests
+        run: pnpm run test:integration
+        env:
+          CI: true
       
       # Run Ed25519 Encrypted Keystore E2E tests (disabled)
+      - name: Run Ed25519 Encrypted Keystore E2E tests
+        run: pnpm run test:encrypted-keystore
+        env:
+          CI: true
       
       - name: Upload test artifacts
         if: failure()
