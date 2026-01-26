@@ -64,6 +64,7 @@
     "cbor-web": "^9.0.1",
     "iso-base": "npm:@le-space/iso-base",
     "iso-did": "npm:@le-space/iso-did@2.1.2",
+    "iso-passkeys": "npm:@le-space/iso-passkeys",
     "iso-web": "^2.1.0",
     "iso-webauthn-varsig": "npm:@le-space/iso-webauthn-varsig",
     "multiformats": "^13.0.0",
@@ -96,7 +97,12 @@
       "iso-base": "npm:@le-space/iso-base",
       "iso-did": "npm:@le-space/iso-did@2.1.2",
       "iso-webauthn-varsig": "npm:@le-space/iso-webauthn-varsig"
-    }
+    },
+    "onlyBuiltDependencies": [
+      "@ipshipyard/node-datachannel",
+      "classic-level",
+      "esbuild"
+    ]
   },
   "publishConfig": {
     "access": "public"

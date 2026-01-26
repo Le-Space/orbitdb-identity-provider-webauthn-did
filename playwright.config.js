@@ -77,7 +77,7 @@ export default defineConfig({
         : `cd ${demoDir} && npm run dev`;
     })(),
     url: 'http://localhost:5173',
-    reuseExistingServer: true, // Always reuse existing server
+    reuseExistingServer: process.env.PLAYWRIGHT_REUSE_SERVER === 'true',
     timeout: 120 * 1000,
   },
 });

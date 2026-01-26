@@ -282,7 +282,8 @@ test.describe('Simple Encryption Integration', () => {
         let wrongKeyFailed = false;
         try {
           await decryptWithAESGCM(encrypted1.ciphertext, sk2, encrypted1.iv);
-        } catch (error) {
+        } catch  {
+          console.log('🔐 MOCK: Wrong key failed');
           wrongKeyFailed = true;
         }
 

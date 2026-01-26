@@ -297,6 +297,7 @@ export async function storeEncryptedKeystore(data, credentialId) {
     wrappingIV: data.wrappingIV ? Array.from(data.wrappingIV) : undefined,
     salt: data.salt ? Array.from(data.salt) : undefined,
     encryptionMethod: data.encryptionMethod || 'largeBlob',
+    keyType: data.keyType,
     timestamp: Date.now()
   };
 
@@ -341,6 +342,7 @@ export async function loadEncryptedKeystore(credentialId) {
       wrappingIV: data.wrappingIV ? new Uint8Array(data.wrappingIV) : undefined,
       salt: data.salt ? new Uint8Array(data.salt) : undefined,
       encryptionMethod: data.encryptionMethod || 'largeBlob',
+      keyType: data.keyType,
       timestamp: data.timestamp
     };
 
