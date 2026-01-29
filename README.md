@@ -2,9 +2,7 @@
 
 [![Tests](https://github.com/le-space/orbitdb-identity-provider-webauthn-did/workflows/Tests/badge.svg)](https://github.com/le-space/orbitdb-identity-provider-webauthn-did/actions/workflows/test.yml) [![CI/CD](https://github.com/le-space/orbitdb-identity-provider-webauthn-did/workflows/CI%2FCD%20-%20Test%20and%20Publish/badge.svg)](https://github.com/le-space/orbitdb-identity-provider-webauthn-did/actions/workflows/ci-cd.yml)
 
-⚠️ **Security**: Highly experimental release. No formal audit. Use only after your own review.
-
-
+⚠️ **Security**: Experimental release. No formal audit. Use only after your own review.
 
 Two WebAuthn-based OrbitDB identity providers:
 
