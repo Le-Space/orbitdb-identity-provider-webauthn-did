@@ -219,7 +219,7 @@ export function isValidWebAuthnDID(did) {
 
   // Check for proper did:key format (WebAuthn keys now use did:key format)
   // Pattern: did:key:z followed by base58btc encoded multikey
-  const didKeyRegex = /^did:key:z[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$/;
+  const didKeyRegex = /^did:key:z[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{20,}$/;
   return didKeyRegex.test(did);
 }
 

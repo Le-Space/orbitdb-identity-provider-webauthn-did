@@ -1,5 +1,8 @@
 # Changes
 
+## 0.2.2
+- Ship patch-package in dependencies so postinstall works for consumers.
+
 ## 0.2.1
 - Add WebAuthn varsig demo E2E coverage and test-mode stubs for CI.
 - Update CI to focus on Chromium-only runs and disable failing encrypted keystore tests.

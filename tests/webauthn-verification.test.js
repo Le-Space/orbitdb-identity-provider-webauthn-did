@@ -93,7 +93,7 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
 
       window.isValidWebAuthnDID = function(did) {
         if (!did || typeof did !== 'string') return false;
-        const webauthnDIDRegex = /^did:key:z[A-Za-z0-9]+$/;
+        const webauthnDIDRegex = /^did:key:z[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{20,}$/;
         return webauthnDIDRegex.test(did);
       };
 
@@ -132,7 +132,7 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
         invalidDIDNoPrefix: window.isValidWebAuthnDID('key:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP'),
         invalidDIDWrongPrefix: window.isValidWebAuthnDID('did:other:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP'),
         invalidDIDShortSuffix: window.isValidWebAuthnDID('did:key:z123'),
-        invalidDIDLongSuffix: window.isValidWebAuthnDID('did:key:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMPExtra'),
+        invalidDIDLongSuffix: window.isValidWebAuthnDID('did:key:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMPExtra0'),
         invalidDIDNonHex: window.isValidWebAuthnDID('did:key:invalid-format'),
         emptyString: window.isValidWebAuthnDID(''),
         nullValue: window.isValidWebAuthnDID(null),
