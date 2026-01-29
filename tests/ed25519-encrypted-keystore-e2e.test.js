@@ -143,13 +143,18 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     await createButton.click();
     await page.waitForSelector('text=Credential created successfully!', { timeout: 30000 });
 
+    // Wait for security options to render
+    await expect(page.getByRole('heading', { name: /Security Options/i })).toBeVisible({ timeout: 10000 });
+
     // Wait for extension support check to complete
     await page.waitForTimeout(1000);
 
     // Check that extension support indicators are visible when encryption is enabled
-    const encryptionCheckbox = page.locator('input[type="checkbox"]').nth(1);
-    const hmacSecretStatus = page.locator('text=hmac-secret');
-    const largeBlobStatus = page.locator('text=largeBlob');
+    const encryptionCheckbox = page.getByLabel('Encrypt keystore with WebAuthn');
+    const hmacSecretStatus = page.getByLabel('hmac-secret');
+    const largeBlobStatus = page.getByLabel('largeBlob');
+
+    await expect(encryptionCheckbox).toBeVisible();
 
     const encryptionDisabled = await encryptionCheckbox.isDisabled();
     const hmacVisible = await hmacSecretStatus.isVisible().catch(() => false);
@@ -179,11 +184,11 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     await page.waitForSelector('text=Credential created successfully!', { timeout: 30000 });
 
     // Check Ed25519 DID checkbox
-    const ed25519Checkbox = page.locator('input[type="checkbox"]').first();
+    const ed25519Checkbox = page.getByLabel('Use persistent keystore identity');
     await expect(ed25519Checkbox).toBeVisible();
 
     // Check encryption checkbox
-    const encryptionCheckbox = page.locator('input[type="checkbox"]').nth(1);
+    const encryptionCheckbox = page.getByLabel('Encrypt keystore with WebAuthn');
     await expect(encryptionCheckbox).toBeVisible();
 
     // Check encryption method radio buttons (only visible if encryption is enabled)

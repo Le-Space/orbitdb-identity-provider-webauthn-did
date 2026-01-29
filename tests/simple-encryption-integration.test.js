@@ -1,11 +1,17 @@
 import { test, expect } from '@playwright/test';
 
 async function waitForKeystoreEncryption(page) {
-  await page.waitForFunction(() =>
-    window.KeystoreEncryption &&
-    typeof window.KeystoreEncryption.generateSecretKey === 'function' &&
-    typeof window.KeystoreEncryption.encryptWithAESGCM === 'function'
-  );
+  try {
+    await page.waitForFunction(() =>
+      window.KeystoreEncryption &&
+      typeof window.KeystoreEncryption.generateSecretKey === 'function' &&
+      typeof window.KeystoreEncryption.encryptWithAESGCM === 'function'
+    , { timeout: 20000 });
+  } catch (error) {
+    throw new Error(
+      'KeystoreEncryption not available. Run with USE_ENCRYPTED_DEMO=true (ed25519-encrypted-keystore-demo).'
+    );
+  }
 }
 
 /**

@@ -9,11 +9,17 @@ import { test, expect } from '@playwright/test';
 import { OrbitDBWebAuthnIdentityProvider } from '../src/index.js';
 
 async function waitForKeystoreEncryption(page) {
-  await page.waitForFunction(() =>
-    window.KeystoreEncryption &&
-    typeof window.KeystoreEncryption.generateSecretKey === 'function' &&
-    typeof window.KeystoreEncryption.checkExtensionSupport === 'function'
-  );
+  try {
+    await page.waitForFunction(() =>
+      window.KeystoreEncryption &&
+      typeof window.KeystoreEncryption.generateSecretKey === 'function' &&
+      typeof window.KeystoreEncryption.checkExtensionSupport === 'function'
+    , { timeout: 20000 });
+  } catch (error) {
+    throw new Error(
+      'KeystoreEncryption not available. Run with USE_ENCRYPTED_DEMO=true (ed25519-encrypted-keystore-demo).'
+    );
+  }
 }
 
 async function installLargeBlobMock(context, { hasBlob }) {
@@ -396,7 +402,11 @@ test.describe('Encryption Utilities', () => {
     expect(result.originalUnmodified).toBe(true);
   });
 
-  test('should wrap and unwrap secret key with PRF (mocked)', async ({ page, context }) => {
+  test('should wrap and unwrap secret key with PRF (mocked)', async ({ page, context, browserName }) => {
+    test.skip(
+      browserName === 'webkit',
+      'WebKit blocks WebAuthn PRF in this test context.'
+    );
     await context.addInitScript(() => {
       if (!window.navigator.credentials) {
         Object.defineProperty(window.navigator, 'credentials', {
