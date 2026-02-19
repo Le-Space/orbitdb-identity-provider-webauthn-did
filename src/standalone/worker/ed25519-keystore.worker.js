@@ -13,6 +13,7 @@ const WORKER_KDF_INFO = new TextEncoder().encode('orbitdb/standalone-ed25519-key
 
 let ed25519KeyPair = null;
 let aesKey = null;
+let edSigner = null;
 
 function asUint8Array(value) {
   if (value instanceof Uint8Array) return value;
@@ -72,31 +73,43 @@ async function generateEd25519KeypairArchive() {
   const privateKeyPkcs8 = new Uint8Array(await crypto.subtle.exportKey('pkcs8', ed25519KeyPair.privateKey));
 
   const publicKey = publicKeySpki.slice(-32);
+  const secret = privateKeyPkcs8.slice(-32);
+  const EdSigner = await import('@le-space/ucanto-principal/ed25519');
+  edSigner = await EdSigner.derive(secret);
 
   return {
     publicKey,
-    archive: {
-      version: 1,
-      algorithm: 'Ed25519',
-      format: 'pkcs8-spki',
-      publicKeySpki: Array.from(publicKeySpki),
-      privateKeyPkcs8: Array.from(privateKeyPkcs8)
-    }
+    archive: edSigner.toArchive()
   };
 }
 
 async function loadKeypairFromArchive(archive) {
-  if (!archive || archive.algorithm !== 'Ed25519') {
-    throw new Error('Unsupported archive: expected Ed25519 archive');
+  if (!archive || typeof archive !== 'object') {
+    throw new Error('Unsupported archive: expected object');
   }
 
+  // Preferred format: UCAN signer archive { id, keys }.
+  if (typeof archive.id === 'string' && archive.keys) {
+    const EdSigner = await import('@le-space/ucanto-principal/ed25519');
+    edSigner = EdSigner.from({
+      id: archive.id,
+      keys: Object.fromEntries(
+        Object.entries(archive.keys).map(([did, key]) => [did, asUint8Array(key)])
+      )
+    });
+    ed25519KeyPair = null;
+    return;
+  }
+
+  // Backward-compatible format: pkcs8/spki archive.
+  if (archive.algorithm !== 'Ed25519') {
+    throw new Error('Unsupported archive format');
+  }
   const privateKeyBytes = asUint8Array(archive.privateKeyPkcs8);
   const publicKeyBytes = asUint8Array(archive.publicKeySpki);
-
   if (privateKeyBytes.length === 0 || publicKeyBytes.length === 0) {
     throw new Error('Invalid archive: missing key material');
   }
-
   const privateKey = await crypto.subtle.importKey(
     'pkcs8',
     toDetachedBuffer(privateKeyBytes),
@@ -114,6 +127,8 @@ async function loadKeypairFromArchive(archive) {
   );
 
   ed25519KeyPair = { privateKey, publicKey };
+  const EdSigner = await import('@le-space/ucanto-principal/ed25519');
+  edSigner = await EdSigner.derive(privateKeyBytes.slice(-32));
 }
 
 async function encrypt(plaintextBuffer) {
@@ -151,8 +166,15 @@ async function decrypt(ciphertextBuffer, ivBuffer) {
 }
 
 async function sign(dataBuffer) {
-  if (!ed25519KeyPair) {
+  if (!ed25519KeyPair && !edSigner) {
     throw new Error('Ed25519 keypair not generated');
+  }
+
+  if (edSigner) {
+    const signature = await edSigner.sign(asUint8Array(dataBuffer));
+    return {
+      signature: asUint8Array(signature.raw)
+    };
   }
 
   const signature = await crypto.subtle.sign(
@@ -167,8 +189,18 @@ async function sign(dataBuffer) {
 }
 
 async function verify(dataBuffer, signatureBuffer) {
-  if (!ed25519KeyPair) {
+  if (!ed25519KeyPair && !edSigner) {
     throw new Error('Ed25519 keypair not generated');
+  }
+
+  if (edSigner) {
+    const DagUcanSignature = await import('@ipld/dag-ucan/signature');
+    const signature = DagUcanSignature.create(
+      DagUcanSignature.EdDSA,
+      asUint8Array(signatureBuffer)
+    );
+    const valid = await edSigner.verify(asUint8Array(dataBuffer), signature);
+    return { valid };
   }
 
   const valid = await crypto.subtle.verify(
@@ -251,4 +283,3 @@ self.onmessage = async (event) => {
     postError(id, error);
   }
 };
-

@@ -356,6 +356,70 @@ test.describe('Standalone WebAuthn Toolkit', () => {
     expect(p256Sig.code).toBe(0xd01200);
   });
 
+  test('ucanto signer forwards optional domain label override', async () => {
+    const signer = new StandaloneWebAuthnVarsigSigner({
+      credentialId: new Uint8Array([1, 2, 3]),
+      publicKey: new Uint8Array(32).fill(1),
+      did: 'did:key:z6MkDomainOverride',
+      algorithm: 'Ed25519',
+      cose: null
+    });
+    let seenPayload = null;
+    let seenDomainLabel = null;
+    signer.sign = async (payload, domainLabel) => {
+      seenPayload = payload;
+      seenDomainLabel = domainLabel;
+      return new Uint8Array([31, 32, 33]);
+    };
+
+    const ucantoSigner = signer.toUcantoSigner({ domainLabel: 'ucan-webauthn-v1:' });
+    await ucantoSigner.sign(new Uint8Array([9, 9, 9]));
+
+    expect(seenPayload).toBeInstanceOf(Uint8Array);
+    expect(seenDomainLabel).toBe('ucan-webauthn-v1:');
+  });
+
+  test('ucanto signer uses provider default domain when no override is configured', async () => {
+    const signer = new StandaloneWebAuthnVarsigSigner({
+      credentialId: new Uint8Array([2, 2, 2]),
+      publicKey: new Uint8Array(32).fill(4),
+      did: 'did:key:z6MkDomainDefault',
+      algorithm: 'Ed25519',
+      cose: null
+    });
+    let seenDomainLabel = 'unset';
+    signer.sign = async (_payload, domainLabel) => {
+      seenDomainLabel = domainLabel;
+      return new Uint8Array([1, 1, 1]);
+    };
+
+    const ucantoSigner = signer.toUcantoSigner();
+    await ucantoSigner.sign(new Uint8Array([3, 3, 3]));
+
+    expect(seenDomainLabel).toBeUndefined();
+  });
+
+  test('ucanto signer forwards explicit orbitdb entry label for P-256 signers', async () => {
+    const signer = new StandaloneWebAuthnVarsigSigner({
+      credentialId: new Uint8Array([4, 4, 4]),
+      publicKey: new Uint8Array(33).fill(5),
+      did: 'did:key:z6MkDomainEntryP256',
+      algorithm: 'P-256',
+      cose: null
+    });
+    let seenDomainLabel = null;
+    signer.sign = async (_payload, domainLabel) => {
+      seenDomainLabel = domainLabel;
+      return new Uint8Array([2, 2, 2]);
+    };
+
+    const ucantoSigner = signer.toUcantoSigner({ domainLabel: 'orbitdb-entry:' });
+    await ucantoSigner.sign(new Uint8Array([7, 7, 7]));
+
+    expect(ucantoSigner.signatureAlgorithm).toBe('ES256');
+    expect(seenDomainLabel).toBe('orbitdb-entry:');
+  });
+
   test('ucanto delegation issuance works with standalone signer surface', async () => {
     const DagUcan = await import('@ipld/dag-ucan');
 

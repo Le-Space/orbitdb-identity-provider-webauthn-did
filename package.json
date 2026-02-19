@@ -64,6 +64,7 @@
   "dependencies": {
     "@ipld/dag-ucan": "^3.4.3",
     "@ipld/dag-cbor": "^9.2.5",
+    "@le-space/ucanto-principal": "^9.1.2",
     "@libp2p/logger": "^5.1.5",
     "@libp2p/crypto": "^5.1.8",
     "@simplewebauthn/browser": "^13.0.0",

@@ -10,6 +10,48 @@ function toDetachedBuffer(bytes) {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
 }
 
+function normalizeArchiveForSerialization(archive) {
+  if (!archive || typeof archive !== 'object') {
+    return archive;
+  }
+  if (archive.id && archive.keys && typeof archive.keys === 'object') {
+    return {
+      ...archive,
+      keys: Object.fromEntries(
+        Object.entries(archive.keys).map(([did, keyBytes]) => [
+          did,
+          Array.from(
+            keyBytes instanceof Uint8Array
+              ? keyBytes
+              : new Uint8Array(keyBytes || [])
+          )
+        ])
+      )
+    };
+  }
+  return archive;
+}
+
+function normalizeArchiveAfterDeserialization(archive) {
+  if (!archive || typeof archive !== 'object') {
+    return archive;
+  }
+  if (archive.id && archive.keys && typeof archive.keys === 'object') {
+    return {
+      ...archive,
+      keys: Object.fromEntries(
+        Object.entries(archive.keys).map(([did, keyBytes]) => [
+          did,
+          keyBytes instanceof Uint8Array
+            ? keyBytes
+            : new Uint8Array(Array.isArray(keyBytes) ? keyBytes : Object.values(keyBytes || {}))
+        ])
+      )
+    };
+  }
+  return archive;
+}
+
 /**
  * Build a did:key identifier from raw Ed25519 public key bytes.
  * @param {Uint8Array} publicKeyBytes
@@ -185,7 +227,9 @@ class WorkerKeystoreClient {
    * @returns {Promise<{ciphertext: Uint8Array, iv: Uint8Array}>}
    */
   async encryptArchive(archive) {
-    const payload = new TextEncoder().encode(JSON.stringify(archive));
+    const payload = new TextEncoder().encode(
+      JSON.stringify(normalizeArchiveForSerialization(archive))
+    );
     return this.encrypt(payload);
   }
 
@@ -198,7 +242,7 @@ class WorkerKeystoreClient {
   async decryptArchive(ciphertext, iv) {
     const plaintext = await this.decrypt(ciphertext, iv);
     const json = new TextDecoder().decode(plaintext);
-    return JSON.parse(json);
+    return normalizeArchiveAfterDeserialization(JSON.parse(json));
   }
 
   /**

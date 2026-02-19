@@ -75,8 +75,11 @@ export class StandaloneWebAuthnVarsigSigner {
   /**
    * Create an object with UCAN signer-compatible surface.
    * This mirrors the upload-wall signer contract.
+   *
+   * @param {{ domainLabel?: string }} [options]
    */
-  toUcantoSigner() {
+  toUcantoSigner(options = {}) {
+    const { domainLabel } = options;
     const signatureAlgorithm = this.algorithm === 'Ed25519' ? 'EdDSA' : 'ES256';
     const signatureCode =
       signatureAlgorithm === 'EdDSA'
@@ -94,7 +97,7 @@ export class StandaloneWebAuthnVarsigSigner {
 
     const signer = {
       sign: async (payload) => {
-        const varsig = await this.sign(payload);
+        const varsig = await this.sign(payload, domainLabel);
         const { signatureCode, signatureCreate } = await getSignatureParams();
         return signatureCreate(signatureCode, varsig);
       },

@@ -1,14 +1,15 @@
 # OrbitDB WebAuthn Identity Providers
 
-[![Tests](https://github.com/le-space/orbitdb-identity-provider-webauthn-did/workflows/Tests/badge.svg)](https://github.com/le-space/orbitdb-identity-provider-webauthn-did/actions/workflows/test.yml) [![CI/CD](https://github.com/le-space/orbitdb-identity-provider-webauthn-did/workflows/CI%2FCD%20-%20Test%20and%20Publish/badge.svg)](https://github.com/le-space/orbitdb-identity-provider-webauthn-did/actions/workflows/ci-cd.yml)
+[![CI](https://github.com/le-space/orbitdb-identity-provider-webauthn-did/actions/workflows/ci.yml/badge.svg)](https://github.com/le-space/orbitdb-identity-provider-webauthn-did/actions/workflows/ci.yml)
 
 ⚠️ **Security**: Experimental release. No formal audit. Use only after your own review.
 
-Two WebAuthn-based OrbitDB identity providers:
+This package provides:
 
+- Two WebAuthn-based OrbitDB identity providers.
+- A standalone WebAuthn toolkit export (`@le-space/orbitdb-identity-provider-webauthn-did/standalone`) for reuse outside OrbitDB identity wiring.
 - **WebAuthn-Varsig**: No insecure OrbitDB keystore at all. Each entry is signed by WebAuthn (varsig envelope), so keys never leave the authenticator, one Passkey (WebAuthn) prompt per write.
-
-- **Keystore-based DID**: Generates an Ed25519/secp256k1 keystore keypair for OrbitDB signing in browser memory. When `encryptKeystore` is enabled, the private key is encrypted with AES-GCM and only rehydrated in memory after a WebAuthn unlock (PRF, largeBlob, or hmac-secret). 
+- **Keystore-based DID**: Generates an Ed25519/secp256k1 keystore keypair for OrbitDB signing in browser memory. When `encryptKeystore` is enabled, the private key is encrypted with AES-GCM and only rehydrated in memory after a WebAuthn unlock (PRF, largeBlob, or hmac-secret).
 
 **Recommendation (security-first):**
 
@@ -21,7 +22,7 @@ Note: WebAuthn varsig support in this repo relies on our forked `@le-space/iso-*
 ## Install
 
 ```bash
-npm install orbitdb-identity-provider-webauthn-did
+npm install @le-space/orbitdb-identity-provider-webauthn-did
 ```
 
 Note: `@orbitdb/core` is patched (via `patch-package`) to support Ed25519 keystore keys.
@@ -29,7 +30,7 @@ Note: `@orbitdb/core` is patched (via `patch-package`) to support Ed25519 keysto
 ## Memory Keystore Quick Start
 
 ```javascript
-import { WebAuthnDIDProvider, OrbitDBWebAuthnIdentityProviderFunction } from 'orbitdb-identity-provider-webauthn-did';
+import { WebAuthnDIDProvider, OrbitDBWebAuthnIdentityProviderFunction } from '@le-space/orbitdb-identity-provider-webauthn-did';
 
 const credential = await WebAuthnDIDProvider.createCredential({
   userId: 'alice@example.com',
@@ -41,10 +42,10 @@ const identity = await identities.createIdentity({
 });
 ```
 
-### Hardware Secured - Varsig Quick Start
+### Hardware-Secured Varsig Quick Start
 
 ```javascript
-import { WebAuthnVarsigProvider, createWebAuthnVarsigIdentity } from 'orbitdb-identity-provider-webauthn-did';
+import { WebAuthnVarsigProvider, createWebAuthnVarsigIdentity } from '@le-space/orbitdb-identity-provider-webauthn-did';
 
 const credential = await WebAuthnVarsigProvider.createCredential({
   userId: 'alice@example.com',
@@ -53,6 +54,53 @@ const credential = await WebAuthnVarsigProvider.createCredential({
 
 const identity = await createWebAuthnVarsigIdentity({ credential });
 ```
+
+## Standalone Toolkit (without OrbitDB identity provider wiring)
+
+Use the standalone export when you want WebAuthn signer and worker-keystore features independently from OrbitDB identity provider setup.
+
+```javascript
+import {
+  createWebAuthnSigner,
+  WebAuthnHardwareSignerService,
+  createWorkerKeystoreClient
+} from '@le-space/orbitdb-identity-provider-webauthn-did/standalone';
+
+// Create a hardware-backed WebAuthn varsig signer
+const signer = await createWebAuthnSigner({
+  userId: 'alice@example.com',
+  displayName: 'Alice'
+});
+
+// Optional: bridge to UCAN signer surface
+const ucantoSigner = signer.toUcantoSigner();
+
+// Optional: persisted hardware signer lifecycle
+const hardwareService = new WebAuthnHardwareSignerService();
+await hardwareService.initialize({ userId: 'alice@example.com', displayName: 'Alice' });
+
+// Optional: worker-based Ed25519 keystore client
+const workerClient = createWorkerKeystoreClient();
+```
+
+### Domain Label Guidance (OrbitDB vs UCAN)
+
+`toUcantoSigner()` supports an optional `domainLabel` override:
+
+- OrbitDB entry signing: use the default domain label (`orbitdb-entry:`).
+- UCAN flows that require a protocol-specific challenge prefix: pass it explicitly (for example `ucan-webauthn-v1:`).
+
+```javascript
+// OrbitDB-style default (no override)
+const orbitdbUcantoSigner = signer.toUcantoSigner();
+
+// UCAN-specific override
+const ucanUcantoSigner = signer.toUcantoSigner({
+  domainLabel: 'ucan-webauthn-v1:'
+});
+```
+
+The verifier side and app protocol should define which domain label is required. IPFS deployment does not change this requirement.
 
 
 ### Keystore-based DID (WebAuthn + OrbitDB keystore)
@@ -163,10 +211,12 @@ Mermaid sequences for scripts:
 
 ## Documentation
 
-- `docs/USAGE-GUIDE.md`
 - `docs/ED25519-KEYSTORE-DID.md`
 - `docs/WEBAUTHN-ENCRYPTED-KEYSTORE-INTEGRATION.md`
 - `docs/WEBAUTHN-DID-AND-ORBITDB-IDENTITY.md`
+- `docs/STANDALONE-API-PLAN.md`
+- `docs/EXAMPLE-SEQUENCES.md`
+- `docs/E2E-TEST-SUMMARY.md`
 
 ## License
 
