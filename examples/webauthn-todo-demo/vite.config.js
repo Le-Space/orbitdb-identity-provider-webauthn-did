@@ -30,8 +30,6 @@ export default defineConfig({
         "os",
         "stream",
         "string_decoder",
-        "readable-stream",
-        "safe-buffer",
       ],
       globals: {
         Buffer: true,

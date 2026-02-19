@@ -7,7 +7,7 @@ async function waitForKeystoreEncryption(page) {
       typeof window.KeystoreEncryption.generateSecretKey === 'function' &&
       typeof window.KeystoreEncryption.encryptWithAESGCM === 'function'
     , { timeout: 20000 });
-  } catch (error) {
+  } catch {
     throw new Error(
       'KeystoreEncryption not available. Run with USE_ENCRYPTED_DEMO=true (ed25519-encrypted-keystore-demo).'
     );

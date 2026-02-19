@@ -86,10 +86,11 @@ jobs:
         env:
           CI: true
 
-      # - name: Run encrypted keystore tests (disabled: failing in CI)
-      #   run: pnpm exec playwright test tests/encrypted-keystore.test.js --project=chromium --reporter=github --timeout=240000
-      #   env:
-      #     CI: true
+      - name: Run encrypted keystore tests
+        run: pnpm exec playwright test tests/encrypted-keystore.test.js --project=chromium --reporter=github
+        env:
+          CI: true
+          USE_ENCRYPTED_DEMO: true
       
       - name: Run Ed25519 Encrypted Keystore E2E tests
         run: USE_ENCRYPTED_DEMO=true pnpm exec playwright test tests/ed25519-encrypted-keystore-e2e.test.js --project=chromium --reporter=github

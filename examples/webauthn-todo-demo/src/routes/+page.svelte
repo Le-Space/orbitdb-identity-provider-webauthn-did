@@ -47,7 +47,7 @@
   <HeaderUtilities>
     <Button
       kind="ghost"
-      size="sm"
+      size="small"
       icon={isDark ? Light : Asleep}
       iconDescription={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
       on:click={toggleTheme}

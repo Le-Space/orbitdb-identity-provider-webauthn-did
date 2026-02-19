@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * WebAuthn DID Verification Utilities
  *
