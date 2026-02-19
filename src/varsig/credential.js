@@ -64,7 +64,9 @@ async function createWebAuthnVarsigCredential(options = {}) {
   const {
     userId,
     displayName,
-    domain
+    domain,
+    authenticatorType = 'any',
+    forceP256 = false
   } = {
     userId: `orbitdb-user-${Date.now()}`,
     displayName: 'OrbitDB Varsig User',
@@ -97,14 +99,17 @@ async function createWebAuthnVarsigCredential(options = {}) {
       displayName
     },
     challenge: crypto.getRandomValues(new Uint8Array(32)),
-    pubKeyCredParams: [
-      { type: 'public-key', alg: -50 },
-      { type: 'public-key', alg: -8 },
-      { type: 'public-key', alg: -7 }
-    ],
+    pubKeyCredParams: forceP256
+      ? [{ type: 'public-key', alg: -7 }]
+      : [
+        { type: 'public-key', alg: -50 },
+        { type: 'public-key', alg: -8 },
+        { type: 'public-key', alg: -7 }
+      ],
     attestation: 'none',
     authenticatorSelection: {
       residentKey: 'preferred',
+      ...(authenticatorType !== 'any' && { authenticatorAttachment: authenticatorType }),
       userVerification: 'preferred'
     }
   };

@@ -4,8 +4,10 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
   test.beforeEach(async ({ page, context }) => {
     // Mock WebAuthn API
     await context.addInitScript(() => {
-      window.PublicKeyCredential = {
-        isUserVerifyingPlatformAuthenticatorAvailable: async () => true
+      window.PublicKeyCredential = class PublicKeyCredentialMock {
+        static async isUserVerifyingPlatformAuthenticatorAvailable() {
+          return true;
+        }
       };
 
       const mockCredentialId = crypto.getRandomValues(new Uint8Array(16));
@@ -14,7 +16,7 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
         y: crypto.getRandomValues(new Uint8Array(32))
       };
 
-      window.navigator.credentials = {
+      const mockCredentials = {
         create: async (options) => ({
           rawId: mockCredentialId,
           response: {
@@ -41,6 +43,25 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
         })
       };
 
+      if (window.navigator.credentials) {
+        window.navigator.credentials.create = mockCredentials.create;
+        window.navigator.credentials.get = mockCredentials.get;
+      } else {
+        try {
+          Object.defineProperty(window.navigator, 'credentials', {
+            configurable: true,
+            value: mockCredentials
+          });
+        } catch {
+          Object.defineProperty(Navigator.prototype, 'credentials', {
+            configurable: true,
+            get() {
+              return mockCredentials;
+            }
+          });
+        }
+      }
+
       // Mock CBOR decode function
       window.mockCBORDecode = () => {
         // Simple mock that returns a structure similar to what CBOR would decode
@@ -64,29 +85,21 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
       };
     });
 
-    // Create a simple HTML page to test the functions
-    await page.setContent(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>WebAuthn DID Unit Tests</title>
-      </head>
-      <body>
-        <div id="test-output"></div>
-        <script type="module">
-          // Import the WebAuthn DID provider using relative path
-          const module = await import('../src/index.js');
-          window.WebAuthnModule = module;
-          
-          // Signal that the module is loaded
-          window.moduleLoaded = true;
-        </script>
-      </body>
-      </html>
-    `);
-
-    // Wait for the module to load
-    await page.waitForFunction(() => window.moduleLoaded === true);
+    await page.goto('/');
+    const moduleUrl = `/@fs${process.cwd().replace(/\\/g, '/')}/src/index.js`;
+    await page.evaluate(async (url) => {
+      try {
+        const module = await import(url);
+        window.WebAuthnModule = module;
+        window.moduleLoaded = true;
+      } catch (error) {
+        window.moduleLoadError = String(error?.stack || error);
+        window.moduleLoaded = false;
+      }
+    }, moduleUrl);
+    await page.waitForFunction(() => window.moduleLoaded === true || !!window.moduleLoadError);
+    const moduleLoadError = await page.evaluate(() => window.moduleLoadError || null);
+    expect(moduleLoadError).toBeNull();
   });
 
   test('should detect WebAuthn support correctly', async ({ page }) => {
@@ -158,8 +171,8 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
       try {
         const credential = await window.WebAuthnModule.WebAuthnDIDProvider.createCredential();
 
-        const did1 = window.WebAuthnModule.WebAuthnDIDProvider.createDID(credential);
-        const did2 = window.WebAuthnModule.WebAuthnDIDProvider.createDID(credential);
+        const did1 = await window.WebAuthnModule.WebAuthnDIDProvider.createDID(credential);
+        const did2 = await window.WebAuthnModule.WebAuthnDIDProvider.createDID(credential);
 
         return {
           did1,
@@ -225,7 +238,7 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
           webauthnCredential: credential
         });
 
-        const did = provider.getId();
+        const did = await provider.getId();
 
         return {
           type: provider.type,

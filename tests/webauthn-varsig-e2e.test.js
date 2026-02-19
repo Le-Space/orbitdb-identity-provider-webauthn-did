@@ -1,7 +1,6 @@
 import { test, expect } from '@playwright/test';
 
 const CREDENTIAL_SUCCESS_TEXT = 'Credential created successfully!';
-const AUTH_SUCCESS_TEXT = 'Successfully authenticated with biometric security!';
 
 async function installWebAuthnMock(context) {
   await context.addInitScript(() => {
