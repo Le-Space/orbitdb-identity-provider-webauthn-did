@@ -6,7 +6,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.js",
-    "./verification": "./verification.js"
+    "./verification": "./verification.js",
+    "./standalone": "./src/standalone/index.js"
   },
   "scripts": {
     "postinstall": "patch-package",
