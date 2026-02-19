@@ -324,6 +324,75 @@ test.describe('Standalone WebAuthn Toolkit', () => {
     expect(getStoredWebAuthnHardwareSignerInfo('test-hw-signer')).toBeNull();
   });
 
+  test('ucanto signer compatibility exposes signature metadata for both algorithms', async () => {
+    const edSigner = new StandaloneWebAuthnVarsigSigner({
+      credentialId: new Uint8Array([1, 2, 3]),
+      publicKey: new Uint8Array(32).fill(9),
+      did: 'did:key:z6Mked25519',
+      algorithm: 'Ed25519',
+      cose: null
+    });
+    edSigner.sign = async () => new Uint8Array([11, 12, 13]);
+    const edUcantoSigner = edSigner.toUcantoSigner();
+    const edSig = await edUcantoSigner.sign(new Uint8Array([1, 2]));
+
+    expect(edUcantoSigner.signatureAlgorithm).toBe('EdDSA');
+    expect(edUcantoSigner.signatureCode).toBe(0xd0ed);
+    expect(edSig.code).toBe(0xd0ed);
+
+    const p256Signer = new StandaloneWebAuthnVarsigSigner({
+      credentialId: new Uint8Array([4, 5, 6]),
+      publicKey: new Uint8Array(33).fill(7),
+      did: 'did:key:z6Mkp256',
+      algorithm: 'P-256',
+      cose: null
+    });
+    p256Signer.sign = async () => new Uint8Array([21, 22, 23]);
+    const p256UcantoSigner = p256Signer.toUcantoSigner();
+    const p256Sig = await p256UcantoSigner.sign(new Uint8Array([3, 4]));
+
+    expect(p256UcantoSigner.signatureAlgorithm).toBe('ES256');
+    expect(p256UcantoSigner.signatureCode).toBe(0xd01200);
+    expect(p256Sig.code).toBe(0xd01200);
+  });
+
+  test('ucanto delegation issuance works with standalone signer surface', async () => {
+    const DagUcan = await import('@ipld/dag-ucan');
+
+    const issuerDid = createEd25519DidFromPublicKey(new Uint8Array(32).fill(5));
+    const audienceDid = createEd25519DidFromPublicKey(new Uint8Array(32).fill(6));
+    const spaceDid = createEd25519DidFromPublicKey(new Uint8Array(32).fill(7));
+
+    const signer = new StandaloneWebAuthnVarsigSigner({
+      credentialId: new Uint8Array([9, 8, 7]),
+      publicKey: new Uint8Array(32).fill(1),
+      did: issuerDid,
+      algorithm: 'Ed25519',
+      cose: null
+    });
+    signer.sign = async () => new Uint8Array([31, 32, 33]);
+
+    const ucantoSigner = signer.toUcantoSigner();
+    const delegation = await DagUcan.issue({
+      issuer: ucantoSigner,
+      audience: {
+        did: () => audienceDid
+      },
+      capabilities: [
+        {
+          with: spaceDid,
+          can: 'upload/add'
+        }
+      ],
+      expiration: Math.floor(Date.now() / 1000) + 600,
+      facts: [],
+      proofs: []
+    });
+
+    expect(delegation).toBeTruthy();
+    expect(delegation.signature.algorithm).toBe('EdDSA');
+  });
+
   test('safe credential storage excludes prfSeed and restores typed arrays', async () => {
     const input = {
       credentialId: 'test',

@@ -12,6 +12,11 @@ const wrapQueuedSign = (signer) => {
   return queued;
 };
 
+const UCAN_SIGNATURE_CODES = {
+  EdDSA: 0xd0ed,
+  ES256: 0xd01200
+};
+
 function normalizeCredentialId(credentialId) {
   if (credentialId instanceof Uint8Array) return credentialId;
   if (credentialId instanceof ArrayBuffer) return new Uint8Array(credentialId);
@@ -72,18 +77,17 @@ export class StandaloneWebAuthnVarsigSigner {
    * This mirrors the upload-wall signer contract.
    */
   toUcantoSigner() {
+    const signatureAlgorithm = this.algorithm === 'Ed25519' ? 'EdDSA' : 'ES256';
+    const signatureCode =
+      signatureAlgorithm === 'EdDSA'
+        ? UCAN_SIGNATURE_CODES.EdDSA
+        : UCAN_SIGNATURE_CODES.ES256;
+
     const getSignatureParams = async () => {
       const DagUcanSignature = await import('@ipld/dag-ucan/signature');
-      if (this.algorithm === 'Ed25519') {
-        return {
-          signatureAlgorithm: 'EdDSA',
-          signatureCode: DagUcanSignature.EdDSA,
-          signatureCreate: DagUcanSignature.create
-        };
-      }
       return {
-        signatureAlgorithm: 'ES256',
-        signatureCode: DagUcanSignature.ES256,
+        signatureAlgorithm,
+        signatureCode,
         signatureCreate: DagUcanSignature.create
       };
     };
@@ -96,6 +100,8 @@ export class StandaloneWebAuthnVarsigSigner {
       },
       did: () => this.did,
       toDIDKey: () => this.did,
+      signatureAlgorithm,
+      signatureCode,
       encode: () => this.publicKey,
       toArchive: () => ({
         id: this.did,
@@ -203,4 +209,3 @@ export async function checkEd25519Support() {
   if (typeof window === 'undefined' || !window.PublicKeyCredential) return false;
   return Boolean(navigator.credentials?.create);
 }
-
