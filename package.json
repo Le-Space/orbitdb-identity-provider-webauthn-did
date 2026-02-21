@@ -1,6 +1,6 @@
 {
   "name": "@le-space/orbitdb-identity-provider-webauthn-did",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "WebAuthn-based DID identity provider for OrbitDB for hardware-secured wallets and biometric Passkey authentication",
   "main": "src/index.js",
   "type": "module",

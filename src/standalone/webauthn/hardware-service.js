@@ -7,18 +7,41 @@ import { StandaloneWebAuthnVarsigSigner, createWebAuthnSigner } from './signers.
 
 const DEFAULT_STORAGE_KEY = 'webauthn_ed25519_hardware_signer';
 
+function readLegacySignerMetadata(key) {
+  const raw = localStorage.getItem(key);
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.did !== 'string') return null;
+    return {
+      did: parsed.did,
+      algorithm: parsed.algorithm === 'P-256' ? 'P-256' : 'Ed25519'
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Read persisted hardware signer identity metadata without creating a signer instance.
  * @param {string} [key]
  * @returns {{did: string, algorithm: 'Ed25519'|'P-256'}|null}
  */
 export function getStoredWebAuthnHardwareSignerInfo(key = DEFAULT_STORAGE_KEY) {
-  const credential = loadWebAuthnVarsigCredential(key);
-  if (!credential?.did) return null;
-  return {
-    did: credential.did,
-    algorithm: credential.algorithm === 'P-256' ? 'P-256' : 'Ed25519'
-  };
+  try {
+    const credential = loadWebAuthnVarsigCredential(key);
+    if (credential?.did) {
+      return {
+        did: credential.did,
+        algorithm: credential.algorithm === 'P-256' ? 'P-256' : 'Ed25519'
+      };
+    }
+  } catch {
+    // Fall through to legacy format parsing.
+  }
+
+  return readLegacySignerMetadata(key);
 }
 
 /**
@@ -51,7 +74,13 @@ export class WebAuthnHardwareSignerService {
    * @returns {StandaloneWebAuthnVarsigSigner|null}
    */
   load() {
-    const credential = loadWebAuthnVarsigCredential(this.storageKey);
+    let credential = null;
+    try {
+      credential = loadWebAuthnVarsigCredential(this.storageKey);
+    } catch {
+      return null;
+    }
+
     if (!credential) return null;
     this.signer = new StandaloneWebAuthnVarsigSigner(credential);
     return this.signer;
