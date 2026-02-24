@@ -16,6 +16,12 @@ import {
   WebAuthnVarsigProvider,
   createWebAuthnVarsigIdentity,
   createWebAuthnVarsigIdentities,
+  encodeIdentityValue,
+  decodeVarsigIdentityFromBytes,
+  verifyVarsigIdentity,
+  createIpfsIdentityStorage,
+  wrapWithVarsigVerification,
+  DEFAULT_DOMAIN_LABELS,
   storeWebAuthnVarsigCredential,
   loadWebAuthnVarsigCredential,
   clearWebAuthnVarsigCredential
@@ -160,6 +166,12 @@ export {
   WebAuthnVarsigProvider,
   createWebAuthnVarsigIdentity,
   createWebAuthnVarsigIdentities,
+  encodeIdentityValue,
+  decodeVarsigIdentityFromBytes,
+  verifyVarsigIdentity,
+  createIpfsIdentityStorage,
+  wrapWithVarsigVerification,
+  DEFAULT_DOMAIN_LABELS,
   storeWebAuthnVarsigCredential,
   loadWebAuthnVarsigCredential,
   clearWebAuthnVarsigCredential
@@ -207,9 +219,14 @@ export default {
   WebAuthnVarsigProvider,
   createWebAuthnVarsigIdentity,
   createWebAuthnVarsigIdentities,
+  encodeIdentityValue,
+  decodeVarsigIdentityFromBytes,
+  verifyVarsigIdentity,
+  createIpfsIdentityStorage,
+  wrapWithVarsigVerification,
+  DEFAULT_DOMAIN_LABELS,
   storeWebAuthnVarsigCredential,
   loadWebAuthnVarsigCredential,
   clearWebAuthnVarsigCredential,
-  // Include verification utilities in default export
   VerificationUtils
 };

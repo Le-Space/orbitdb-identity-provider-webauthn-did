@@ -11,10 +11,12 @@ import { createWebAuthnVarsigCredential } from './credential.js';
 export class WebAuthnVarsigProvider {
   /**
    * @param {Object} credentialInfo - Varsig credential info (public key, algorithm, credentialId)
+   * @param {{userVerification?: 'required'|'preferred'|'discouraged', mediation?: 'silent'|'optional'|'conditional'|'required'}} [options] - Signing options.
    */
-  constructor(credentialInfo) {
+  constructor(credentialInfo, options = {}) {
     this.credential = credentialInfo;
     this.type = 'webauthn-varsig';
+    this.options = options;
   }
 
   /**
@@ -37,13 +39,18 @@ export class WebAuthnVarsigProvider {
    * Sign raw bytes using WebAuthn and return a varsig envelope.
    * @param {Uint8Array} payloadBytes - Data to sign.
    * @param {string} [domainLabel] - Domain label for the challenge.
+   * @param {{userVerification?: 'required'|'preferred'|'discouraged', mediation?: 'silent'|'optional'|'conditional'|'required'}} [options] - Optional signing overrides.
    * @returns {Promise<Uint8Array>} Varsig signature.
    */
-  async signPayload(payloadBytes, domainLabel = DEFAULT_DOMAIN_LABELS.entry) {
+  async signPayload(payloadBytes, domainLabel = DEFAULT_DOMAIN_LABELS.entry, options = {}) {
+    const userVerification = options.userVerification || this.options.userVerification || 'preferred';
+    const mediation = options.mediation || this.options.mediation;
     const assertion = await runWebAuthnAssertionForPayload(
       this.credential,
       payloadBytes,
-      domainLabel
+      domainLabel,
+      userVerification,
+      mediation
     );
     const output = await buildVarsigOutput(assertion);
     return output.varsig;
@@ -53,10 +60,11 @@ export class WebAuthnVarsigProvider {
    * Sign data (string or bytes) and return a varsig envelope.
    * @param {string|Uint8Array} data - Data to sign.
    * @param {string} [domainLabel] - Domain label for the challenge.
+   * @param {{userVerification?: 'required'|'preferred'|'discouraged', mediation?: 'silent'|'optional'|'conditional'|'required'}} [options] - Optional signing overrides.
    * @returns {Promise<Uint8Array>} Varsig signature.
    */
-  async sign(data, domainLabel = DEFAULT_DOMAIN_LABELS.entry) {
-    return this.signPayload(toBytes(data), domainLabel);
+  async sign(data, domainLabel = DEFAULT_DOMAIN_LABELS.entry, options = {}) {
+    return this.signPayload(toBytes(data), domainLabel, options);
   }
 
   /**

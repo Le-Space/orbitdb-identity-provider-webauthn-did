@@ -22,9 +22,17 @@ const isTestMode = () =>
  * @param {Object} credential - WebAuthn credential info.
  * @param {Uint8Array} payloadBytes - Payload to sign.
  * @param {string} domainLabel - Challenge domain label.
+ * @param {'required'|'preferred'|'discouraged'} [userVerification='preferred'] - WebAuthn user verification mode.
+ * @param {'silent'|'optional'|'conditional'|'required'} [mediation] - Credential mediation behavior.
  * @returns {Promise<Object>} Assertion metadata and bytes.
  */
-async function runWebAuthnAssertionForPayload(credential, payloadBytes, domainLabel) {
+async function runWebAuthnAssertionForPayload(
+  credential,
+  payloadBytes,
+  domainLabel,
+  userVerification = 'preferred',
+  mediation
+) {
   const rpId = window.location.hostname;
   const origin = window.location.origin;
   const challengeBytes = await buildChallengeBytes(domainLabel, payloadBytes);
@@ -58,8 +66,9 @@ async function runWebAuthnAssertionForPayload(credential, payloadBytes, domainLa
           id: toArrayBuffer(credential.credentialId)
         }
       ],
-      userVerification: 'preferred'
-    }
+      userVerification
+    },
+    ...(mediation ? { mediation } : {})
   });
 
   if (!assertion) {
