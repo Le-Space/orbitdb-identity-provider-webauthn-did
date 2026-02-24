@@ -195,6 +195,8 @@ export {
   checkExtensionSupport
 } from './keystore/encryption.js';
 
+export * from './multi-device/index.js';
+
 export default {
   WebAuthnDIDProvider,
   OrbitDBWebAuthnIdentityProvider,

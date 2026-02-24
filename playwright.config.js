@@ -71,12 +71,18 @@ export default defineConfig({
       const useVarsigDemo = testFile.includes('varsig') ||
         cliArgs.includes('varsig') ||
         process.env.USE_VARSIG_DEMO === 'true';
-      
+
+      const useMultiDeviceDemo = testFile.includes('multi-device') ||
+        cliArgs.includes('multi-device') ||
+        process.env.USE_MULTI_DEVICE_DEMO === 'true';
+
       const demoDir = useEncryptedDemo
         ? 'examples/ed25519-encrypted-keystore-demo'
         : useVarsigDemo
           ? 'examples/webauthn-varsig-demo'
-          : 'examples/webauthn-todo-demo';
+          : useMultiDeviceDemo
+            ? 'examples/webauthn-multi-device-demo'
+            : 'examples/webauthn-todo-demo';
       
       return process.env.CI 
         ? `cd ${demoDir} && npm run preview -- --port 5173 --host`
