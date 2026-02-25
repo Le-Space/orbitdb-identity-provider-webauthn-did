@@ -69,3 +69,24 @@ export async function loadDevices(db) {
   if (!db) return [];
   return await listDevices(db);
 }
+
+const DB_ADDRESS_STORAGE_KEY = 'orbitdb-multi-device-db-address';
+
+export function saveDbAddress(address) {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(DB_ADDRESS_STORAGE_KEY, address);
+  }
+}
+
+export function getDbAddress() {
+  if (typeof localStorage !== 'undefined') {
+    return localStorage.getItem(DB_ADDRESS_STORAGE_KEY);
+  }
+  return null;
+}
+
+export function clearDbAddress() {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem(DB_ADDRESS_STORAGE_KEY);
+  }
+}
