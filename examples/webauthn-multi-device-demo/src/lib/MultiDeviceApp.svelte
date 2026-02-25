@@ -14,10 +14,11 @@
   import { openDevicesDB, registerCurrentDevice, loadDevices, saveDbAddress, getDbAddress } from '$lib/database.js';
 
   import SetupView from '$lib/components/SetupView.svelte';
+  import PairView from '$lib/components/PairView.svelte';
   import GrantConfirmView from '$lib/components/GrantConfirmView.svelte';
 
   // ── State ────────────────────────────────────────────────────────────────────
-  let appMode = 'initial'; // 'initial' | 'ready'
+  let appMode = 'initial'; // 'initial' | 'link-or-create' | 'ready'
   let isLogin = false;
   let loading = false;
   let status = '';
@@ -125,38 +126,10 @@
           appMode = 'ready';
           status = 'Logged in! Show QR code to link a new device.';
         } else {
-          // User has passkey but no local DB - treat as new Device A setup
-          status = 'Existing passkey found. Setting up OrbitDB…';
+          // User has passkey but no local DB - ask: link to existing or create new
+          appMode = 'link-or-create';
+          status = 'Existing passkey found. Would you like to link to an existing device or create a new setup?';
           isLogin = false;
-          
-          // Setup OrbitDB with existing credential
-          orbitdbState = await setupOrbitDB(credential, {
-            encryptKeystore: true,
-            keystoreEncryptionMethod: 'prf',
-          });
-          
-          // Create new device registry (first device)
-          devicesDb = await openDevicesDB(orbitdbState.orbitdb, orbitdbState.identity);
-          dbAddress = devicesDb.address;
-          
-          // Save DB address for future logins
-          saveDbAddress(dbAddress);
-          
-          // Register self
-          await registerCurrentDevice(devicesDb, credential, orbitdbState.identity, 'Device A');
-          
-          // Setup pairing handler
-          await registerPairingHandler(
-            orbitdbState.ipfs.libp2p,
-            devicesDb,
-            handleIncomingPairRequest
-          );
-          
-          startWatchingAddresses(orbitdbState.ipfs.libp2p);
-          await refreshDevices();
-          
-          appMode = 'ready';
-          status = 'Ready! Show QR code to link a new device.';
         }
       } else {
         // No existing credential - create new one (new user)
@@ -228,6 +201,129 @@
     }
     if (decision === 'granted') {
       await refreshDevices();
+    }
+  }
+
+  // ── Link or Create choice handlers ─────────────────────────────────────────────
+  async function handleLinkToExisting() {
+    loading = true;
+    error = '';
+    status = 'Setting up to link to existing device…';
+    
+    try {
+      // Setup OrbitDB with existing credential
+      orbitdbState = await setupOrbitDB(credential, {
+        encryptKeystore: true,
+        keystoreEncryptionMethod: 'prf',
+      });
+      
+      // Status updated - PairView will handle the rest
+      loading = false;
+      status = 'Ready. Scan or paste Device A\'s QR code.';
+    } catch (err) {
+      error = err.message;
+      loading = false;
+      console.error('[link] error:', err);
+    }
+  }
+
+  async function handleCreateNewSetup() {
+    loading = true;
+    error = '';
+    status = 'Creating new device setup…';
+    
+    try {
+      // Setup OrbitDB with existing credential
+      orbitdbState = await setupOrbitDB(credential, {
+        encryptKeystore: true,
+        keystoreEncryptionMethod: 'prf',
+      });
+      
+      // Create new device registry (first device)
+      devicesDb = await openDevicesDB(orbitdbState.orbitdb, orbitdbState.identity);
+      dbAddress = devicesDb.address;
+      
+      // Save DB address for future logins
+      saveDbAddress(dbAddress);
+      
+      // Register self
+      await registerCurrentDevice(devicesDb, credential, orbitdbState.identity, 'Device A');
+      
+      // Setup pairing handler
+      await registerPairingHandler(
+        orbitdbState.ipfs.libp2p,
+        devicesDb,
+        handleIncomingPairRequest
+      );
+      
+      startWatchingAddresses(orbitdbState.ipfs.libp2p);
+      await refreshDevices();
+      
+      appMode = 'ready';
+      status = 'Ready! Show QR code to link a new device.';
+    } catch (err) {
+      error = err.message;
+      console.error('[create] error:', err);
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function handlePairFromLink(event) {
+    const { qrPayload: qr } = event.detail;
+
+    loading = true;
+    error = '';
+    status = 'Connecting to Device A…';
+
+    try {
+      const identityPayload = {
+        id: orbitdbState.identity.id,
+        credentialId: credential.credentialId,
+        publicKey: null,
+        deviceLabel: detectDeviceLabel(),
+      };
+
+      const result = await sendPairingRequest(
+        orbitdbState.ipfs.libp2p,
+        qr.peerId,
+        identityPayload,
+        qr.multiaddrs || []
+      );
+
+      if (result.type === 'granted') {
+        status = 'Access granted! Opening shared database…';
+        devicesDb = await openDevicesDB(
+          orbitdbState.orbitdb,
+          orbitdbState.identity,
+          result.orbitdbAddress
+        );
+        dbAddress = devicesDb.address;
+        
+        // Save DB address for future logins
+        saveDbAddress(dbAddress);
+        
+        await refreshDevices();
+        
+        // Setup pairing handler to accept other devices
+        await registerPairingHandler(
+          orbitdbState.ipfs.libp2p,
+          devicesDb,
+          handleIncomingPairRequest
+        );
+        
+        startWatchingAddresses(orbitdbState.ipfs.libp2p);
+        
+        appMode = 'ready';
+        status = 'Linked successfully! You can now access the shared database.';
+      } else {
+        error = `Pairing rejected: ${result.reason || 'Unknown reason'}`;
+      }
+    } catch (err) {
+      error = err.message;
+      console.error('[pair] error:', err);
+    } finally {
+      loading = false;
     }
   }
 
@@ -370,6 +466,57 @@
       </button>
     </div>
 
+  <!-- Link or Create choice -->
+  {:else if appMode === 'link-or-create'}
+    <div class="link-or-create-view">
+      <h2>Link or Create?</h2>
+      <p class="subtitle">
+        You have an existing passkey but no local database. Would you like to:
+      </p>
+      
+      {#if error}
+        <div class="error-banner">{error}</div>
+      {/if}
+
+      {#if status}
+        <div class="status-banner">{status}</div>
+      {/if}
+
+      {#if !orbitdbState}
+        <div class="choice-buttons">
+          <button 
+            class="btn-secondary" 
+            on:click={handleLinkToExisting}
+            disabled={loading}
+          >
+            📲 Link to Existing Device
+          </button>
+          <button 
+            class="btn-primary" 
+            on:click={handleCreateNewSetup}
+            disabled={loading}
+          >
+            ➕ Create New Setup
+          </button>
+        </div>
+        <p class="hint">
+          <small>Link to existing: Use Device A's QR code to access your shared database.<br/>
+          Create new: This device becomes Device A with a fresh database.</small>
+        </p>
+      {:else}
+        <!-- OrbitDB is set up, show PairView to scan QR -->
+        <PairView
+          {devices}
+          {dbAddress}
+          {status}
+          {error}
+          {loading}
+          on:pair={handlePairFromLink}
+          on:error={(e) => { error = e.detail; }}
+        />
+      {/if}
+    </div>
+
   <!-- Ready state: Show QR code and devices -->
   {:else if appMode === 'ready'}
     <SetupView
@@ -443,6 +590,28 @@
   .start-btn {
     padding: 1rem 2.5rem;
     font-size: 1.25rem;
+  }
+
+  .link-or-create-view {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    align-items: center;
+    text-align: center;
+    padding: 2rem 0;
+  }
+
+  .choice-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 100%;
+    max-width: 320px;
+  }
+
+  .hint {
+    color: var(--cds-text-secondary, #666);
+    max-width: 320px;
   }
 
   .error-banner {
