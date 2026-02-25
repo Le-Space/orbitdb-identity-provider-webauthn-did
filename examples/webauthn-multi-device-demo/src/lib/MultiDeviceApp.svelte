@@ -9,16 +9,17 @@
     getDeviceByCredentialId,
     sendPairingRequest,
     detectDeviceLabel,
+    detectExistingCredential,
   } from '@le-space/orbitdb-identity-provider-webauthn-did';
   import { setupOrbitDB, registerPairingHandler, getQRPayload, cleanup } from '$lib/libp2p.js';
-  import { openDevicesDB, registerCurrentDevice, loadDevices } from '$lib/database.js';
+  import { openDevicesDB, registerCurrentDevice, loadDevices, saveDbAddress, getDbAddress } from '$lib/database.js';
 
   import SetupView from '$lib/components/SetupView.svelte';
-  import PairView from '$lib/components/PairView.svelte';
   import GrantConfirmView from '$lib/components/GrantConfirmView.svelte';
 
   // ── State ────────────────────────────────────────────────────────────────────
-  let view = 'choose'; // 'choose' | 'setup' | 'pair'
+  let appMode = 'initial'; // 'initial' | 'ready'
+  let isLogin = false;
   let loading = false;
   let status = '';
   let error = '';
@@ -40,10 +41,6 @@
   // libp2p address watcher (for Fix 3: multiaddrs initially empty)
   let addrUpdateListener = null;
   let addrPollInterval = null;
-
-  // ── View selection ───────────────────────────────────────────────────────────
-  function chooseSetup() { view = 'setup'; }
-  function choosePair() { view = 'pair'; }
 
   // ── Address watcher — show QR immediately, update when relay addresses arrive ─
   function startWatchingAddresses(libp2p) {
@@ -80,53 +77,131 @@
     }
   }
 
-  // ── Scenario A: First device setup ──────────────────────────────────────────
-  async function handleSetup() {
+  // ── Start button handler — detects login state and flows ──────────────────────
+  async function handleStart() {
     loading = true;
     error = '';
 
     try {
-      // Step 1: Create WebAuthn credential
-      status = 'Creating WebAuthn credential…';
-      credential = await WebAuthnDIDProvider.createCredential({
-        userId: `device-a-${Date.now()}`,
-        displayName: 'Multi-Device User (Device A)',
-        encryptKeystore: true,
-        keystoreEncryptionMethod: 'prf',
-      });
+      // Step 1: Try to detect existing credential
+      status = 'Checking for existing passkey…';
+      const result = await detectExistingCredential();
 
-      // Step 2: Setup OrbitDB (triggers WebAuthn assertion internally)
-      status = 'Setting up OrbitDB identity (biometric prompt will appear)…';
-      orbitdbState = await setupOrbitDB(credential, {
-        encryptKeystore: true,
-        keystoreEncryptionMethod: 'prf',
-      });
+      if (result.hasCredentials && result.credential) {
+        // User has existing passkey - check if DB exists locally
+        const existingDbAddress = getDbAddress();
+        
+        if (existingDbAddress) {
+          // LOGIN FLOW: User has passkey + DB exists
+          status = 'Authenticating with existing passkey…';
+          isLogin = true;
+          credential = result.credential;
+          
+          // Setup OrbitDB with existing credential (will prompt for biometric)
+          orbitdbState = await setupOrbitDB(credential, {
+            encryptKeystore: true,
+            keystoreEncryptionMethod: 'prf',
+          });
+          
+          // Open existing DB
+          devicesDb = await openDevicesDB(orbitdbState.orbitdb, orbitdbState.identity, existingDbAddress);
+          dbAddress = devicesDb.address;
+          
+          // Setup pairing handler (for adding new devices)
+          await registerPairingHandler(
+            orbitdbState.ipfs.libp2p,
+            devicesDb,
+            handleIncomingPairRequest
+          );
+          
+          startWatchingAddresses(orbitdbState.ipfs.libp2p);
+          await refreshDevices();
+          
+          appMode = 'ready';
+          status = 'Logged in! Show QR code to link a new device.';
+        } else {
+          // User has passkey but no local DB - treat as new Device A setup
+          status = 'Existing passkey found. Setting up OrbitDB…';
+          isLogin = false;
+          credential = result.credential;
+          
+          // Setup OrbitDB with existing credential
+          orbitdbState = await setupOrbitDB(credential, {
+            encryptKeystore: true,
+            keystoreEncryptionMethod: 'prf',
+          });
+          
+          // Create new device registry (first device)
+          devicesDb = await openDevicesDB(orbitdbState.orbitdb, orbitdbState.identity);
+          dbAddress = devicesDb.address;
+          
+          // Save DB address for future logins
+          saveDbAddress(dbAddress);
+          
+          // Register self
+          await registerCurrentDevice(devicesDb, credential, orbitdbState.identity, 'Device A');
+          
+          // Setup pairing handler
+          await registerPairingHandler(
+            orbitdbState.ipfs.libp2p,
+            devicesDb,
+            handleIncomingPairRequest
+          );
+          
+          startWatchingAddresses(orbitdbState.ipfs.libp2p);
+          await refreshDevices();
+          
+          appMode = 'ready';
+          status = 'Ready! Show QR code to link a new device.';
+        }
+      } else {
+        // No existing credential - create new one (new user)
+        status = 'No existing passkey. Creating new credential…';
+        isLogin = false;
+        
+        // Create new credential
+        credential = await WebAuthnDIDProvider.createCredential({
+          userId: `device-a-${Date.now()}`,
+          displayName: 'Multi-Device User (Device A)',
+          encryptKeystore: true,
+          keystoreEncryptionMethod: 'prf',
+        });
 
-      // Step 3: Create device registry
-      status = 'Creating device registry…';
-      devicesDb = await openDevicesDB(orbitdbState.orbitdb, orbitdbState.identity);
-      dbAddress = devicesDb.address;
+        // Setup OrbitDB
+        status = 'Setting up OrbitDB identity (biometric prompt will appear)…';
+        orbitdbState = await setupOrbitDB(credential, {
+          encryptKeystore: true,
+          keystoreEncryptionMethod: 'prf',
+        });
 
-      // Step 4: Register self
-      status = 'Registering this device…';
-      await registerCurrentDevice(devicesDb, credential, orbitdbState.identity, 'Device A');
+        // Create device registry
+        devicesDb = await openDevicesDB(orbitdbState.orbitdb, orbitdbState.identity);
+        dbAddress = devicesDb.address;
+        
+        // Save DB address for future logins
+        saveDbAddress(dbAddress);
 
-      // Step 5: Register pairing handler
-      status = 'Setting up pairing handler…';
-      await registerPairingHandler(
-        orbitdbState.ipfs.libp2p,
-        devicesDb,
-        handleIncomingPairRequest
-      );
+        // Register self
+        await registerCurrentDevice(devicesDb, credential, orbitdbState.identity, 'Device A');
 
-      startWatchingAddresses(orbitdbState.ipfs.libp2p);
-      await refreshDevices();
-      status = 'Ready! Show QR code to link a new device.';
+        // Setup pairing handler
+        await registerPairingHandler(
+          orbitdbState.ipfs.libp2p,
+          devicesDb,
+          handleIncomingPairRequest
+        );
+
+        startWatchingAddresses(orbitdbState.ipfs.libp2p);
+        await refreshDevices();
+        
+        appMode = 'ready';
+        status = 'Ready! Show QR code to link a new device.';
+      }
 
     } catch (err) {
       error = err.message;
       status = '';
-      console.error('[setup] error:', err);
+      console.error('[start] error:', err);
     } finally {
       loading = false;
     }
@@ -152,87 +227,6 @@
     }
   }
 
-  // ── Scenario B/C: Device B — create credential ───────────────────────────────
-  async function handleCreateCredential() {
-    loading = true;
-    error = '';
-
-    try {
-      status = 'Creating WebAuthn credential for Device B…';
-      credential = await WebAuthnDIDProvider.createCredential({
-        userId: `device-b-${Date.now()}`,
-        displayName: 'Multi-Device User (Device B)',
-        encryptKeystore: true,
-        keystoreEncryptionMethod: 'prf',
-      });
-
-      status = 'Setting up OrbitDB identity (biometric prompt will appear)…';
-      orbitdbState = await setupOrbitDB(credential, {
-        encryptKeystore: true,
-        keystoreEncryptionMethod: 'prf',
-      });
-
-      status = 'Credential ready. Paste Device A\'s QR payload to continue.';
-
-    } catch (err) {
-      error = err.message;
-      status = '';
-      console.error('[pair credential] error:', err);
-    } finally {
-      loading = false;
-    }
-  }
-
-  async function handlePair(event) {
-    const { qrPayload: qr } = event.detail;
-
-    if (!orbitdbState) {
-      await handleCreateCredential();
-      if (!orbitdbState) return;
-    }
-
-    loading = true;
-    error = '';
-    status = 'Connecting to Device A…';
-
-    try {
-      const identityPayload = {
-        id: orbitdbState.identity.id,
-        credentialId: credential.credentialId,
-        publicKey: null,
-        deviceLabel: detectDeviceLabel(),
-      };
-
-      const result = await sendPairingRequest(
-        orbitdbState.ipfs.libp2p,
-        qr.peerId,
-        identityPayload,
-        qr.multiaddrs || []
-      );
-
-      if (result.type === 'granted') {
-        status = 'Access granted! Opening shared database…';
-        devicesDb = await openDevicesDB(
-          orbitdbState.orbitdb,
-          orbitdbState.identity,
-          result.orbitdbAddress
-        );
-        dbAddress = devicesDb.address;
-        await refreshDevices();
-        status = 'Paired successfully!';
-      } else {
-        error = `Pairing rejected: ${result.reason || 'Unknown reason'}`;
-        status = '';
-      }
-    } catch (err) {
-      error = err.message;
-      status = '';
-      console.error('[pair] error:', err);
-    } finally {
-      loading = false;
-    }
-  }
-
   // ── WebAuthn support check ───────────────────────────────────────────────────
   onMount(async () => {
     const support = await checkWebAuthnSupport();
@@ -252,7 +246,7 @@
     if (typeof window !== 'undefined' && window.__testMode) {
       window.__multiDevice = {
         getState: () => ({
-          view,
+          appMode,
           peerId: orbitdbState?.ipfs?.libp2p?.peerId?.toString() || null,
           devicesDbAddress: dbAddress,
           deviceCount: devices.length,
@@ -346,25 +340,34 @@
     </div>
   {/if}
 
-  <!-- View chooser -->
-  {#if view === 'choose'}
-    <div class="choose-view">
+  <!-- Initial state: Single Start button -->
+  {#if appMode === 'initial'}
+    <div class="initial-view">
       <h2>Multi-Device OrbitDB</h2>
       <p class="subtitle">
         Link multiple devices to share a single OrbitDB identity and database
         using WebAuthn hardware credentials.
       </p>
-      <div class="choose-buttons">
-        <button class="btn-primary" on:click={chooseSetup}>
-          🔑 Set Up as First Device (Device A)
-        </button>
-        <button class="btn-secondary" on:click={choosePair}>
-          📲 Link to Existing Device (Device B)
-        </button>
-      </div>
+      
+      {#if error}
+        <div class="error-banner">{error}</div>
+      {/if}
+
+      {#if status}
+        <div class="status-banner">{status}</div>
+      {/if}
+
+      <button 
+        class="btn-primary start-btn" 
+        on:click={handleStart} 
+        disabled={loading || !webAuthnSupported}
+      >
+        {loading ? 'Starting…' : '🚀 Start'}
+      </button>
     </div>
 
-  {:else if view === 'setup'}
+  <!-- Ready state: Show QR code and devices -->
+  {:else if appMode === 'ready'}
     <SetupView
       {qrPayload}
       {devices}
@@ -372,19 +375,6 @@
       {status}
       {error}
       {loading}
-      on:setup={handleSetup}
-    />
-
-  {:else if view === 'pair'}
-    <PairView
-      {devices}
-      {dbAddress}
-      {status}
-      {error}
-      {loading}
-      on:createCredential={handleCreateCredential}
-      on:pair={handlePair}
-      on:error={(e) => { error = e.detail; }}
     />
   {/if}
 
@@ -437,13 +427,38 @@
     font-family: monospace;
   }
 
-  .choose-view {
+  .initial-view {
     display: flex;
     flex-direction: column;
     gap: 1rem;
     align-items: center;
     text-align: center;
     padding: 2rem 0;
+  }
+
+  .start-btn {
+    padding: 1rem 2.5rem;
+    font-size: 1.25rem;
+  }
+
+  .error-banner {
+    padding: 0.75rem 1rem;
+    background: #fde8e8;
+    border: 1px solid #e74c3c;
+    border-radius: 0.4rem;
+    color: #c0392b;
+    width: 100%;
+    max-width: 400px;
+  }
+
+  .status-banner {
+    padding: 0.75rem 1rem;
+    background: #e8f4fd;
+    border: 1px solid #3498db;
+    border-radius: 0.4rem;
+    color: #2471a3;
+    width: 100%;
+    max-width: 400px;
   }
 
   h2 {
@@ -455,14 +470,6 @@
     color: var(--cds-text-secondary, #555);
     margin: 0;
     max-width: 400px;
-  }
-
-  .choose-buttons {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    width: 100%;
-    max-width: 320px;
   }
 
   .btn-primary {
@@ -478,17 +485,9 @@
     width: 100%;
   }
 
-  .btn-secondary {
-    padding: 0.875rem 1.5rem;
-    background: var(--cds-layer, #e8e8e8);
-    color: var(--cds-text-primary, #333);
-    border: 1px solid var(--cds-border-subtle, #ccc);
-    border-radius: 0.5rem;
-    font-size: 1rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: opacity 0.2s;
-    width: 100%;
+  .btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   button:hover {
