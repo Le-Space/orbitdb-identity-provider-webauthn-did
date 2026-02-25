@@ -39,7 +39,7 @@
       without needing to decode the actual QR image.
     -->
     <canvas bind:this={canvasEl} data-testid="qr-payload" data-payload={payloadStr}></canvas>
-    <p class="hint">Scan with Device B to link</p>
+    <code>{payloadStr}</code>
   {:else}
     <div class="placeholder">QR code will appear here</div>
   {/if}

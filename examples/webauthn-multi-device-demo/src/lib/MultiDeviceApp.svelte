@@ -9,7 +9,6 @@
     getDeviceByCredentialId,
     sendPairingRequest,
     detectDeviceLabel,
-    detectExistingCredential,
   } from '@le-space/orbitdb-identity-provider-webauthn-did';
   import { setupOrbitDB, registerPairingHandler, getQRPayload, cleanup } from '$lib/libp2p.js';
   import { openDevicesDB, registerCurrentDevice, loadDevices, saveDbAddress, getDbAddress } from '$lib/database.js';
@@ -85,9 +84,16 @@
     try {
       // Step 1: Try to detect existing credential
       status = 'Checking for existing passkey…';
-      const result = await detectExistingCredential();
+      const result = await WebAuthnDIDProvider.detectExistingCredential();
 
       if (result.hasCredentials && result.credential) {
+        // Normalize credential to match format createCredential() returns
+        const rawCred = result.credential;
+        credential = {
+          credentialId: WebAuthnDIDProvider.arrayBufferToBase64url(rawCred.rawId),
+          rawCredentialId: new Uint8Array(rawCred.rawId),
+        };
+        
         // User has existing passkey - check if DB exists locally
         const existingDbAddress = getDbAddress();
         
@@ -95,7 +101,6 @@
           // LOGIN FLOW: User has passkey + DB exists
           status = 'Authenticating with existing passkey…';
           isLogin = true;
-          credential = result.credential;
           
           // Setup OrbitDB with existing credential (will prompt for biometric)
           orbitdbState = await setupOrbitDB(credential, {
@@ -123,7 +128,6 @@
           // User has passkey but no local DB - treat as new Device A setup
           status = 'Existing passkey found. Setting up OrbitDB…';
           isLogin = false;
-          credential = result.credential;
           
           // Setup OrbitDB with existing credential
           orbitdbState = await setupOrbitDB(credential, {

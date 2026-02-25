@@ -11,10 +11,11 @@
 import { lpStream } from 'it-length-prefixed-stream';
 import {
   getDeviceByCredentialId,
+  getDeviceByDID,
   grantDeviceWriteAccess,
   registerDevice,
 } from './device-registry.js';
-
+import { peerIdFromString } from '@libp2p/peer-id';
 export const LINK_DEVICE_PROTOCOL = '/orbitdb/link-device/1.0.0';
 
 /**
@@ -65,7 +66,11 @@ export async function registerLinkDeviceHandler(libp2p, db, onRequest) {
         request.identity.credentialId
       );
 
-      if (isKnownDevice) {
+      const existingDeviceWithDID = await getDeviceByDID(db, request.identity.id);
+
+      if (existingDeviceWithDID) {
+        result = { type: 'rejected', reason: 'This identity is already registered on another device' };
+      } else if (isKnownDevice) {
         // Recovery: same credential → same Ed25519 DID → already has write access
         result = { type: 'granted', orbitdbAddress: db.address };
       } else {
@@ -137,21 +142,52 @@ export function detectDeviceLabel() {
  * @returns {Promise<{type: 'granted', orbitdbAddress: string}|{type: 'rejected', reason: string}>}
  */
 export async function sendPairingRequest(libp2p, deviceAPeerId, identity, hintMultiaddrs = []) {
-  // Populate peer store with Device A's known addresses so libp2p can dial them
+  let stream;
+  let peerId;
+  if (typeof deviceAPeerId === 'string') {
+    peerId = peerIdFromString(deviceAPeerId);
+  } else if (deviceAPeerId?.toMultihash) {
+    peerId = deviceAPeerId;
+  } else if (deviceAPeerId?.id) {
+    peerId = peerIdFromString(deviceAPeerId.id);
+  } else {
+    throw new Error(`Invalid deviceAPeerId: ${JSON.stringify(deviceAPeerId)}`);
+  }
   if (hintMultiaddrs.length > 0) {
     try {
-      const { peerIdFromString } = await import('@libp2p/peer-id');
       const { multiaddr } = await import('@multiformats/multiaddr');
-      const pid = peerIdFromString(deviceAPeerId);
-      await libp2p.peerStore.patch(pid, {
-        multiaddrs: hintMultiaddrs.map((a) => multiaddr(a)),
-      });
-    } catch (e) {
-      console.warn('[pairing] peerStore hint failed, will try direct dial:', e.message);
-    }
-  }
+      console.log('deviceAPeerId:', deviceAPeerId);
+      console.log('type:', typeof deviceAPeerId);
+      console.log('has toMultihash:', deviceAPeerId?.toMultihash);
 
-  const stream = await libp2p.dialProtocol(deviceAPeerId, LINK_DEVICE_PROTOCOL);
+
+      const parsedMultiaddrs = hintMultiaddrs
+        .map((a) => {
+          try {
+            return multiaddr(a);
+          } catch (e) {
+            console.warn('[pairing] failed to parse multiaddr:', a, e.message);
+            return null;
+          }
+        })
+        .filter(Boolean);
+      console.log('parsedMultiaddrs:', parsedMultiaddrs);
+      if (parsedMultiaddrs.length > 0) {
+        const connection = await libp2p.dial(parsedMultiaddrs);
+        console.log('connection:', connection);
+        stream = await connection.newStream(LINK_DEVICE_PROTOCOL);
+        console.log('stream:', stream);
+      } else {
+        throw new Error(`No parsedMultiaddrs for deviceAPeerId: ${deviceAPeerId}`);
+      }
+    } catch (e) {
+      throw new Error(`Failed to connect to Device A: ${e.message} for deviceAPeerId: ${deviceAPeerId}`);
+    }
+  } else {
+    stream = await libp2p.dialProtocol(peerId, LINK_DEVICE_PROTOCOL);
+    console.log('stream:', stream);
+  }
+  console.log('stream:', stream);
   const lp = lpStream(stream);
 
   const request = {

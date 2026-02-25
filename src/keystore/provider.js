@@ -55,6 +55,7 @@ export class OrbitDBWebAuthnIdentityProvider {
 
     // If useKeystoreDID flag is set, create Ed25519 DID from keystore
     if (this.useKeystoreDID && this.keystore) {
+      identityLog('Using Ed25519 keystore DID path');
       if (this.encryptKeystore) {
         await this.ensureEncryptedKeystore();
       }

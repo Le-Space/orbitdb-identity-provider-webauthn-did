@@ -30,7 +30,7 @@ import {
 // These nodes also support circuit relay v2 hop, enabling browser-to-browser
 // connections via relay circuit addresses.
 const BOOTSTRAP_LIST = [
-  '/ip4/192.168.29.184/tcp/9001/ws/p2p/12D3KooWR5QCXiwuRUuAWSu9RfHerfyNywbqTuCZy5c8pKaP9a2D'
+  '/dns4/acc1-2405-201-8012-40d2-4c6-6344-379d-d7e1.ngrok-free.app/tcp/9001/wss/p2p/12D3KooWNa5BSbCpVjY3DVFyNu7G1NhxhaZV64PxBZQGP9vtVGh3'
 ];
 
 const PUBSUB_PEER_DISCOVERY = 'browser-peer-discovery'
@@ -59,7 +59,7 @@ export async function createLibp2pInstance() {
     },
     peerDiscovery: [
       bootstrap({
-        list: ['/ip4/192.168.29.184/tcp/9001/ws/p2p/12D3KooWMa85d6dZmyeSqFS714tRqQ7hrYrfT6vUzbeggSaZhmVU'],
+        list: ['/dns4/acc1-2405-201-8012-40d2-4c6-6344-379d-d7e1.ngrok-free.app/tcp/443/wss/p2p/12D3KooWJkH5Xo1Y4gh4ufNfp9BivkC6ynNx7qMn74Mt4JE4ij7T'],
       }),
       pubsubPeerDiscovery({
         interval: 10_000,
@@ -102,13 +102,12 @@ export async function setupOrbitDB(credential, options = {}) {
   useIdentityProvider(OrbitDBWebAuthnIdentityProviderFunction);
 
   const identities = await Identities({ ipfs });
-  const tempOrbitdb = await createOrbitDB({ ipfs, identities });
 
   const identity = await identities.createIdentity({
     provider: OrbitDBWebAuthnIdentityProviderFunction({
       webauthnCredential: credential,
       useKeystoreDID: true,
-      keystore: tempOrbitdb.keystore,
+      keystore: identities.keystore,
       keystoreKeyType: 'Ed25519',
       encryptKeystore: options.encryptKeystore !== false,
       keystoreEncryptionMethod: options.keystoreEncryptionMethod || 'prf',
@@ -146,13 +145,32 @@ export async function unregisterPairingHandler(libp2p) {
 /**
  * Build the QR payload for Device A to display.
  * Device B scans this to dial Device A.
+ * Includes WebSocket and WebTransport addresses, excludes loopback IPs.
  * @param {Object} libp2p - libp2p instance
  * @returns {{ peerId: string, multiaddrs: string[] }}
  */
 export function getQRPayload(libp2p) {
   const peerId = libp2p.peerId.toString();
-  const multiaddrs = libp2p.getMultiaddrs().map((ma) => ma.toString());
-  return { peerId, multiaddrs };
+
+  const filteredMultiaddrs = libp2p.getMultiaddrs()
+    .map((ma) => ma.toString())
+    .filter((ma) => {
+      const maStr = ma.toLowerCase();
+
+      const hasWebsocketOrTransport = 
+        maStr.includes('/ws/') || 
+        maStr.includes('/wss/') ||
+        maStr.includes('/webtransport');
+
+      const isLoopback = 
+        maStr.includes('/ip4/127.') ||
+        maStr.includes('/ip4/localhost') ||
+        maStr.includes('/ip6/::1');
+
+      return hasWebsocketOrTransport && !isLoopback;
+    });
+
+  return { peerId, multiaddrs: filteredMultiaddrs };
 }
 
 /**

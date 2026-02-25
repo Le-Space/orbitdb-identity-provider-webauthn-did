@@ -9,6 +9,7 @@ export {
   registerDevice,
   listDevices,
   getDeviceByCredentialId,
+  getDeviceByDID,
   grantDeviceWriteAccess,
   revokeDeviceAccess,
   hashCredentialId,

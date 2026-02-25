@@ -112,6 +112,18 @@ export async function getDeviceByCredentialId(db, credentialId) {
 }
 
 /**
+ * Look up a device by its Ed25519 DID.
+ * @param {Object} db - OrbitDB KV database
+ * @param {string} did - Ed25519 DID (did:key:z6Mk...)
+ * @returns {Promise<Object|null>} Device entry or null if not found
+ */
+export async function getDeviceByDID(db, did) {
+  const all = await db.all();
+  const found = all.find((e) => e.value.ed25519_did === did);
+  return found ? found.value : null;
+}
+
+/**
  * Grant write access to a new device DID via OrbitDBAccessController.
  * @param {Object} db - OrbitDB KV database (must use OrbitDBAccessController)
  * @param {string} did - Ed25519 DID of the new device
