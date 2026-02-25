@@ -52,6 +52,42 @@ export class WebAuthnDIDProvider {
   }
 
   /**
+   * Check if any WebAuthn credentials exist for this origin.
+   * Calls navigator.credentials.get() with empty allowCredentials to trigger
+   * the browser's passkey selector without requiring a specific credential.
+   * @returns {Promise<{hasCredentials: boolean, credential?: Object}>}
+   *   hasCredentials: true if user has existing passkeys
+   *   credential: the credential if user selects one, undefined if cancelled
+   */
+  static async detectExistingCredential() {
+    if (!window.PublicKeyCredential) {
+      return { hasCredentials: false };
+    }
+
+    try {
+      const credential = await navigator.credentials.get({
+        publicKey: {
+          challenge: crypto.getRandomValues(new Uint8Array(32)),
+          timeout: 10000,
+          userVerification: 'preferred',
+          allowCredentials: [], // Empty triggers passkey selector
+        },
+      });
+
+      if (credential) {
+        return { hasCredentials: true, credential };
+      }
+      return { hasCredentials: false };
+    } catch (error) {
+      // User cancelled or no credentials
+      if (error.name === 'NotAllowedError') {
+        return { hasCredentials: false };
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Create a WebAuthn credential for OrbitDB identity
    * This triggers biometric authentication (Face ID, Touch ID, Windows Hello, etc.)
    * @param {Object} options - Credential options
