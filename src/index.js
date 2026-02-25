@@ -27,6 +27,10 @@ export {
   OrbitDBWebAuthnIdentityProviderFunction
 };
 
+export {
+  detectExistingCredential
+} from './webauthn/provider.js';
+
 /**
  * Register WebAuthn identity provider with OrbitDB
  * @returns {boolean} True if registration succeeded.
