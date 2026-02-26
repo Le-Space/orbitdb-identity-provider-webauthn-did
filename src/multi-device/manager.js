@@ -269,4 +269,34 @@ export class MultiDeviceManager {
 
     return { peerId, multiaddrs: filteredMultiaddrs };
   }
+
+  async listDevices() {
+    if (!this._devicesDb) {
+      return [];
+    }
+    return await listDevices(this._devicesDb);
+  }
+
+  async revokeDevice(did) {
+    if (!this._devicesDb) {
+      throw new Error('Device registry not initialized');
+    }
+    await revokeDeviceAccess(this._devicesDb, did);
+  }
+
+  async close() {
+    try {
+      if (this._devicesDb) {
+        await this._devicesDb.close();
+      }
+      if (this._orbitdb) {
+        await this._orbitdb.stop();
+      }
+      if (this._ipfs) {
+        await this._ipfs.stop();
+      }
+    } catch (error) {
+      console.warn('Error during cleanup:', error);
+    }
+  }
 }
