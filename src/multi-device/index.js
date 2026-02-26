@@ -23,3 +23,5 @@ export {
   sendPairingRequest,
   detectDeviceLabel,
 } from './pairing-protocol.js';
+
+export { MultiDeviceManager } from './manager.js';
