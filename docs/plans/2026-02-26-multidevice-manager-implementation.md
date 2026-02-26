@@ -1,3 +1,33 @@
+# MultiDeviceManager Class Implementation Plan
+
+> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+
+**Goal:** Create a `MultiDeviceManager` class that encapsulates all multi-device logic, hiding device registries, pairing protocols, and access controllers from consumers.
+
+**Architecture:** Single monolithic class that owns orbitdb/ipfs/libp2p/identity/devicesDb. Uses existing functional primitives internally. Factory pattern with `create()` instead of constructor.
+
+**Tech Stack:** OrbitDB, Helia, libp2p, WebAuthn
+
+---
+
+## Pre-requisites
+
+Before starting, ensure you understand the existing code:
+- Read `src/multi-device/device-registry.js` - device registry primitives
+- Read `src/multi-device/pairing-protocol.js` - pairing protocol
+- Read `src/webauthn/provider.js` - WebAuthn DID provider
+- Read `examples/webauthn-multi-device-demo/src/lib/MultiDeviceApp.svelte` - current flow
+
+---
+
+### Task 1: Create MultiDeviceManager Class Skeleton
+
+**Files:**
+- Create: `src/multi-device/manager.js`
+
+**Step 1: Create the file with class skeleton**
+
+```js
 /**
  * MultiDeviceManager - Unified class for multi-device OrbitDB with WebAuthn
  */
@@ -41,26 +71,30 @@ export class MultiDeviceManager {
     }
     this._credential = config.credential;
     this._onPairingRequest = config.onPairingRequest || null;
-
-    if (config.orbitdb) {
-      this._orbitdb = config.orbitdb;
-    }
-    if (config.ipfs) {
-      this._ipfs = config.ipfs;
-    }
-    if (config.libp2p) {
-      this._libp2p = config.libp2p;
-    }
-    if (config.identity) {
-      this._identity = config.identity;
-    }
   }
+}
+```
 
+**Step 2: Commit**
+
+```bash
+git add src/multi-device/manager.js
+git commit -m "feat(multi-device): add MultiDeviceManager class skeleton"
+```
+
+---
+
+### Task 2: Implement _setupOrbitDB Internal Method
+
+**Files:**
+- Modify: `src/multi-device/manager.js`
+
+**Step 1: Add _setupOrbitDB method**
+
+Add this method after `_init`:
+
+```js
   async _setupOrbitDB() {
-    if (this._orbitdb && this._identity) {
-      return;
-    }
-
     const { createLibp2p } = await import('libp2p');
     const { createHelia } = await import('helia');
     const { LevelBlockstore } = await import('blockstore-level');
@@ -118,8 +152,29 @@ export class MultiDeviceManager {
     this._orbitdb = orbitdb;
     this._identity = identity;
   }
+```
 
+**Step 2: Commit**
+
+```bash
+git add src/multi-device/manager.js
+git commit -m "feat(multi-device): add _setupOrbitDB method to manager"
+```
+
+---
+
+### Task 3: Implement createNew Method
+
+**Files:**
+- Modify: `src/multi-device/manager.js`
+
+**Step 1: Add createNew method**
+
+Add after `_setupOrbitDB`:
+
+```js
   async createNew() {
+    // Create new credential if not exists
     if (!this._credential) {
       this._credential = await WebAuthnDIDProvider.createCredential({
         userId: `device-${Date.now()}`,
@@ -129,11 +184,14 @@ export class MultiDeviceManager {
       });
     }
 
+    // Setup OrbitDB
     await this._setupOrbitDB();
 
+    // Create device registry (first device)
     this._devicesDb = await openDeviceRegistry(this._orbitdb, this._identity.id);
     this._dbAddress = this._devicesDb.address;
 
+    // Register self
     const publicKey = this._credential.publicKey?.x && this._credential.publicKey?.y
       ? this._convertCoseToJwk(this._credential.publicKey.x, this._credential.publicKey.y)
       : null;
@@ -147,6 +205,7 @@ export class MultiDeviceManager {
       ed25519_did: this._identity.id,
     });
 
+    // Register pairing handler
     if (this._onPairingRequest) {
       await registerLinkDeviceHandler(this._libp2p, this._devicesDb, this._onPairingRequest);
     }
@@ -171,30 +230,57 @@ export class MultiDeviceManager {
       y: toBase64url(y),
     };
   }
+```
 
+**Step 2: Commit**
+
+```bash
+git add src/multi-device/manager.js
+git commit -m "feat(multi-device): add createNew method"
+```
+
+---
+
+### Task 4: Implement restore Method
+
+**Files:**
+- Modify: `src/multi-device/manager.js`
+
+**Step 1: Add restore method**
+
+Add after `createNew`:
+
+```js
   async restore() {
+    // Check for existing credential
     const result = await WebAuthnDIDProvider.detectExistingCredential();
 
     if (result.hasCredentials && result.credential) {
+      // Normalize credential
       this._credential = {
         credentialId: WebAuthnDIDProvider.arrayBufferToBase64url(result.credential.rawId),
         rawCredentialId: new Uint8Array(result.credential.rawId),
       };
 
+      // Return "link-or-create" state - caller decides
       return { needsChoice: true };
     }
 
+    // No credential - create new
     return await this.createNew();
   }
 
   async openExistingDb(dbAddress) {
+    // Setup OrbitDB if not already
     if (!this._orbitdb) {
       await this._setupOrbitDB();
     }
 
+    // Open existing DB
     this._devicesDb = await openDeviceRegistry(this._orbitdb, this._identity.id, dbAddress);
     this._dbAddress = this._devicesDb.address;
 
+    // Register pairing handler
     if (this._onPairingRequest) {
       await registerLinkDeviceHandler(this._libp2p, this._devicesDb, this._onPairingRequest);
     }
@@ -204,8 +290,27 @@ export class MultiDeviceManager {
       identity: this._identity,
     };
   }
+```
 
+**Step 2: Commit**
+
+```bash
+git add src/multi-device/manager.js
+git commit -m "feat(multi-device): add restore and openExistingDb methods"
+```
+
+---
+
+### Task 5: Implement linkToDevice and getPeerInfo Methods
+
+**Files:**
+- Modify: `src/multi-device/manager.js`
+
+**Step 1: Add linkToDevice and getPeerInfo methods**
+
+```js
   async linkToDevice(qrPayload) {
+    // Ensure orbitdb/identity ready
     if (!this._orbitdb) {
       await this._setupOrbitDB();
     }
@@ -228,6 +333,7 @@ export class MultiDeviceManager {
       return result;
     }
 
+    // Open shared DB
     this._devicesDb = await openDeviceRegistry(
       this._orbitdb,
       this._identity.id,
@@ -235,6 +341,7 @@ export class MultiDeviceManager {
     );
     this._dbAddress = this._devicesDb.address;
 
+    // Register pairing handler to accept more devices
     if (this._onPairingRequest) {
       await registerLinkDeviceHandler(this._libp2p, this._devicesDb, this._onPairingRequest);
     }
@@ -256,11 +363,11 @@ export class MultiDeviceManager {
       .map((ma) => ma.toString())
       .filter((ma) => {
         const maStr = ma.toLowerCase();
-        const hasWebsocketOrTransport =
-          maStr.includes('/ws/') ||
+        const hasWebsocketOrTransport = 
+          maStr.includes('/ws/') || 
           maStr.includes('/wss/') ||
           maStr.includes('/webtransport');
-        const isLoopback =
+        const isLoopback = 
           maStr.includes('/ip4/127.') ||
           maStr.includes('/ip4/localhost') ||
           maStr.includes('/ip6/::1');
@@ -269,7 +376,25 @@ export class MultiDeviceManager {
 
     return { peerId, multiaddrs: filteredMultiaddrs };
   }
+```
 
+**Step 2: Commit**
+
+```bash
+git add src/multi-device/manager.js
+git commit -m "feat(multi-device): add linkToDevice and getPeerInfo methods"
+```
+
+---
+
+### Task 6: Implement listDevices, revokeDevice, and close Methods
+
+**Files:**
+- Modify: `src/multi-device/manager.js`
+
+**Step 1: Add remaining methods**
+
+```js
   async listDevices() {
     if (!this._devicesDb) {
       return [];
@@ -299,4 +424,149 @@ export class MultiDeviceManager {
       console.warn('Error during cleanup:', error);
     }
   }
-}
+```
+
+**Step 2: Commit**
+
+```bash
+git add src/multi-device/manager.js
+git commit -m "feat(multi-device): add listDevices, revokeDevice, and close methods"
+```
+
+---
+
+### Task 7: Export MultiDeviceManager from index.js
+
+**Files:**
+- Modify: `src/multi-device/index.js`
+
+**Step 1: Add export**
+
+Add at the end of the file:
+
+```js
+export { MultiDeviceManager } from './manager.js';
+```
+
+**Step 2: Commit**
+
+```bash
+git add src/multi-device/index.js
+git commit -m "feat(multi-device): export MultiDeviceManager"
+```
+
+---
+
+### Task 8: Run Lint and Tests
+
+**Step 1: Run lint**
+
+```bash
+pnpm run lint
+```
+
+**Step 2: Run existing tests**
+
+```bash
+pnpm run test:unit
+```
+
+---
+
+### Task 9: Refactor Demo to Use MultiDeviceManager
+
+**Files:**
+- Modify: `examples/webauthn-multi-device-demo/src/lib/MultiDeviceApp.svelte`
+
+**Step 1: Replace imports**
+
+Replace:
+```js
+import {
+  WebAuthnDIDProvider,
+  checkWebAuthnSupport,
+  grantDeviceWriteAccess,
+  registerDevice,
+  listDevices,
+  getDeviceByCredentialId,
+  sendPairingRequest,
+  detectDeviceLabel,
+} from '@le-space/orbitdb-identity-provider-webauthn-did';
+import { setupOrbitDB, registerPairingHandler, getQRPayload, cleanup } from '$lib/libp2p.js';
+import { openDevicesDB, registerCurrentDevice, loadDevices, saveDbAddress, getDbAddress } from '$lib/database.js';
+```
+
+With:
+```js
+import { MultiDeviceManager } from '@le-space/orbitdb-identity-provider-webauthn-did';
+import { checkWebAuthnSupport } from '@le-space/orbitdb-identity-provider-webauthn-did';
+```
+
+**Step 2: Replace state management**
+
+Replace all the manual orbitdb/ipfs/libp2p/identity state with:
+```js
+let manager = null;
+
+// Use manager.create() with credential and onPairingRequest callback
+// Replace all manager. calls: restore(), createNew(), linkToDevice(), getPeerInfo(), listDevices(), revokeDevice(), close()
+```
+
+**Step 3: Commit**
+
+```bash
+git add examples/webauthn-multi-device-demo/src/lib/MultiDeviceApp.svelte
+git commit -m "refactor(demo): use MultiDeviceManager class"
+```
+
+---
+
+### Task 10: Refactor E2E Test to Use MultiDeviceManager
+
+**Files:**
+- Modify: `tests/webauthn-multi-device-e2e.test.js`
+
+**Step 1: Update test approach**
+
+The E2E tests should now:
+1. Import `MultiDeviceManager` into the page context
+2. Use `manager.createNew()` for first device setup
+3. Use `manager.linkToDevice()` for device linking
+4. Use `manager.listDevices()` for verification
+
+**Step 2: Run E2E tests**
+
+```bash
+pnpm run test:e2e
+```
+
+**Step 3: Commit**
+
+```bash
+git add tests/webauthn-multi-device-e2e.test.js
+git commit -m "refactor(test): use MultiDeviceManager in E2E tests"
+```
+
+---
+
+### Task 11: Final Verification
+
+**Step 1: Run all tests**
+
+```bash
+pnpm run test:unit
+pnpm run test:integration
+pnpm run test:e2e
+```
+
+**Step 2: Run lint**
+
+```bash
+pnpm run lint
+```
+
+**Step 3: Commit**
+
+```bash
+git commit -m "fix: final verification passing"
+```

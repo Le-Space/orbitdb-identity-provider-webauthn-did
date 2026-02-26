@@ -85,6 +85,7 @@
     "it-length-prefixed-stream": "^2.0.4",
     "multiformats": "^13.0.0",
     "patch-package": "^8.0.1",
+    "uint8arrays": "^5.1.0",
     "vite-plugin-node-polyfills": "^0.24.0"
   },
   "devDependencies": {
