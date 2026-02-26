@@ -379,3 +379,27 @@ test.describe('Scenario C — Recovery (known credential auto-granted)', () => {
     console.log('✅ Scenario C: No confirmation dialog shown');
   });
 });
+
+// ── Scenario D: MultiDeviceManager Class API ───────────────────────────────────
+
+test.describe('Scenario D — MultiDeviceManager class API', () => {
+  test.beforeEach(async ({ context }) => {
+    await context.addInitScript(webAuthnMockScript, { seed: SEED_A });
+  });
+
+  test('manager is exposed via test API after setup', async ({ page }) => {
+    await page.goto('http://localhost:5173');
+    await page.waitForLoadState('networkidle');
+    await waitForMultiDeviceApi(page);
+
+    await doFirstDeviceSetup(page);
+    await page.waitForTimeout(2000);
+
+    const manager = await page.evaluate(() => window.__multiDevice.getManager());
+    expect(manager).toBeTruthy();
+
+    console.log('✅ Scenario D: Manager is exposed:', typeof manager);
+    console.log('✅ Scenario D: Manager has createNew:', typeof manager?.createNew);
+    console.log('✅ Scenario D: Manager has listDevices:', typeof manager?.listDevices);
+  });
+});
