@@ -6,13 +6,10 @@ import {
   openDeviceRegistry,
   registerDevice,
   listDevices,
-  getDeviceByCredentialId,
-  grantDeviceWriteAccess,
   revokeDeviceAccess,
   detectDeviceLabel,
   sendPairingRequest,
   registerLinkDeviceHandler,
-  unregisterLinkDeviceHandler,
 } from './index.js';
 
 import { WebAuthnDIDProvider } from '../webauthn/provider.js';
