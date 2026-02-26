@@ -9,7 +9,6 @@
  */
 
 import { lpStream } from 'it-length-prefixed-stream';
-import { toString, fromString } from 'uint8arrays/to-string';
 import {
   getDeviceByCredentialId,
   getDeviceByDID,
