@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.js",
     "./verification": "./verification.js",
-    "./standalone": "./src/standalone/index.js"
+    "./standalone": "./src/standalone/index.js",
+    "./multi-device/manager": "./src/multi-device/manager.js"
   },
   "scripts": {
     "postinstall": "patch-package",
