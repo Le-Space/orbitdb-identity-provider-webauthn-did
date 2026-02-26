@@ -10,6 +10,7 @@
     sendPairingRequest,
     detectDeviceLabel,
   } from '@le-space/orbitdb-identity-provider-webauthn-did';
+  import { MultiDeviceManager } from '@le-space/orbitdb-identity-provider-webauthn-did/multi-device/manager.js';
   import { setupOrbitDB, registerPairingHandler, getQRPayload, cleanup } from '$lib/libp2p.js';
   import { openDevicesDB, registerCurrentDevice, loadDevices, saveDbAddress, getDbAddress } from '$lib/database.js';
 
@@ -33,6 +34,7 @@
   let dbAddress = null;
   let qrPayload = null;
   let credential = null;
+  let manager = null; // MultiDeviceManager instance
 
   // Pairing confirm dialog
   let pendingRequest = null;
@@ -406,6 +408,7 @@
 
         getDevicesDbAddress: () => dbAddress,
         listDevices: () => devices,
+        getManager: () => manager,
       };
       console.log('[test] window.__multiDevice API exposed');
     }
@@ -419,7 +422,9 @@
     if (addrUpdateListener) {
       addrUpdateListener.libp2p.removeEventListener('self:peer:update', addrUpdateListener.handler);
     }
-    if (orbitdbState) {
+    if (manager) {
+      await manager.close();
+    } else if (orbitdbState) {
       await cleanup({ ...orbitdbState, database: devicesDb });
     }
   });
