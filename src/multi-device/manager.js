@@ -118,4 +118,57 @@ export class MultiDeviceManager {
     this._orbitdb = orbitdb;
     this._identity = identity;
   }
+
+  async createNew() {
+    if (!this._credential) {
+      this._credential = await WebAuthnDIDProvider.createCredential({
+        userId: `device-${Date.now()}`,
+        displayName: 'Multi-Device User',
+        encryptKeystore: true,
+        keystoreEncryptionMethod: 'prf',
+      });
+    }
+
+    await this._setupOrbitDB();
+
+    this._devicesDb = await openDeviceRegistry(this._orbitdb, this._identity.id);
+    this._dbAddress = this._devicesDb.address;
+
+    const publicKey = this._credential.publicKey?.x && this._credential.publicKey?.y
+      ? this._convertCoseToJwk(this._credential.publicKey.x, this._credential.publicKey.y)
+      : null;
+
+    await registerDevice(this._devicesDb, {
+      credential_id: this._credential.credentialId,
+      public_key: publicKey,
+      device_label: detectDeviceLabel(),
+      created_at: Date.now(),
+      status: 'active',
+      ed25519_did: this._identity.id,
+    });
+
+    if (this._onPairingRequest) {
+      await registerLinkDeviceHandler(this._libp2p, this._devicesDb, this._onPairingRequest);
+    }
+
+    return {
+      dbAddress: this._dbAddress,
+      identity: this._identity,
+    };
+  }
+
+  _convertCoseToJwk(x, y) {
+    const toBase64url = (bytes) =>
+      btoa(String.fromCharCode(...bytes))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=/g, '');
+
+    return {
+      kty: 'EC',
+      crv: 'P-256',
+      x: toBase64url(x),
+      y: toBase64url(y),
+    };
+  }
 }
