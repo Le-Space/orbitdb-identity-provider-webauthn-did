@@ -204,4 +204,69 @@ export class MultiDeviceManager {
       identity: this._identity,
     };
   }
+
+  async linkToDevice(qrPayload) {
+    if (!this._orbitdb) {
+      await this._setupOrbitDB();
+    }
+
+    const identityPayload = {
+      id: this._identity.id,
+      credentialId: this._credential.credentialId,
+      publicKey: null,
+      deviceLabel: detectDeviceLabel(),
+    };
+
+    const result = await sendPairingRequest(
+      this._libp2p,
+      qrPayload.peerId,
+      identityPayload,
+      qrPayload.multiaddrs || []
+    );
+
+    if (result.type === 'rejected') {
+      return result;
+    }
+
+    this._devicesDb = await openDeviceRegistry(
+      this._orbitdb,
+      this._identity.id,
+      result.orbitdbAddress
+    );
+    this._dbAddress = this._devicesDb.address;
+
+    if (this._onPairingRequest) {
+      await registerLinkDeviceHandler(this._libp2p, this._devicesDb, this._onPairingRequest);
+    }
+
+    return {
+      type: 'granted',
+      dbAddress: this._dbAddress,
+    };
+  }
+
+  getPeerInfo() {
+    if (!this._libp2p) {
+      throw new Error('Libp2p not initialized');
+    }
+
+    const peerId = this._libp2p.peerId.toString();
+
+    const filteredMultiaddrs = this._libp2p.getMultiaddrs()
+      .map((ma) => ma.toString())
+      .filter((ma) => {
+        const maStr = ma.toLowerCase();
+        const hasWebsocketOrTransport = 
+          maStr.includes('/ws/') || 
+          maStr.includes('/wss/') ||
+          maStr.includes('/webtransport');
+        const isLoopback = 
+          maStr.includes('/ip4/127.') ||
+          maStr.includes('/ip4/localhost') ||
+          maStr.includes('/ip6/::1');
+        return hasWebsocketOrTransport && !isLoopback;
+      });
+
+    return { peerId, multiaddrs: filteredMultiaddrs };
+  }
 }
