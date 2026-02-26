@@ -171,4 +171,37 @@ export class MultiDeviceManager {
       y: toBase64url(y),
     };
   }
+
+  async restore() {
+    const result = await WebAuthnDIDProvider.detectExistingCredential();
+
+    if (result.hasCredentials && result.credential) {
+      this._credential = {
+        credentialId: WebAuthnDIDProvider.arrayBufferToBase64url(result.credential.rawId),
+        rawCredentialId: new Uint8Array(result.credential.rawId),
+      };
+
+      return { needsChoice: true };
+    }
+
+    return await this.createNew();
+  }
+
+  async openExistingDb(dbAddress) {
+    if (!this._orbitdb) {
+      await this._setupOrbitDB();
+    }
+
+    this._devicesDb = await openDeviceRegistry(this._orbitdb, this._identity.id, dbAddress);
+    this._dbAddress = this._devicesDb.address;
+
+    if (this._onPairingRequest) {
+      await registerLinkDeviceHandler(this._libp2p, this._devicesDb, this._onPairingRequest);
+    }
+
+    return {
+      dbAddress: this._dbAddress,
+      identity: this._identity,
+    };
+  }
 }
