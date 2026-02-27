@@ -6,7 +6,11 @@ import {
   openDeviceRegistry,
   registerDevice,
   listDevices,
+  getDeviceByCredentialId,
+  getDeviceByDID,
+  grantDeviceWriteAccess,
   revokeDeviceAccess,
+  coseToJwk,
   detectDeviceLabel,
   sendPairingRequest,
   registerLinkDeviceHandler,
@@ -24,6 +28,8 @@ export class MultiDeviceManager {
     this._devicesDb = null;
     this._dbAddress = null;
     this._onPairingRequest = null;
+    this._onDeviceLinked = null;
+    this._onDeviceJoined = null;
   }
 
   static async create(config) {
@@ -32,88 +38,45 @@ export class MultiDeviceManager {
     return manager;
   }
 
-  async _init(config) {
-    if (!config.credential) {
-      throw new Error('credential is required');
-    }
-    this._credential = config.credential;
-    this._onPairingRequest = config.onPairingRequest || null;
-
-    if (config.orbitdb) {
-      this._orbitdb = config.orbitdb;
-    }
-    if (config.ipfs) {
-      this._ipfs = config.ipfs;
-    }
-    if (config.libp2p) {
-      this._libp2p = config.libp2p;
-    }
-    if (config.identity) {
-      this._identity = config.identity;
-    }
+  static async createFromExisting(config) {
+    const manager = new MultiDeviceManager();
+    manager._credential = config.credential;
+    manager._orbitdb = config.orbitdb;
+    manager._ipfs = config.ipfs;
+    manager._libp2p = config.libp2p;
+    manager._identity = config.identity;
+    manager._onPairingRequest = config.onPairingRequest || null;
+    manager._onDeviceLinked = config.onDeviceLinked || null;
+    manager._onDeviceJoined = config.onDeviceJoined || null;
+    return manager;
   }
 
-  async _setupOrbitDB() {
-    if (this._orbitdb && this._identity) {
-      return;
+  async _init(config) {
+    if (!config.credential) throw new Error('credential is required');
+    this._credential = config.credential;
+    this._onPairingRequest = config.onPairingRequest || null;
+    this._onDeviceLinked = config.onDeviceLinked || null;
+    this._onDeviceJoined = config.onDeviceJoined || null;
+    if (config.orbitdb) this._orbitdb = config.orbitdb;
+    if (config.ipfs) this._ipfs = config.ipfs;
+    if (config.libp2p) this._libp2p = config.libp2p;
+    if (config.identity) this._identity = config.identity;
+  }
+
+  /** Build a JWK from the credential's P-256 public key, or null if unavailable. */
+  _getPublicKey() {
+    const { x, y } = this._credential.publicKey || {};
+    return x && y ? coseToJwk(x, y) : null;
+  }
+
+  /** Attach sync listeners and register the pairing handler (if configured). */
+  async _finalizeDb() {
+    await this._setupSyncListeners();
+    if (this._onPairingRequest) {
+      await registerLinkDeviceHandler(
+        this._libp2p, this._devicesDb, this._onPairingRequest, this._onDeviceLinked
+      );
     }
-
-    const { createLibp2p } = await import('libp2p');
-    const { createHelia } = await import('helia');
-    const { LevelBlockstore } = await import('blockstore-level');
-    const { LevelDatastore } = await import('datastore-level');
-    const { createOrbitDB, Identities, useIdentityProvider } = await import('@orbitdb/core');
-    const { OrbitDBWebAuthnIdentityProviderFunction } = await import('../webauthn/provider.js');
-
-    const libp2p = await createLibp2p({
-      addresses: {
-        listen: ['/p2p-circuit', '/webrtc'],
-      },
-      transports: [
-        (await import('@libp2p/websockets')).webSockets(),
-        (await import('@libp2p/webtransport')).webTransport(),
-        (await import('@libp2p/webrtc')).webRTC(),
-        (await import('@libp2p/circuit-relay-v2')).circuitRelayTransport(),
-      ],
-      connectionEncrypters: [(await import('@chainsafe/libp2p-noise')).noise()],
-      streamMuxers: [(await import('@chainsafe/libp2p-yamux')).yamux()],
-      connectionGater: {
-        denyDialMultiaddr: async () => false,
-      },
-      peerDiscovery: [
-        (await import('@libp2p/bootstrap')).bootstrap({
-          list: ['/dns4/acc1-2405-201-8012-40d2-4c6-6344-379d-d7e1.ngrok-free.app/tcp/443/wss/p2p/12D3KooWJkH5Xo1Y4gh4ufNfp9BivkC6ynNx7qMn74Mt4JE4ij7T'],
-        }),
-      ],
-    });
-
-    const ipfs = await createHelia({
-      libp2p,
-      blockstore: new LevelBlockstore('./orbitdb/blocks'),
-      datastore: new LevelDatastore('./orbitdb/data'),
-    });
-
-    useIdentityProvider(OrbitDBWebAuthnIdentityProviderFunction);
-
-    const identities = await Identities({ ipfs });
-
-    const identity = await identities.createIdentity({
-      provider: OrbitDBWebAuthnIdentityProviderFunction({
-        webauthnCredential: this._credential,
-        useKeystoreDID: true,
-        keystore: identities.keystore,
-        keystoreKeyType: 'Ed25519',
-        encryptKeystore: true,
-        keystoreEncryptionMethod: 'prf',
-      }),
-    });
-
-    const orbitdb = await createOrbitDB({ ipfs, identities, identity });
-
-    this._libp2p = libp2p;
-    this._ipfs = ipfs;
-    this._orbitdb = orbitdb;
-    this._identity = identity;
   }
 
   async createNew() {
@@ -126,172 +89,182 @@ export class MultiDeviceManager {
       });
     }
 
-    await this._setupOrbitDB();
+    if (!this._orbitdb) {
+      throw new Error('orbitdb not provided. Pass orbitdb, ipfs, libp2p, identity in config, or use createFromExisting().');
+    }
 
     this._devicesDb = await openDeviceRegistry(this._orbitdb, this._identity.id);
     this._dbAddress = this._devicesDb.address;
 
-    const publicKey = this._credential.publicKey?.x && this._credential.publicKey?.y
-      ? this._convertCoseToJwk(this._credential.publicKey.x, this._credential.publicKey.y)
-      : null;
-
     await registerDevice(this._devicesDb, {
       credential_id: this._credential.credentialId,
-      public_key: publicKey,
+      public_key: this._getPublicKey(),
       device_label: detectDeviceLabel(),
       created_at: Date.now(),
       status: 'active',
       ed25519_did: this._identity.id,
     });
 
-    if (this._onPairingRequest) {
-      await registerLinkDeviceHandler(this._libp2p, this._devicesDb, this._onPairingRequest);
-    }
+    await this.syncDevices();
+    await this._finalizeDb();
 
-    return {
-      dbAddress: this._dbAddress,
-      identity: this._identity,
-    };
+    return { dbAddress: this._dbAddress, identity: this._identity };
   }
 
-  _convertCoseToJwk(x, y) {
-    const toBase64url = (bytes) =>
-      btoa(String.fromCharCode(...bytes))
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=/g, '');
+  async _setupSyncListeners() {
+    if (!this._devicesDb) return;
 
-    return {
-      kty: 'EC',
-      crv: 'P-256',
-      x: toBase64url(x),
-      y: toBase64url(y),
-    };
+    if (this._onDeviceJoined) {
+      this._devicesDb.events.on('join', (peerId, details) => {
+        this._onDeviceJoined(peerId.toString(), details);
+      });
+    }
+
+    this._devicesDb.events.on('update', async (_entry) => {
+      if (this._onDeviceLinked) {
+        const devices = await listDevices(this._devicesDb);
+        const myDid = this._identity?.id;
+        for (const device of devices) {
+          if (device.ed25519_did !== myDid && device.status === 'active') {
+            this._onDeviceLinked(device);
+          }
+        }
+      }
+    });
   }
 
   async restore() {
     const result = await WebAuthnDIDProvider.detectExistingCredential();
-
     if (result.hasCredentials && result.credential) {
       this._credential = {
         credentialId: WebAuthnDIDProvider.arrayBufferToBase64url(result.credential.rawId),
         rawCredentialId: new Uint8Array(result.credential.rawId),
       };
-
       return { needsChoice: true };
     }
-
-    return await this.createNew();
+    throw new Error('No credentials found and orbitdb not provided. Pass orbitdb, ipfs, libp2p, identity in config to create new.');
   }
 
   async openExistingDb(dbAddress) {
     if (!this._orbitdb) {
-      await this._setupOrbitDB();
+      throw new Error('orbitdb not provided. Pass orbitdb, ipfs, libp2p, identity in config.');
     }
-
     this._devicesDb = await openDeviceRegistry(this._orbitdb, this._identity.id, dbAddress);
     this._dbAddress = this._devicesDb.address;
-
-    if (this._onPairingRequest) {
-      await registerLinkDeviceHandler(this._libp2p, this._devicesDb, this._onPairingRequest);
-    }
-
-    return {
-      dbAddress: this._dbAddress,
-      identity: this._identity,
-    };
+    await this._finalizeDb();
+    return { dbAddress: this._dbAddress, identity: this._identity };
   }
 
   async linkToDevice(qrPayload) {
     if (!this._orbitdb) {
-      await this._setupOrbitDB();
+      throw new Error('orbitdb not provided. Pass orbitdb, ipfs, libp2p, identity in config.');
     }
-
-    const identityPayload = {
-      id: this._identity.id,
-      credentialId: this._credential.credentialId,
-      publicKey: null,
-      deviceLabel: detectDeviceLabel(),
-    };
 
     const result = await sendPairingRequest(
       this._libp2p,
       qrPayload.peerId,
-      identityPayload,
+      {
+        id: this._identity.id,
+        credentialId: this._credential.credentialId,
+        publicKey: null,
+        deviceLabel: detectDeviceLabel(),
+      },
       qrPayload.multiaddrs || []
     );
 
-    if (result.type === 'rejected') {
-      return result;
-    }
+    if (result.type === 'rejected') return result;
 
-    this._devicesDb = await openDeviceRegistry(
-      this._orbitdb,
-      this._identity.id,
-      result.orbitdbAddress
-    );
+    this._devicesDb = await openDeviceRegistry(this._orbitdb, this._identity.id, result.orbitdbAddress);
     this._dbAddress = this._devicesDb.address;
 
-    if (this._onPairingRequest) {
-      await registerLinkDeviceHandler(this._libp2p, this._devicesDb, this._onPairingRequest);
-    }
+    await registerDevice(this._devicesDb, {
+      credential_id: this._credential.credentialId,
+      public_key: this._getPublicKey(),
+      device_label: detectDeviceLabel(),
+      created_at: Date.now(),
+      status: 'active',
+      ed25519_did: this._identity.id,
+    });
 
-    return {
-      type: 'granted',
-      dbAddress: this._dbAddress,
-    };
+    await this.syncDevices();
+    await this._finalizeDb();
+
+    return { type: 'granted', dbAddress: this._dbAddress };
   }
 
   getPeerInfo() {
-    if (!this._libp2p) {
-      throw new Error('Libp2p not initialized');
-    }
-
+    if (!this._libp2p) throw new Error('Libp2p not initialized');
     const peerId = this._libp2p.peerId.toString();
-
     const filteredMultiaddrs = this._libp2p.getMultiaddrs()
       .map((ma) => ma.toString())
       .filter((ma) => {
-        const maStr = ma.toLowerCase();
-        const hasWebsocketOrTransport =
-          maStr.includes('/ws/') ||
-          maStr.includes('/wss/') ||
-          maStr.includes('/webtransport');
-        const isLoopback =
-          maStr.includes('/ip4/127.') ||
-          maStr.includes('/ip4/localhost') ||
-          maStr.includes('/ip6/::1');
-        return hasWebsocketOrTransport && !isLoopback;
+        const lower = ma.toLowerCase();
+        return (lower.includes('/ws/') || lower.includes('/wss/') || lower.includes('/webtransport'))
+          && !lower.includes('/ip4/127.') && !lower.includes('/ip4/localhost') && !lower.includes('/ip6/::1');
       });
-
     return { peerId, multiaddrs: filteredMultiaddrs };
   }
 
   async listDevices() {
-    if (!this._devicesDb) {
-      return [];
-    }
-    return await listDevices(this._devicesDb);
+    if (!this._devicesDb) return [];
+    await this.syncDevices();
+    return listDevices(this._devicesDb);
+  }
+
+  async syncDevices() {
+    // OrbitDB syncs automatically with connected peers (sync: true in openDeviceRegistry).
+    // db.sync is a Sync controller object, not a callable — there is no force-sync API.
   }
 
   async revokeDevice(did) {
-    if (!this._devicesDb) {
-      throw new Error('Device registry not initialized');
-    }
+    if (!this._devicesDb) throw new Error('Device registry not initialized');
     await revokeDeviceAccess(this._devicesDb, did);
+  }
+
+  /**
+   * Process an incoming pairing request programmatically (no libp2p transport).
+   * Mirrors the logic of registerLinkDeviceHandler. Used by the test API and
+   * by applications that want to handle pairing without raw libp2p streams.
+   *
+   * @param {Object} requestMsg - { type: 'request', identity: { id, credentialId, deviceLabel, publicKey } }
+   * @returns {Promise<{type: 'granted', orbitdbAddress: string}|{type: 'rejected', reason: string}>}
+   */
+  async processIncomingPairingRequest(requestMsg) {
+    if (!this._devicesDb) throw new Error('Device registry not initialized');
+    const { identity } = requestMsg;
+
+    const isKnown =
+      (await getDeviceByCredentialId(this._devicesDb, identity.credentialId)) ||
+      (await getDeviceByDID(this._devicesDb, identity.id));
+
+    if (isKnown) {
+      return { type: 'granted', orbitdbAddress: this._dbAddress };
+    }
+
+    const decision = this._onPairingRequest
+      ? await this._onPairingRequest(requestMsg)
+      : 'granted';
+
+    if (decision === 'granted') {
+      await grantDeviceWriteAccess(this._devicesDb, identity.id);
+      await registerDevice(this._devicesDb, {
+        credential_id: identity.credentialId,
+        public_key: identity.publicKey || null,
+        device_label: identity.deviceLabel || 'Unknown Device',
+        created_at: Date.now(),
+        status: 'active',
+        ed25519_did: identity.id,
+      });
+      return { type: 'granted', orbitdbAddress: this._dbAddress };
+    }
+    return { type: 'rejected', reason: 'User cancelled' };
   }
 
   async close() {
     try {
-      if (this._devicesDb) {
-        await this._devicesDb.close();
-      }
-      if (this._orbitdb) {
-        await this._orbitdb.stop();
-      }
-      if (this._ipfs) {
-        await this._ipfs.stop();
-      }
+      if (this._devicesDb) await this._devicesDb.close();
+      if (this._orbitdb) await this._orbitdb.stop();
+      if (this._ipfs) await this._ipfs.stop();
     } catch (error) {
       console.warn('Error during cleanup:', error);
     }

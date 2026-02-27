@@ -30,7 +30,7 @@ import {
 // These nodes also support circuit relay v2 hop, enabling browser-to-browser
 // connections via relay circuit addresses.
 const BOOTSTRAP_LIST = [
-  '/dns4/acc1-2405-201-8012-40d2-4c6-6344-379d-d7e1.ngrok-free.app/tcp/9001/wss/p2p/12D3KooWNa5BSbCpVjY3DVFyNu7G1NhxhaZV64PxBZQGP9vtVGh3'
+  '/dns4/9041-2405-201-8012-40d2-4c6-6344-379d-d7e1.ngrok-free.app/tcp/443/wss/p2p/12D3KooWCmAmYALmHRJYY1umkQgxFPreGrvpe8nyuDYTFjHe66dy'
 ];
 
 const PUBSUB_PEER_DISCOVERY = 'browser-peer-discovery'
@@ -59,7 +59,7 @@ export async function createLibp2pInstance() {
     },
     peerDiscovery: [
       bootstrap({
-        list: ['/dns4/acc1-2405-201-8012-40d2-4c6-6344-379d-d7e1.ngrok-free.app/tcp/443/wss/p2p/12D3KooWJkH5Xo1Y4gh4ufNfp9BivkC6ynNx7qMn74Mt4JE4ij7T'],
+        list: BOOTSTRAP_LIST
       }),
       pubsubPeerDiscovery({
         interval: 10_000,

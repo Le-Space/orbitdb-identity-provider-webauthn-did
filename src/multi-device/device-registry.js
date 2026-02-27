@@ -134,11 +134,16 @@ export async function grantDeviceWriteAccess(db, did) {
 }
 
 /**
- * Revoke write access from a device DID.
+ * Revoke write access from a device DID and mark its registry entry as 'revoked'.
  * @param {Object} db - OrbitDB KV database
  * @param {string} did - Ed25519 DID to revoke
  * @returns {Promise<void>}
  */
 export async function revokeDeviceAccess(db, did) {
   await db.access.revoke('write', did);
+  const entry = await getDeviceByDID(db, did);
+  if (entry) {
+    const key = await hashCredentialId(entry.credential_id);
+    await db.put(key, { ...entry, status: 'revoked' });
+  }
 }

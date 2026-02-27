@@ -110,6 +110,7 @@ function webAuthnMockScript({ seed }) {
 
 const SEED_A = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 const SEED_B = [17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32];
+const SEED_C = [33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -122,31 +123,24 @@ async function waitForMultiDeviceApi(page, timeout = 60000) {
 }
 
 /**
- * Navigate to the choose view and trigger first-device setup.
- * Clicks "Set Up as First Device (Device A)" → SetupView appears →
- * clicks "Set Up as First Device" button → waits for DB address.
+ * Trigger first-device setup via the Start button + test API.
+ * Clicks "🚀 Start" → handleStart() detects mock credential, creates OrbitDB manager
+ * → calls setupAsDeviceA() which creates the device registry → waits for DB address.
  */
 async function doFirstDeviceSetup(page) {
-  // Click the choose-view button containing "(Device A)"
-  await page.click('button:has-text("Device A")');
-  // Wait for SetupView to render
-  await page.waitForTimeout(300);
-  // Click the SetupView action button
-  await page.click('button:has-text("Set Up as First Device")');
-  // Wait for setup to complete (DB address element appears in SetupView)
+  await page.click('button:has-text("Start")');
+  await page.waitForTimeout(1000); // handleStart completes (credential + OrbitDB setup)
+  await page.evaluate(() => window.__multiDevice.setupAsDeviceA());
   await page.waitForSelector('[data-testid="db-address"]', { timeout: 120000 });
 }
 
 /**
- * Navigate to pair view and trigger credential creation on Device B.
- * Returns when OrbitDB identity is ready.
+ * Trigger credential setup on Device B via the Start button.
+ * Clicks "🚀 Start" → handleStart() detects mock credential, creates OrbitDB identity
+ * → waits for identity to be available in state.
  */
 async function doDeviceBCredentialSetup(page) {
-  await page.click('button:has-text("Link to Existing")');
-  await page.waitForTimeout(300);
-  await page.click('button:has-text("Create WebAuthn Credential")');
-
-  // Wait until identity is initialized
+  await page.click('button:has-text("Start")');
   await page.waitForFunction(
     () => window.__multiDevice?.getState()?.identity !== null,
     { timeout: 120000 }
@@ -401,5 +395,204 @@ test.describe('Scenario D — MultiDeviceManager class API', () => {
     console.log('✅ Scenario D: Manager is exposed:', typeof manager);
     console.log('✅ Scenario D: Manager has createNew:', typeof manager?.createNew);
     console.log('✅ Scenario D: Manager has listDevices:', typeof manager?.listDevices);
+  });
+});
+
+// ── Scenario E ────────────────────────────────────────────────────────────────
+
+test.describe('Scenario E — Rejected pairing request', () => {
+  test('rejected request returns type=rejected and does not add device', async ({ browser }) => {
+    const contextA = await browser.newContext();
+    const contextB = await browser.newContext();
+    await contextA.addInitScript(webAuthnMockScript, { seed: SEED_A });
+    await contextB.addInitScript(webAuthnMockScript, { seed: SEED_B });
+    const pageA = await contextA.newPage();
+    const pageB = await contextB.newPage();
+
+    try {
+      await Promise.all([
+        pageA.goto('http://localhost:5173').then(() => pageA.waitForLoadState('networkidle')),
+        pageB.goto('http://localhost:5173').then(() => pageB.waitForLoadState('networkidle')),
+      ]);
+      await Promise.all([waitForMultiDeviceApi(pageA), waitForMultiDeviceApi(pageB)]);
+
+      await doFirstDeviceSetup(pageA);
+      await pageA.waitForTimeout(2000);
+
+      await doDeviceBCredentialSetup(pageB);
+      const stateB = await pageB.evaluate(() => window.__multiDevice.getState());
+      const deviceBDid = stateB.identity.id;
+
+      // Simulate incoming request with approve: false
+      const rejectResult = await pageA.evaluate(
+        ({ did }) =>
+          window.__multiDevice.simulateIncomingRequest(
+            { type: 'request', identity: { id: did, credentialId: 'mock-seed-b-cred', deviceLabel: 'Device B', publicKey: null } },
+            { approve: false }
+          ),
+        { did: deviceBDid }
+      );
+
+      expect(rejectResult.type).toBe('rejected');
+
+      // Device count on A must remain 1
+      const devicesA = await pageA.evaluate(() => window.__multiDevice.listDevices());
+      expect(devicesA).toHaveLength(1);
+
+      // Device B's DID must NOT be in the registry
+      const deviceBEntry = devicesA.find((d) => d.ed25519_did === deviceBDid);
+      expect(deviceBEntry).toBeUndefined();
+
+      console.log('✅ Scenario E: Rejection result:', rejectResult.type);
+      console.log('✅ Scenario E: Device count unchanged:', devicesA.length);
+    } finally {
+      await contextA.close();
+      await contextB.close();
+    }
+  });
+});
+
+// ── Scenario F ────────────────────────────────────────────────────────────────
+
+test.describe('Scenario F — Device revocation', () => {
+  test('revokeDevice sets status to revoked and active count drops', async ({ browser }) => {
+    const contextA = await browser.newContext();
+    const contextB = await browser.newContext();
+    await contextA.addInitScript(webAuthnMockScript, { seed: SEED_A });
+    await contextB.addInitScript(webAuthnMockScript, { seed: SEED_B });
+    const pageA = await contextA.newPage();
+    const pageB = await contextB.newPage();
+
+    try {
+      await Promise.all([
+        pageA.goto('http://localhost:5173').then(() => pageA.waitForLoadState('networkidle')),
+        pageB.goto('http://localhost:5173').then(() => pageB.waitForLoadState('networkidle')),
+      ]);
+      await Promise.all([waitForMultiDeviceApi(pageA), waitForMultiDeviceApi(pageB)]);
+
+      await doFirstDeviceSetup(pageA);
+      await pageA.waitForTimeout(2000);
+
+      await doDeviceBCredentialSetup(pageB);
+      const stateB = await pageB.evaluate(() => window.__multiDevice.getState());
+      const deviceBDid = stateB.identity.id;
+
+      // Pair Device B
+      await pageA.evaluate(
+        ({ did }) =>
+          window.__multiDevice.simulateIncomingRequest({
+            type: 'request', identity: { id: did, credentialId: 'mock-seed-b-cred', deviceLabel: 'Device B', publicKey: null },
+          }),
+        { did: deviceBDid }
+      );
+      await pageA.waitForTimeout(500);
+
+      // Verify 2 devices before revocation
+      const devicesBefore = await pageA.evaluate(() => window.__multiDevice.listDevices());
+      expect(devicesBefore).toHaveLength(2);
+
+      // Revoke Device B directly via manager
+      await pageA.evaluate(
+        ({ did }) => window.__multiDevice.getManager().revokeDevice(did),
+        { did: deviceBDid }
+      );
+      await pageA.waitForTimeout(500);
+
+      const devicesAfter = await pageA.evaluate(() => window.__multiDevice.listDevices());
+      expect(devicesAfter).toHaveLength(2); // entry still present
+
+      const revokedEntry = devicesAfter.find((d) => d.ed25519_did === deviceBDid);
+      expect(revokedEntry).toBeTruthy();
+      expect(revokedEntry.status).toBe('revoked');
+
+      const activeDevices = devicesAfter.filter((d) => d.status === 'active');
+      expect(activeDevices).toHaveLength(1);
+
+      console.log('✅ Scenario F: Revoked Device B — status:', revokedEntry.status);
+      console.log('✅ Scenario F: Active devices remaining:', activeDevices.length);
+    } finally {
+      await contextA.close();
+      await contextB.close();
+    }
+  });
+});
+
+// ── Scenario H ────────────────────────────────────────────────────────────────
+
+test.describe('Scenario H — Three-device registry', () => {
+  test('Device A registry has 3 entries after pairing two separate devices', async ({ browser }) => {
+    const contextA = await browser.newContext();
+    const contextB = await browser.newContext();
+    const contextC = await browser.newContext();
+    await contextA.addInitScript(webAuthnMockScript, { seed: SEED_A });
+    await contextB.addInitScript(webAuthnMockScript, { seed: SEED_B });
+    await contextC.addInitScript(webAuthnMockScript, { seed: SEED_C });
+    const pageA = await contextA.newPage();
+    const pageB = await contextB.newPage();
+    const pageC = await contextC.newPage();
+
+    try {
+      await Promise.all([
+        pageA.goto('http://localhost:5173').then(() => pageA.waitForLoadState('networkidle')),
+        pageB.goto('http://localhost:5173').then(() => pageB.waitForLoadState('networkidle')),
+        pageC.goto('http://localhost:5173').then(() => pageC.waitForLoadState('networkidle')),
+      ]);
+      await Promise.all([
+        waitForMultiDeviceApi(pageA),
+        waitForMultiDeviceApi(pageB),
+        waitForMultiDeviceApi(pageC),
+      ]);
+
+      await doFirstDeviceSetup(pageA);
+      await pageA.waitForTimeout(2000);
+
+      // Device B and C get credentials in parallel
+      await Promise.all([doDeviceBCredentialSetup(pageB), doDeviceBCredentialSetup(pageC)]);
+
+      const [stateB, stateC] = await Promise.all([
+        pageB.evaluate(() => window.__multiDevice.getState()),
+        pageC.evaluate(() => window.__multiDevice.getState()),
+      ]);
+      const deviceBDid = stateB.identity.id;
+      const deviceCDid = stateC.identity.id;
+      expect(deviceBDid).not.toBe(deviceCDid);
+
+      // Pair Device B
+      await pageA.evaluate(
+        ({ did }) =>
+          window.__multiDevice.simulateIncomingRequest({
+            type: 'request', identity: { id: did, credentialId: 'mock-seed-b-cred', deviceLabel: 'Device B', publicKey: null },
+          }),
+        { did: deviceBDid }
+      );
+
+      // Pair Device C
+      await pageA.evaluate(
+        ({ did }) =>
+          window.__multiDevice.simulateIncomingRequest({
+            type: 'request', identity: { id: did, credentialId: 'mock-seed-c-cred', deviceLabel: 'Device C', publicKey: null },
+          }),
+        { did: deviceCDid }
+      );
+
+      await pageA.waitForTimeout(1000);
+
+      const devicesA = await pageA.evaluate(() => window.__multiDevice.listDevices());
+      expect(devicesA).toHaveLength(3);
+
+      const dids = devicesA.map((d) => d.ed25519_did);
+      expect(dids).toContain(deviceBDid);
+      expect(dids).toContain(deviceCDid);
+
+      const allActive = devicesA.every((d) => d.status === 'active');
+      expect(allActive).toBe(true);
+
+      console.log('✅ Scenario H: Device A has', devicesA.length, 'registered devices');
+      console.log('✅ Scenario H: All devices active:', allActive);
+    } finally {
+      await contextA.close();
+      await contextB.close();
+      await contextC.close();
+    }
   });
 });

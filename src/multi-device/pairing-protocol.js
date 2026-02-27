@@ -16,24 +16,14 @@ import {
   registerDevice,
 } from './device-registry.js';
 import { peerIdFromString } from '@libp2p/peer-id';
+
 export const LINK_DEVICE_PROTOCOL = '/orbitdb/link-device/1.0.0';
 
-/**
- * Decode bytes from an lp.read() result into a parsed JSON object.
- * Handles both Uint8Array and Uint8ArrayList (from it-length-prefixed-stream).
- * @param {Uint8Array|Object} bytes
- * @returns {Object}
- */
 function decodeMessage(bytes) {
   const raw = typeof bytes.subarray === 'function' ? bytes.subarray() : bytes;
   return JSON.parse(new TextDecoder().decode(raw));
 }
 
-/**
- * Encode a JS object to UTF-8 bytes for lp.write().
- * @param {Object} msg
- * @returns {Uint8Array}
- */
 function encodeMessage(msg) {
   return new TextEncoder().encode(JSON.stringify(msg));
 }
@@ -44,50 +34,44 @@ function encodeMessage(msg) {
  * @param {Object} libp2p - libp2p instance
  * @param {Object} db - The device registry KV database
  * @param {Function} onRequest - async (requestMsg) => 'granted' | 'rejected'
- *   Called for unknown devices; bridges protocol to UI confirmation dialog.
+ * @param {Function} [onDeviceLinked] - (deviceEntry) => void
  * @returns {Promise<void>}
  */
-export async function registerLinkDeviceHandler(libp2p, db, onRequest) {
+export async function registerLinkDeviceHandler(libp2p, db, onRequest, onDeviceLinked) {
   await libp2p.handle(LINK_DEVICE_PROTOCOL, async ({ stream }) => {
     const lp = lpStream(stream);
     let result;
 
     try {
-      const bytes = await lp.read();
-      const request = decodeMessage(bytes);
+      const request = decodeMessage(await lp.read());
 
       if (request.type !== 'request') {
         await stream.close();
         return;
       }
 
-      const isKnownDevice = await getDeviceByCredentialId(
-        db,
-        request.identity.credentialId
-      );
+      const { identity } = request;
+      const isKnown =
+        (await getDeviceByCredentialId(db, identity.credentialId)) ||
+        (await getDeviceByDID(db, identity.id));
 
-      const existingDeviceWithDID = await getDeviceByDID(db, request.identity.id);
-
-      if (existingDeviceWithDID) {
-        result = { type: 'rejected', reason: 'This identity is already registered on another device' };
-      } else if (isKnownDevice) {
-        // Recovery: same credential → same Ed25519 DID → already has write access
+      if (isKnown) {
         result = { type: 'granted', orbitdbAddress: db.address };
       } else {
-        // New device: ask user via UI callback
         const decision = await onRequest(request);
-
         if (decision === 'granted') {
-          await grantDeviceWriteAccess(db, request.identity.id);
-          await registerDevice(db, {
-            credential_id: request.identity.credentialId,
-            public_key: request.identity.publicKey || null,
-            device_label: request.identity.deviceLabel || 'Unknown Device',
+          await grantDeviceWriteAccess(db, identity.id);
+          const deviceEntry = {
+            credential_id: identity.credentialId,
+            public_key: identity.publicKey || null,
+            device_label: identity.deviceLabel || 'Unknown Device',
             created_at: Date.now(),
             status: 'active',
-            ed25519_did: request.identity.id,
-          });
+            ed25519_did: identity.id,
+          };
+          await registerDevice(db, deviceEntry);
           result = { type: 'granted', orbitdbAddress: db.address };
+          onDeviceLinked?.(deviceEntry);
         } else {
           result = { type: 'rejected', reason: 'User cancelled' };
         }
@@ -136,13 +120,13 @@ export function detectDeviceLabel() {
  *
  * @param {Object} libp2p - libp2p instance (Device B)
  * @param {string|Object} deviceAPeerId - peerId string or PeerId object of Device A
- * @param {Object} identity - OrbitDB identity from Device B
- *   { id: string, credentialId: string, publicKey?: JWK, deviceLabel?: string }
+ * @param {Object} identity - { id, credentialId, publicKey?, deviceLabel? }
  * @param {string[]} [hintMultiaddrs] - Known multiaddrs for Device A (from QR payload)
  * @returns {Promise<{type: 'granted', orbitdbAddress: string}|{type: 'rejected', reason: string}>}
  */
 export async function sendPairingRequest(libp2p, deviceAPeerId, identity, hintMultiaddrs = []) {
   let stream;
+
   let peerId;
   if (typeof deviceAPeerId === 'string') {
     peerId = peerIdFromString(deviceAPeerId);
@@ -153,14 +137,10 @@ export async function sendPairingRequest(libp2p, deviceAPeerId, identity, hintMu
   } else {
     throw new Error(`Invalid deviceAPeerId: ${JSON.stringify(deviceAPeerId)}`);
   }
+
   if (hintMultiaddrs.length > 0) {
     try {
       const { multiaddr } = await import('@multiformats/multiaddr');
-      console.log('deviceAPeerId:', deviceAPeerId);
-      console.log('type:', typeof deviceAPeerId);
-      console.log('has toMultihash:', deviceAPeerId?.toMultihash);
-
-
       const parsedMultiaddrs = hintMultiaddrs
         .map((a) => {
           try {
@@ -171,26 +151,22 @@ export async function sendPairingRequest(libp2p, deviceAPeerId, identity, hintMu
           }
         })
         .filter(Boolean);
-      console.log('parsedMultiaddrs:', parsedMultiaddrs);
-      if (parsedMultiaddrs.length > 0) {
-        const connection = await libp2p.dial(parsedMultiaddrs);
-        console.log('connection:', connection);
-        stream = await connection.newStream(LINK_DEVICE_PROTOCOL);
-        console.log('stream:', stream);
-      } else {
-        throw new Error(`No parsedMultiaddrs for deviceAPeerId: ${deviceAPeerId}`);
+
+      if (parsedMultiaddrs.length === 0) {
+        throw new Error(`No valid multiaddrs for deviceAPeerId: ${deviceAPeerId}`);
       }
+
+      const connection = await libp2p.dial(parsedMultiaddrs);
+      stream = await connection.newStream(LINK_DEVICE_PROTOCOL);
     } catch (e) {
-      throw new Error(`Failed to connect to Device A: ${e.message} for deviceAPeerId: ${deviceAPeerId}`);
+      throw new Error(`Failed to connect to Device A: ${e.message}`);
     }
   } else {
     stream = await libp2p.dialProtocol(peerId, LINK_DEVICE_PROTOCOL);
-    console.log('stream:', stream);
   }
-  console.log('stream:', stream);
-  const lp = lpStream(stream);
 
-  const request = {
+  const lp = lpStream(stream);
+  await lp.write(encodeMessage({
     type: 'request',
     identity: {
       id: identity.id,
@@ -198,11 +174,9 @@ export async function sendPairingRequest(libp2p, deviceAPeerId, identity, hintMu
       publicKey: identity.publicKey || null,
       deviceLabel: identity.deviceLabel || detectDeviceLabel(),
     },
-  };
+  }));
 
-  await lp.write(encodeMessage(request));
-  const bytes = await lp.read();
-  const result = decodeMessage(bytes);
+  const result = decodeMessage(await lp.read());
   await stream.close();
   return result;
 }

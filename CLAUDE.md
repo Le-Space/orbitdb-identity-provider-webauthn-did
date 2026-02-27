@@ -23,12 +23,19 @@ pnpm run test:encrypted-keystore  # Encrypted keystore E2E tests
 pnpm run test:varsig-e2e    # Hardware-signed varsig E2E tests
 pnpm run test:ui            # Interactive test UI runner
 
+# Multi-device E2E tests (Playwright auto-starts the demo app)
+pnpm run test:multi-device          # Headless, Chromium only
+pnpm run test:multi-device-headed   # With visible browser window
+
 # Run a single test file
 pnpx playwright test tests/webauthn-focused.test.js --project=chromium
 pnpx playwright test tests/webauthn-focused.test.js --project=chromium --headed
 
 # Start the main demo app
 pnpm run demo:setup && pnpm run demo
+
+# Start the multi-device demo app manually (optional, for debugging)
+pnpm run demo:multi-device-setup && pnpm run demo:multi-device
 
 # Validate npm package contents
 pnpm run validate-package

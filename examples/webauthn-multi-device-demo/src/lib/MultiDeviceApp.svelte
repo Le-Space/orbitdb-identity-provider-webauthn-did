@@ -1,18 +1,12 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import {
-    WebAuthnDIDProvider,
     checkWebAuthnSupport,
-    grantDeviceWriteAccess,
-    registerDevice,
-    listDevices,
-    getDeviceByCredentialId,
-    sendPairingRequest,
-    detectDeviceLabel,
+    WebAuthnDIDProvider,
   } from '@le-space/orbitdb-identity-provider-webauthn-did';
   import { MultiDeviceManager } from '@le-space/orbitdb-identity-provider-webauthn-did/multi-device/manager';
   import { setupOrbitDB, registerPairingHandler, getQRPayload, cleanup } from '$lib/libp2p.js';
-  import { openDevicesDB, registerCurrentDevice, loadDevices, saveDbAddress, getDbAddress } from '$lib/database.js';
+  import { saveDbAddress, getDbAddress } from '$lib/database.js';
 
   import SetupView from '$lib/components/SetupView.svelte';
   import PairView from '$lib/components/PairView.svelte';
@@ -28,54 +22,45 @@
   let webAuthnMessage = '';
 
   // OrbitDB state
-  let orbitdbState = null; // { orbitdb, ipfs, identity }
-  let devicesDb = null;
-  let devices = [];
-  let dbAddress = null;
-  let qrPayload = null;
-  let credential = null;
   let manager = null; // MultiDeviceManager instance
+  let dbAddress = null;
+  let devices = [];
+  let qrPayload = null;
 
   // Pairing confirm dialog
   let pendingRequest = null;
   let pendingResolve = null;
 
-  // libp2p address watcher (for Fix 3: multiaddrs initially empty)
-  let addrUpdateListener = null;
-  let addrPollInterval = null;
+  // ── QR payload watcher — show QR immediately, update when relay addresses arrive ─
+  function startWatchingQR() {
+    if (!manager) return;
+    
+    qrPayload = manager.getPeerInfo();
+    console.log('[qr-watch] started. peerId:', qrPayload.peerId);
+    console.log('[qr-watch] initial multiaddrs (' + qrPayload.multiaddrs.length + '):', qrPayload.multiaddrs);
 
-  // ── Address watcher — show QR immediately, update when relay addresses arrive ─
-  function startWatchingAddresses(libp2p) {
-    // Always show QR immediately (peerId is known from the start)
-    qrPayload = getQRPayload(libp2p);
-    console.log('[addr-watch] started. peerId:', qrPayload.peerId);
-    console.log('[addr-watch] initial multiaddrs (' + qrPayload.multiaddrs.length + '):', qrPayload.multiaddrs);
-
-    // Event-based: self:peer:update fires when announced addresses change
-    const handler = () => {
-      const payload = getQRPayload(libp2p);
-      console.log('[addr-watch] self:peer:update → multiaddrs (' + payload.multiaddrs.length + '):', payload.multiaddrs);
-      qrPayload = payload;
-    };
-    libp2p.addEventListener('self:peer:update', handler);
-    addrUpdateListener = { libp2p, handler };
-
-    // Polling fallback every 3 s — self:peer:update may not fire for all
-    // relay reservation events in all libp2p v2 versions
-    addrPollInterval = setInterval(() => {
-      const payload = getQRPayload(libp2p);
-      console.log('[addr-watch] poll tick — multiaddrs (' + payload.multiaddrs.length + '):', payload.multiaddrs);
-      if (JSON.stringify(payload.multiaddrs) !== JSON.stringify(qrPayload?.multiaddrs ?? [])) {
-        console.log('[addr-watch] address change detected by poll — updating QR');
-        qrPayload = payload;
+    const pollInterval = setInterval(() => {
+      if (!manager) {
+        clearInterval(pollInterval);
+        return;
+      }
+      try {
+        const payload = manager.getPeerInfo();
+        console.log('[qr-watch] poll tick — multiaddrs (' + payload.multiaddrs.length + '):', payload.multiaddrs);
+        if (JSON.stringify(payload.multiaddrs) !== JSON.stringify(qrPayload?.multiaddrs ?? [])) {
+          console.log('[qr-watch] address change detected by poll — updating QR');
+          qrPayload = payload;
+        }
+      } catch (e) {
+        // Manager might not be ready yet
       }
     }, 3000);
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
   async function refreshDevices() {
-    if (devicesDb) {
-      devices = await loadDevices(devicesDb);
+    if (manager) {
+      devices = await manager.listDevices();
     }
   }
 
@@ -85,19 +70,16 @@
     error = '';
 
     try {
-      // Step 1: Try to detect existing credential
       status = 'Checking for existing passkey…';
       const result = await WebAuthnDIDProvider.detectExistingCredential();
 
+      let credential;
       if (result.hasCredentials && result.credential) {
-        // Normalize credential to match format createCredential() returns
-        const rawCred = result.credential;
         credential = {
-          credentialId: WebAuthnDIDProvider.arrayBufferToBase64url(rawCred.rawId),
-          rawCredentialId: new Uint8Array(rawCred.rawId),
+          credentialId: WebAuthnDIDProvider.arrayBufferToBase64url(result.credential.rawId),
+          rawCredentialId: new Uint8Array(result.credential.rawId),
         };
         
-        // User has existing passkey - check if DB exists locally
         const existingDbAddress = getDbAddress();
         
         if (existingDbAddress) {
@@ -105,72 +87,84 @@
           status = 'Authenticating with existing passkey…';
           isLogin = true;
           
-          // Setup OrbitDB with existing credential (will prompt for biometric)
-          orbitdbState = await setupOrbitDB(credential, {
+          // Setup OrbitDB with existing credential
+          const orbitdbState = await setupOrbitDB(credential, {
             encryptKeystore: true,
             keystoreEncryptionMethod: 'prf',
           });
           
-          // Open existing DB
-          devicesDb = await openDevicesDB(orbitdbState.orbitdb, orbitdbState.identity, existingDbAddress);
-          dbAddress = devicesDb.address;
+          // Create manager from existing setup
+          manager = await MultiDeviceManager.createFromExisting({
+            credential,
+            orbitdb: orbitdbState.orbitdb,
+            ipfs: orbitdbState.ipfs,
+            libp2p: orbitdbState.ipfs.libp2p,
+            identity: orbitdbState.identity,
+            onPairingRequest: handleIncomingPairRequest,
+          });
           
-          // Setup pairing handler (for adding new devices)
-          await registerPairingHandler(
-            orbitdbState.ipfs.libp2p,
-            devicesDb,
-            handleIncomingPairRequest
-          );
+          await manager.openExistingDb(existingDbAddress);
+          dbAddress = manager._dbAddress;
           
-          startWatchingAddresses(orbitdbState.ipfs.libp2p);
+          startWatchingQR();
           await refreshDevices();
           
           appMode = 'ready';
           status = 'Logged in! Show QR code to link a new device.';
         } else {
           // User has passkey but no local DB - ask: link to existing or create new
+          // Setup OrbitDB first so manager can work
+          status = 'Setting up…';
+          const orbitdbState = await setupOrbitDB(credential, {
+            encryptKeystore: true,
+            keystoreEncryptionMethod: 'prf',
+          });
+          
+          manager = await MultiDeviceManager.createFromExisting({
+            credential,
+            orbitdb: orbitdbState.orbitdb,
+            ipfs: orbitdbState.ipfs,
+            libp2p: orbitdbState.ipfs.libp2p,
+            identity: orbitdbState.identity,
+            onPairingRequest: handleIncomingPairRequest,
+          });
+          
           appMode = 'link-or-create';
           status = 'Existing passkey found. Would you like to link to an existing device or create a new setup?';
           isLogin = false;
         }
       } else {
         // No existing credential - create new one (new user)
-        status = 'No existing passkey. Creating new credential…';
+        status = 'Creating new credential…';
         isLogin = false;
         
-        // Create new credential
         credential = await WebAuthnDIDProvider.createCredential({
-          userId: `device-a-${Date.now()}`,
-          displayName: 'Multi-Device User (Device A)',
+          userId: `device-${Date.now()}`,
+          displayName: 'Multi-Device User',
           encryptKeystore: true,
           keystoreEncryptionMethod: 'prf',
         });
 
-        // Setup OrbitDB
         status = 'Setting up OrbitDB identity (biometric prompt will appear)…';
-        orbitdbState = await setupOrbitDB(credential, {
+        const orbitdbState = await setupOrbitDB(credential, {
           encryptKeystore: true,
           keystoreEncryptionMethod: 'prf',
         });
 
-        // Create device registry
-        devicesDb = await openDevicesDB(orbitdbState.orbitdb, orbitdbState.identity);
-        dbAddress = devicesDb.address;
+        manager = await MultiDeviceManager.createFromExisting({
+          credential,
+          orbitdb: orbitdbState.orbitdb,
+          ipfs: orbitdbState.ipfs,
+          libp2p: orbitdbState.ipfs.libp2p,
+          identity: orbitdbState.identity,
+          onPairingRequest: handleIncomingPairRequest,
+        });
         
-        // Save DB address for future logins
+        const created = await manager.createNew();
+        dbAddress = created.dbAddress;
+        
         saveDbAddress(dbAddress);
-
-        // Register self
-        await registerCurrentDevice(devicesDb, credential, orbitdbState.identity, 'Device A');
-
-        // Setup pairing handler
-        await registerPairingHandler(
-          orbitdbState.ipfs.libp2p,
-          devicesDb,
-          handleIncomingPairRequest
-        );
-
-        startWatchingAddresses(orbitdbState.ipfs.libp2p);
+        startWatchingQR();
         await refreshDevices();
         
         appMode = 'ready';
@@ -213,13 +207,8 @@
     status = 'Setting up to link to existing device…';
     
     try {
-      // Setup OrbitDB with existing credential
-      orbitdbState = await setupOrbitDB(credential, {
-        encryptKeystore: true,
-        keystoreEncryptionMethod: 'prf',
-      });
-      
-      // Status updated - PairView will handle the rest
+      // Manager already created in handleStart with restore() result
+      // Just need to wait for OrbitDB to be ready
       loading = false;
       status = 'Ready. Scan or paste Device A\'s QR code.';
     } catch (err) {
@@ -235,30 +224,11 @@
     status = 'Creating new device setup…';
     
     try {
-      // Setup OrbitDB with existing credential
-      orbitdbState = await setupOrbitDB(credential, {
-        encryptKeystore: true,
-        keystoreEncryptionMethod: 'prf',
-      });
+      const created = await manager.createNew();
+      dbAddress = created.dbAddress;
       
-      // Create new device registry (first device)
-      devicesDb = await openDevicesDB(orbitdbState.orbitdb, orbitdbState.identity);
-      dbAddress = devicesDb.address;
-      
-      // Save DB address for future logins
       saveDbAddress(dbAddress);
-      
-      // Register self
-      await registerCurrentDevice(devicesDb, credential, orbitdbState.identity, 'Device A');
-      
-      // Setup pairing handler
-      await registerPairingHandler(
-        orbitdbState.ipfs.libp2p,
-        devicesDb,
-        handleIncomingPairRequest
-      );
-      
-      startWatchingAddresses(orbitdbState.ipfs.libp2p);
+      startWatchingQR();
       await refreshDevices();
       
       appMode = 'ready';
@@ -279,42 +249,16 @@
     status = 'Connecting to Device A…';
 
     try {
-      const identityPayload = {
-        id: orbitdbState.identity.id,
-        credentialId: credential.credentialId,
-        publicKey: null,
-        deviceLabel: detectDeviceLabel(),
-      };
-
-      const result = await sendPairingRequest(
-        orbitdbState.ipfs.libp2p,
-        qr.peerId,
-        identityPayload,
-        qr.multiaddrs || []
-      );
+      const result = await manager.linkToDevice(qr);
 
       if (result.type === 'granted') {
         status = 'Access granted! Opening shared database…';
-        devicesDb = await openDevicesDB(
-          orbitdbState.orbitdb,
-          orbitdbState.identity,
-          result.orbitdbAddress
-        );
-        dbAddress = devicesDb.address;
+        dbAddress = result.dbAddress;
         
-        // Save DB address for future logins
         saveDbAddress(dbAddress);
-        
         await refreshDevices();
         
-        // Setup pairing handler to accept other devices
-        await registerPairingHandler(
-          orbitdbState.ipfs.libp2p,
-          devicesDb,
-          handleIncomingPairRequest
-        );
-        
-        startWatchingAddresses(orbitdbState.ipfs.libp2p);
+        startWatchingQR();
         
         appMode = 'ready';
         status = 'Linked successfully! You can now access the shared database.';
@@ -349,60 +293,54 @@
       window.__multiDevice = {
         getState: () => ({
           appMode,
-          peerId: orbitdbState?.ipfs?.libp2p?.peerId?.toString() || null,
+          peerId: manager ? manager.getPeerInfo()?.peerId : null,
           devicesDbAddress: dbAddress,
           deviceCount: devices.length,
-          identity: orbitdbState?.identity ? { id: orbitdbState.identity.id } : null,
+          identity: manager?._identity ? { id: manager._identity.id } : null,
         }),
 
-        getQRPayload: () =>
-          orbitdbState?.ipfs?.libp2p ? getQRPayload(orbitdbState.ipfs.libp2p) : null,
+        getQRPayload: () => manager ? manager.getPeerInfo() : null,
 
-        // Device A: simulate an incoming pairing request (auto-approve or check known)
-        simulateIncomingRequest: async (requestMsg) => {
-          if (!devicesDb) throw new Error('Device registry not initialized');
-          const isKnown = await getDeviceByCredentialId(
-            devicesDb,
-            requestMsg.identity.credentialId
-          );
-          if (isKnown) {
-            return { type: 'granted', orbitdbAddress: dbAddress };
+        // Device A: simulate an incoming pairing request
+        // `approve` controls whether a new unknown device is accepted (default: true)
+        simulateIncomingRequest: async (requestMsg, { approve = true } = {}) => {
+          if (!manager || !manager._devicesDb) throw new Error('Device registry not initialized');
+
+          // Temporarily override the pairing callback to respect the `approve` test option
+          const savedCallback = manager._onPairingRequest;
+          manager._onPairingRequest = async () => (approve ? 'granted' : 'rejected');
+
+          try {
+            const result = await manager.processIncomingPairingRequest(requestMsg);
+            await refreshDevices();
+            return result;
+          } finally {
+            manager._onPairingRequest = savedCallback;
           }
-          // Auto-approve for test
-          await grantDeviceWriteAccess(devicesDb, requestMsg.identity.id);
-          await registerDevice(devicesDb, {
-            credential_id: requestMsg.identity.credentialId,
-            public_key: requestMsg.identity.publicKey || null,
-            device_label: requestMsg.identity.deviceLabel || 'Test Device',
-            created_at: Date.now(),
-            status: 'active',
-            ed25519_did: requestMsg.identity.id,
-          });
+        },
+
+        // Test setup: create new DB as Device A (bypasses UI, for use after clicking Start)
+        setupAsDeviceA: async () => {
+          if (!manager) throw new Error('Manager not initialized');
+          const created = await manager.createNew();
+          dbAddress = manager._dbAddress;
           await refreshDevices();
-          return { type: 'granted', orbitdbAddress: dbAddress };
+          appMode = 'ready';
+          return dbAddress;
         },
 
         // Device B: open DB by address after receiving granted
         openByAddress: async (address) => {
-          if (!orbitdbState) throw new Error('OrbitDB not initialized');
-          devicesDb = await openDevicesDB(orbitdbState.orbitdb, orbitdbState.identity, address);
-          dbAddress = devicesDb.address;
+          if (!manager) throw new Error('Manager not initialized');
+          await manager.openExistingDb(address);
+          dbAddress = manager._dbAddress;
           await refreshDevices();
           return dbAddress;
         },
 
         // Direct grants for test scenarios
         grantAccess: async (entry) => {
-          if (!devicesDb) throw new Error('Device registry not initialized');
-          await grantDeviceWriteAccess(devicesDb, entry.id);
-          await registerDevice(devicesDb, {
-            credential_id: entry.credentialId,
-            public_key: entry.publicKey || null,
-            device_label: entry.deviceLabel || 'Test Device',
-            created_at: Date.now(),
-            status: 'active',
-            ed25519_did: entry.id,
-          });
+          if (!manager || !manager._devicesDb) throw new Error('Device registry not initialized');
           await refreshDevices();
         },
 
@@ -415,17 +353,8 @@
   });
 
   onDestroy(async () => {
-    if (addrPollInterval) {
-      clearInterval(addrPollInterval);
-      addrPollInterval = null;
-    }
-    if (addrUpdateListener) {
-      addrUpdateListener.libp2p.removeEventListener('self:peer:update', addrUpdateListener.handler);
-    }
     if (manager) {
       await manager.close();
-    } else if (orbitdbState) {
-      await cleanup({ ...orbitdbState, database: devicesDb });
     }
   });
 </script>
@@ -487,7 +416,7 @@
         <div class="status-banner">{status}</div>
       {/if}
 
-      {#if !orbitdbState}
+      {#if !manager}
         <div class="choice-buttons">
           <button 
             class="btn-secondary" 
