@@ -31,7 +31,9 @@ function extractCredentialInfo(attestationObject) {
   if (kty === 1 && (alg === -50 || alg === -8) && crv === 6) {
     const publicKeyBytes = new Uint8Array(getValue(-2));
     if (publicKeyBytes.length !== 32) {
-      throw new Error(`Invalid Ed25519 public key length: ${publicKeyBytes.length}`);
+      throw new Error(
+        `Invalid Ed25519 public key length: ${publicKeyBytes.length}`
+      );
     }
     return { algorithm: 'Ed25519', publicKey: publicKeyBytes, kty, alg, crv };
   }
@@ -40,7 +42,9 @@ function extractCredentialInfo(attestationObject) {
     const x = new Uint8Array(getValue(-2));
     const y = new Uint8Array(getValue(-3));
     if (x.length !== 32 || y.length !== 32) {
-      throw new Error(`Invalid P-256 coordinate length: x=${x.length} y=${y.length}`);
+      throw new Error(
+        `Invalid P-256 coordinate length: x=${x.length} y=${y.length}`
+      );
     }
     const publicKeyBytes = new Uint8Array(65);
     publicKeyBytes[0] = 0x04;
@@ -66,12 +70,12 @@ async function createWebAuthnVarsigCredential(options = {}) {
     displayName,
     domain,
     authenticatorType = 'any',
-    forceP256 = false
+    forceP256 = false,
   } = {
     userId: `orbitdb-user-${Date.now()}`,
     displayName: 'OrbitDB Varsig User',
     domain: window.location.hostname,
-    ...options
+    ...options,
   };
 
   if (isTestMode()) {
@@ -87,7 +91,7 @@ async function createWebAuthnVarsigCredential(options = {}) {
       publicKey,
       did,
       algorithm,
-      cose: { kty: 1, alg: -8, crv: 6 }
+      cose: { kty: 1, alg: -8, crv: 6 },
     };
   }
 
@@ -96,22 +100,24 @@ async function createWebAuthnVarsigCredential(options = {}) {
     user: {
       id: crypto.getRandomValues(new Uint8Array(16)),
       name: userId,
-      displayName
+      displayName,
     },
     challenge: crypto.getRandomValues(new Uint8Array(32)),
     pubKeyCredParams: forceP256
       ? [{ type: 'public-key', alg: -7 }]
       : [
-        { type: 'public-key', alg: -50 },
-        { type: 'public-key', alg: -8 },
-        { type: 'public-key', alg: -7 }
-      ],
+          { type: 'public-key', alg: -50 },
+          { type: 'public-key', alg: -8 },
+          { type: 'public-key', alg: -7 },
+        ],
     attestation: 'none',
     authenticatorSelection: {
       residentKey: 'preferred',
-      ...(authenticatorType !== 'any' && { authenticatorAttachment: authenticatorType }),
-      userVerification: 'preferred'
-    }
+      ...(authenticatorType !== 'any' && {
+        authenticatorAttachment: authenticatorType,
+      }),
+      userVerification: 'preferred',
+    },
   };
 
   const credential = await navigator.credentials.create({ publicKey });
@@ -125,11 +131,13 @@ async function createWebAuthnVarsigCredential(options = {}) {
     publicKey: publicKeyBytes,
     kty,
     alg,
-    crv
+    crv,
   } = extractCredentialInfo(new Uint8Array(response.attestationObject));
 
   if (!publicKeyBytes || !algorithm) {
-    throw new Error('No supported credential returned (expected Ed25519 or P-256).');
+    throw new Error(
+      'No supported credential returned (expected Ed25519 or P-256).'
+    );
   }
 
   const credentialId = new Uint8Array(credential.rawId);
@@ -140,10 +148,8 @@ async function createWebAuthnVarsigCredential(options = {}) {
     publicKey: publicKeyBytes,
     did,
     algorithm,
-    cose: { kty, alg, crv }
+    cose: { kty, alg, crv },
   };
 }
 
-export {
-  createWebAuthnVarsigCredential
-};
+export { createWebAuthnVarsigCredential };

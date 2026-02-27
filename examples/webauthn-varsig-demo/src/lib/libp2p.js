@@ -14,7 +14,7 @@ import { LevelDatastore } from 'datastore-level';
 import { CID } from 'multiformats/cid';
 import {
   createWebAuthnVarsigIdentity,
-  createWebAuthnVarsigIdentities
+  createWebAuthnVarsigIdentities,
 } from '@le-space/orbitdb-identity-provider-webauthn-did';
 
 /**
@@ -112,16 +112,20 @@ export async function setupOrbitDB(credential) {
     },
     put: async (hash, bytes) => {
       await ipfs.blockstore.put(CID.parse(hash), bytes);
-    }
+    },
   };
-  const identities = createWebAuthnVarsigIdentities(identity, {}, identityStorage);
-  
+  const identities = createWebAuthnVarsigIdentities(
+    identity,
+    {},
+    identityStorage
+  );
+
   console.log('🔍 Created WebAuthn varsig identity:', {
     id: identity.id,
     type: identity.type,
-    hash: identity.hash
+    hash: identity.hash,
   });
-  
+
   // Try to verify our identity is in the identities store
   try {
     const storedIdentity = await identities.getIdentity(identity.hash);
@@ -129,7 +133,7 @@ export async function setupOrbitDB(credential) {
     if (storedIdentity) {
       console.log('📊 Stored identity details:', {
         id: storedIdentity.id,
-        type: storedIdentity.type
+        type: storedIdentity.type,
       });
     }
   } catch (error) {

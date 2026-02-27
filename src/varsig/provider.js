@@ -5,7 +5,12 @@
  * envelope for OrbitDB identity verification.
  */
 import { DEFAULT_DOMAIN_LABELS } from './domain.js';
-import { buildVarsigOutput, runWebAuthnAssertionForPayload, verifyVarsigForPayload, toBytes } from './assertion.js';
+import {
+  buildVarsigOutput,
+  runWebAuthnAssertionForPayload,
+  verifyVarsigForPayload,
+  toBytes,
+} from './assertion.js';
 import { createWebAuthnVarsigCredential } from './credential.js';
 
 export class WebAuthnVarsigProvider {
@@ -42,8 +47,13 @@ export class WebAuthnVarsigProvider {
    * @param {{userVerification?: 'required'|'preferred'|'discouraged', mediation?: 'silent'|'optional'|'conditional'|'required'}} [options] - Optional signing overrides.
    * @returns {Promise<Uint8Array>} Varsig signature.
    */
-  async signPayload(payloadBytes, domainLabel = DEFAULT_DOMAIN_LABELS.entry, options = {}) {
-    const userVerification = options.userVerification || this.options.userVerification || 'preferred';
+  async signPayload(
+    payloadBytes,
+    domainLabel = DEFAULT_DOMAIN_LABELS.entry,
+    options = {}
+  ) {
+    const userVerification =
+      options.userVerification || this.options.userVerification || 'preferred';
     const mediation = options.mediation || this.options.mediation;
     const assertion = await runWebAuthnAssertionForPayload(
       this.credential,
@@ -75,7 +85,12 @@ export class WebAuthnVarsigProvider {
    * @param {string} [domainLabel] - Domain label for the challenge.
    * @returns {Promise<boolean>} True if valid.
    */
-  async verify(signature, publicKey, data, domainLabel = DEFAULT_DOMAIN_LABELS.entry) {
+  async verify(
+    signature,
+    publicKey,
+    data,
+    domainLabel = DEFAULT_DOMAIN_LABELS.entry
+  ) {
     return verifyVarsigForPayload(
       signature,
       publicKey,

@@ -62,14 +62,14 @@ import { OrbitDBWebAuthnIdentityProviderFunction } from '@le-space/orbitdb-ident
 
 // Create identity with encrypted keystore
 const identity = await orbitdb.identities.createIdentity({
-  provider: OrbitDBWebAuthnIdentityProviderFunction({ 
+  provider: OrbitDBWebAuthnIdentityProviderFunction({
     webauthnCredential: credential,
-    useKeystoreDID: true,              // Use Ed25519 keystore DID
-    keystoreKeyType: 'Ed25519',        // 'Ed25519' or 'secp256k1'
+    useKeystoreDID: true, // Use Ed25519 keystore DID
+    keystoreKeyType: 'Ed25519', // 'Ed25519' or 'secp256k1'
     keystore: orbitdb.keystore,
-    encryptKeystore: true,             // Enable encryption
-    keystoreEncryptionMethod: 'largeBlob'  // 'largeBlob' or 'hmac-secret'
-  })
+    encryptKeystore: true, // Enable encryption
+    keystoreEncryptionMethod: 'largeBlob', // 'largeBlob' or 'hmac-secret'
+  }),
 });
 ```
 
@@ -83,17 +83,17 @@ import { generateSecretKey } from '@le-space/orbitdb-identity-provider-webauthn-
 
 const sk = generateSecretKey();
 const identity = await orbitdb.identities.createIdentity({
-  provider: OrbitDBWebAuthnIdentityProviderFunction({ 
+  provider: OrbitDBWebAuthnIdentityProviderFunction({
     webauthnCredential: credential,
     encryptKeystore: true,
-    secretKey: sk
-  })
+    secretKey: sk,
+  }),
 });
 
 const password = btoa(String.fromCharCode(...sk));
 const encryption = {
   data: await SimpleEncryption({ password }),
-  replication: await SimpleEncryption({ password })
+  replication: await SimpleEncryption({ password }),
 };
 
 const db = await orbitdb.open('encrypted-db', { encryption });
@@ -119,12 +119,12 @@ async function storeSKInLargeBlob(credential, sk) {
       extensions: {
         largeBlob: {
           support: 'required',
-          write: sk  // Store SK in authenticator
-        }
-      }
-    }
+          write: sk, // Store SK in authenticator
+        },
+      },
+    },
   });
-  
+
   return credentialWithBlob;
 }
 
@@ -135,18 +135,20 @@ async function retrieveSKFromLargeBlob(credential) {
   const assertion = await navigator.credentials.get({
     publicKey: {
       challenge: crypto.getRandomValues(new Uint8Array(32)),
-      allowCredentials: [{
-        id: credential.rawCredentialId,
-        type: 'public-key'
-      }],
+      allowCredentials: [
+        {
+          id: credential.rawCredentialId,
+          type: 'public-key',
+        },
+      ],
       extensions: {
         largeBlob: {
-          read: true  // Request SK from authenticator
-        }
-      }
-    }
+          read: true, // Request SK from authenticator
+        },
+      },
+    },
   });
-  
+
   return assertion.getClientExtensionResults().largeBlob.blob;
 }
 ```
@@ -159,40 +161,47 @@ async function retrieveSKFromLargeBlob(credential) {
  */
 async function wrapSKWithHmacSecret(credential, sk) {
   const salt = crypto.getRandomValues(new Uint8Array(32));
-  
+
   const credentialWithHmac = await navigator.credentials.create({
     publicKey: {
       // ... existing WebAuthn options
       extensions: {
-        hmacCreateSecret: true
-      }
-    }
+        hmacCreateSecret: true,
+      },
+    },
   });
-  
+
   // Derive wrapping key from HMAC
   const assertion = await navigator.credentials.get({
     publicKey: {
       challenge: crypto.getRandomValues(new Uint8Array(32)),
-      allowCredentials: [{
-        id: credentialWithHmac.rawId,
-        type: 'public-key'
-      }],
+      allowCredentials: [
+        {
+          id: credentialWithHmac.rawId,
+          type: 'public-key',
+        },
+      ],
       extensions: {
         hmacGetSecret: {
-          salt1: salt
-        }
-      }
-    }
+          salt1: salt,
+        },
+      },
+    },
   });
-  
-  const hmacOutput = assertion.getClientExtensionResults().hmacGetSecret.output1;
-  
+
+  const hmacOutput =
+    assertion.getClientExtensionResults().hmacGetSecret.output1;
+
   // Wrap SK with HMAC-derived key
   const wrappedSK = await wrapKey(sk, hmacOutput);
-  
+
   // Store wrapped SK and salt locally
-  await storeWrappedSK({ wrappedSK, salt, credentialId: credentialWithHmac.id });
-  
+  await storeWrappedSK({
+    wrappedSK,
+    salt,
+    credentialId: credentialWithHmac.id,
+  });
+
   return credentialWithHmac;
 }
 
@@ -201,27 +210,30 @@ async function wrapSKWithHmacSecret(credential, sk) {
  */
 async function unwrapSKWithHmacSecret(credential) {
   const { wrappedSK, salt } = await loadWrappedSK(credential.credentialId);
-  
+
   const assertion = await navigator.credentials.get({
     publicKey: {
       challenge: crypto.getRandomValues(new Uint8Array(32)),
-      allowCredentials: [{
-        id: credential.rawCredentialId,
-        type: 'public-key'
-      }],
+      allowCredentials: [
+        {
+          id: credential.rawCredentialId,
+          type: 'public-key',
+        },
+      ],
       extensions: {
         hmacGetSecret: {
-          salt1: salt
-        }
-      }
-    }
+          salt1: salt,
+        },
+      },
+    },
   });
-  
-  const hmacOutput = assertion.getClientExtensionResults().hmacGetSecret.output1;
-  
+
+  const hmacOutput =
+    assertion.getClientExtensionResults().hmacGetSecret.output1;
+
   // Unwrap SK with HMAC-derived key
   const sk = await unwrapKey(wrappedSK, hmacOutput);
-  
+
   return sk;
 }
 ```
@@ -234,7 +246,7 @@ async function unwrapSKWithHmacSecret(credential) {
  */
 async function encryptPrivateKey(privateKey, sk) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  
+
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
     sk,
@@ -242,13 +254,13 @@ async function encryptPrivateKey(privateKey, sk) {
     false,
     ['encrypt']
   );
-  
+
   const ciphertext = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv },
     cryptoKey,
     privateKey
   );
-  
+
   return { ciphertext: new Uint8Array(ciphertext), iv };
 }
 
@@ -263,13 +275,13 @@ async function decryptPrivateKey(ciphertext, sk, iv) {
     false,
     ['decrypt']
   );
-  
+
   const privateKey = await crypto.subtle.decrypt(
     { name: 'AES-GCM', iv },
     cryptoKey,
     ciphertext
   );
-  
+
   return new Uint8Array(privateKey);
 }
 ```
@@ -282,7 +294,7 @@ import {
   generateEncryptedKeystore,
   unlockKeystore,
   listEncryptedKeystores,
-  deleteEncryptedKeystore
+  deleteEncryptedKeystore,
 } from '@le-space/orbitdb-identity-provider-webauthn-did/keystore';
 ```
 
@@ -290,14 +302,14 @@ import {
 
 ```javascript
 const identity = await orbitdb.identities.createIdentity({
-  provider: OrbitDBWebAuthnIdentityProviderFunction({ 
+  provider: OrbitDBWebAuthnIdentityProviderFunction({
     webauthnCredential: credential,
     useKeystoreDID: true,
-    keystoreKeyType: 'Ed25519',        // or 'secp256k1'
+    keystoreKeyType: 'Ed25519', // or 'secp256k1'
     keystore: orbitdb.keystore,
     encryptKeystore: true,
-    keystoreEncryptionMethod: 'largeBlob'
-  })
+    keystoreEncryptionMethod: 'largeBlob',
+  }),
 });
 ```
 
@@ -311,6 +323,7 @@ const identity = await orbitdb.identities.createIdentity({
 **Without encryption**: Keystore vulnerable to XSS, malicious extensions, device theft
 
 **With encryption**:
+
 - Keystore encrypted with AES-GCM 256-bit
 - Secret key protected by WebAuthn hardware
 - One biometric prompt per session

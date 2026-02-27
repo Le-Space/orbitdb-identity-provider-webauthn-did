@@ -1,6 +1,10 @@
 <script>
-  import { TooltipDefinition, OverflowMenu, Button } from "carbon-components-svelte";
-  import { Checkmark, Warning, Time, Information } from "carbon-icons-svelte";
+  import {
+    TooltipDefinition,
+    OverflowMenu,
+    Button,
+  } from 'carbon-components-svelte';
+  import { Checkmark, Warning, Time, Information } from 'carbon-icons-svelte';
 
   export let identityHash;
   export let webAuthnDID;
@@ -13,23 +17,25 @@
     if (verificationState === true) {
       return {
         icon: Checkmark,
-        color: "var(--cds-support-success)",
-        text: "Verified",
-        tooltip: webAuthnDID ? `Signed by: ${webAuthnDID.slice(0, 20)}...` : "Signed with your secure key"
+        color: 'var(--cds-support-success)',
+        text: 'Verified',
+        tooltip: webAuthnDID
+          ? `Signed by: ${webAuthnDID.slice(0, 20)}...`
+          : 'Signed with your secure key',
       };
     } else if (verificationState === false) {
       return {
         icon: Warning,
-        color: "var(--cds-support-error)", 
-        text: "Unverified",
-        tooltip: "Could not verify signature"
+        color: 'var(--cds-support-error)',
+        text: 'Unverified',
+        tooltip: 'Could not verify signature',
       };
     } else {
       return {
         icon: Time,
-        color: "var(--cds-text-helper)",
-        text: "Verifying...",
-        tooltip: "Checking signature..."
+        color: 'var(--cds-text-helper)',
+        text: 'Verifying...',
+        tooltip: 'Checking signature...',
       };
     }
   }
@@ -39,29 +45,34 @@
 
 <div class="verification-badge">
   <!-- Simple Badge with Tooltip -->
-  <TooltipDefinition
-    align="center"
-    direction="top"
-    tabindex={0}
-  >
+  <TooltipDefinition align="center" direction="top" tabindex={0}>
     <div slot="trigger" class="badge-container">
-      <div class="badge-pill" style="background-color: {statusInfo.color}20; border-color: {statusInfo.color};">
-        <svelte:component this={statusInfo.icon} size={12} style="color: {statusInfo.color}" />
-        <span class="badge-text" style="color: {statusInfo.color}">{statusInfo.text}</span>
+      <div
+        class="badge-pill"
+        style="background-color: {statusInfo.color}20; border-color: {statusInfo.color};"
+      >
+        <svelte:component
+          this={statusInfo.icon}
+          size={12}
+          style="color: {statusInfo.color}"
+        />
+        <span class="badge-text" style="color: {statusInfo.color}"
+          >{statusInfo.text}</span
+        >
       </div>
-      
+
       <!-- Progressive Disclosure - Info Button -->
       {#if verificationState !== null}
-        <button 
-          class="info-button" 
-          on:click|stopPropagation={() => showDetails = !showDetails}
+        <button
+          class="info-button"
+          on:click|stopPropagation={() => (showDetails = !showDetails)}
           aria-label="Show verification details"
         >
           <Information size={14} />
         </button>
       {/if}
     </div>
-    
+
     <div class="tooltip-content">
       {statusInfo.tooltip}
     </div>
@@ -71,15 +82,28 @@
   {#if showDetails && verificationState !== null}
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <!-- svelte-ignore a11y-no-static-element-interactions -->
-    <div class="details-overlay" on:click={() => showDetails = false} role="button" tabindex="0" on:keydown={(e) => e.key === 'Escape' && (showDetails = false)}>
+    <div
+      class="details-overlay"
+      on:click={() => (showDetails = false)}
+      role="button"
+      tabindex="0"
+      on:keydown={(e) => e.key === 'Escape' && (showDetails = false)}
+    >
       <!-- svelte-ignore a11y-click-events-have-key-events -->
       <!-- svelte-ignore a11y-no-static-element-interactions -->
-      <div class="details-panel" on:click|stopPropagation role="dialog" aria-modal="true">
+      <div
+        class="details-panel"
+        on:click|stopPropagation
+        role="dialog"
+        aria-modal="true"
+      >
         <div class="details-header">
           <h6>Verification Details</h6>
-          <button class="close-button" on:click={() => showDetails = false}>×</button>
+          <button class="close-button" on:click={() => (showDetails = false)}
+            >×</button
+          >
         </div>
-        
+
         <div class="details-content">
           <div class="detail-row">
             <span class="label">Status:</span>
@@ -87,17 +111,17 @@
               {statusInfo.text}
             </span>
           </div>
-          
+
           <div class="detail-row">
             <span class="label">WebAuthn DID:</span>
             <span class="value mono">{webAuthnDID}</span>
           </div>
-          
+
           <div class="detail-row">
             <span class="label">Timestamp:</span>
             <span class="value">{new Date(timestamp).toLocaleString()}</span>
           </div>
-          
+
           <details class="technical-details">
             <summary>Advanced Details</summary>
             <div class="tech-content">

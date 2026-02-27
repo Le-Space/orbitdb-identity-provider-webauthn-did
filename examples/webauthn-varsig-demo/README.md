@@ -11,11 +11,13 @@ This demo uses WebAuthn varsig signatures to create an OrbitDB identity without 
 ## Running the demo
 
 Install dependencies:
+
 ```sh
 npm install
 ```
 
 Start the dev server:
+
 ```sh
 npm run dev
 ```

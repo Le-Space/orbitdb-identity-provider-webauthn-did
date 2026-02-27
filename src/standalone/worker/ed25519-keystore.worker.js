@@ -9,7 +9,9 @@
  * - Sign/verify bytes
  */
 
-const WORKER_KDF_INFO = new TextEncoder().encode('orbitdb/standalone-ed25519-keystore');
+const WORKER_KDF_INFO = new TextEncoder().encode(
+  'orbitdb/standalone-ed25519-keystore'
+);
 
 let ed25519KeyPair = null;
 let aesKey = null;
@@ -25,7 +27,10 @@ function asUint8Array(value) {
 }
 
 function toDetachedBuffer(bytes) {
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength
+  );
 }
 
 async function deriveAesKeyFromPrfSeed(prfSeedBuffer) {
@@ -50,12 +55,12 @@ async function deriveAesKeyFromPrfSeed(prfSeedBuffer) {
       name: 'HKDF',
       hash: 'SHA-256',
       salt,
-      info: WORKER_KDF_INFO
+      info: WORKER_KDF_INFO,
     },
     baseKey,
     {
       name: 'AES-GCM',
-      length: 256
+      length: 256,
     },
     false,
     ['encrypt', 'decrypt']
@@ -63,14 +68,17 @@ async function deriveAesKeyFromPrfSeed(prfSeedBuffer) {
 }
 
 async function generateEd25519KeypairArchive() {
-  ed25519KeyPair = await crypto.subtle.generateKey(
-    { name: 'Ed25519' },
-    true,
-    ['sign', 'verify']
-  );
+  ed25519KeyPair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, [
+    'sign',
+    'verify',
+  ]);
 
-  const publicKeySpki = new Uint8Array(await crypto.subtle.exportKey('spki', ed25519KeyPair.publicKey));
-  const privateKeyPkcs8 = new Uint8Array(await crypto.subtle.exportKey('pkcs8', ed25519KeyPair.privateKey));
+  const publicKeySpki = new Uint8Array(
+    await crypto.subtle.exportKey('spki', ed25519KeyPair.publicKey)
+  );
+  const privateKeyPkcs8 = new Uint8Array(
+    await crypto.subtle.exportKey('pkcs8', ed25519KeyPair.privateKey)
+  );
 
   const publicKey = publicKeySpki.slice(-32);
   const secret = privateKeyPkcs8.slice(-32);
@@ -79,7 +87,7 @@ async function generateEd25519KeypairArchive() {
 
   return {
     publicKey,
-    archive: edSigner.toArchive()
+    archive: edSigner.toArchive(),
   };
 }
 
@@ -94,8 +102,11 @@ async function loadKeypairFromArchive(archive) {
     edSigner = EdSigner.from({
       id: archive.id,
       keys: Object.fromEntries(
-        Object.entries(archive.keys).map(([did, key]) => [did, asUint8Array(key)])
-      )
+        Object.entries(archive.keys).map(([did, key]) => [
+          did,
+          asUint8Array(key),
+        ])
+      ),
     });
     ed25519KeyPair = null;
     return;
@@ -145,7 +156,7 @@ async function encrypt(plaintextBuffer) {
 
   return {
     ciphertext: new Uint8Array(ciphertext),
-    iv
+    iv,
   };
 }
 
@@ -161,7 +172,7 @@ async function decrypt(ciphertextBuffer, ivBuffer) {
   );
 
   return {
-    plaintext: new Uint8Array(plaintext)
+    plaintext: new Uint8Array(plaintext),
   };
 }
 
@@ -173,7 +184,7 @@ async function sign(dataBuffer) {
   if (edSigner) {
     const signature = await edSigner.sign(asUint8Array(dataBuffer));
     return {
-      signature: asUint8Array(signature.raw)
+      signature: asUint8Array(signature.raw),
     };
   }
 
@@ -184,7 +195,7 @@ async function sign(dataBuffer) {
   );
 
   return {
-    signature: new Uint8Array(signature)
+    signature: new Uint8Array(signature),
   };
 }
 
@@ -221,7 +232,7 @@ function postError(id, error) {
   self.postMessage({
     id,
     ok: false,
-    error: error instanceof Error ? error.message : String(error)
+    error: error instanceof Error ? error.message : String(error),
   });
 }
 
@@ -231,53 +242,54 @@ self.onmessage = async (event) => {
 
   try {
     switch (msg.type) {
-    case 'init': {
-      aesKey = await deriveAesKeyFromPrfSeed(msg.prfSeed);
-      postSuccess(id, { initialized: true });
-      break;
-    }
-    case 'generateKeypair': {
-      const { publicKey, archive } = await generateEd25519KeypairArchive();
-      const publicKeyBuffer = toDetachedBuffer(publicKey);
-      postSuccess(id, { publicKey: publicKeyBuffer, archive }, [publicKeyBuffer]);
-      break;
-    }
-    case 'loadKeypair': {
-      await loadKeypairFromArchive(msg.archive);
-      postSuccess(id, { loaded: true });
-      break;
-    }
-    case 'encrypt': {
-      const result = await encrypt(msg.plaintext);
-      const ciphertextBuffer = toDetachedBuffer(result.ciphertext);
-      const ivBuffer = toDetachedBuffer(result.iv);
-      postSuccess(
-        id,
-        { ciphertext: ciphertextBuffer, iv: ivBuffer },
-        [ciphertextBuffer, ivBuffer]
-      );
-      break;
-    }
-    case 'decrypt': {
-      const result = await decrypt(msg.ciphertext, msg.iv);
-      const plaintextBuffer = toDetachedBuffer(result.plaintext);
-      postSuccess(id, { plaintext: plaintextBuffer }, [plaintextBuffer]);
-      break;
-    }
-    case 'sign': {
-      const result = await sign(msg.data);
-      const signatureBuffer = toDetachedBuffer(result.signature);
-      postSuccess(id, { signature: signatureBuffer }, [signatureBuffer]);
-      break;
-    }
-    case 'verify': {
-      const result = await verify(msg.data, msg.signature);
-      postSuccess(id, result);
-      break;
-    }
-    default: {
-      throw new Error(`Unknown message type: ${msg.type}`);
-    }
+      case 'init': {
+        aesKey = await deriveAesKeyFromPrfSeed(msg.prfSeed);
+        postSuccess(id, { initialized: true });
+        break;
+      }
+      case 'generateKeypair': {
+        const { publicKey, archive } = await generateEd25519KeypairArchive();
+        const publicKeyBuffer = toDetachedBuffer(publicKey);
+        postSuccess(id, { publicKey: publicKeyBuffer, archive }, [
+          publicKeyBuffer,
+        ]);
+        break;
+      }
+      case 'loadKeypair': {
+        await loadKeypairFromArchive(msg.archive);
+        postSuccess(id, { loaded: true });
+        break;
+      }
+      case 'encrypt': {
+        const result = await encrypt(msg.plaintext);
+        const ciphertextBuffer = toDetachedBuffer(result.ciphertext);
+        const ivBuffer = toDetachedBuffer(result.iv);
+        postSuccess(id, { ciphertext: ciphertextBuffer, iv: ivBuffer }, [
+          ciphertextBuffer,
+          ivBuffer,
+        ]);
+        break;
+      }
+      case 'decrypt': {
+        const result = await decrypt(msg.ciphertext, msg.iv);
+        const plaintextBuffer = toDetachedBuffer(result.plaintext);
+        postSuccess(id, { plaintext: plaintextBuffer }, [plaintextBuffer]);
+        break;
+      }
+      case 'sign': {
+        const result = await sign(msg.data);
+        const signatureBuffer = toDetachedBuffer(result.signature);
+        postSuccess(id, { signature: signatureBuffer }, [signatureBuffer]);
+        break;
+      }
+      case 'verify': {
+        const result = await verify(msg.data, msg.signature);
+        postSuccess(id, result);
+        break;
+      }
+      default: {
+        throw new Error(`Unknown message type: ${msg.type}`);
+      }
     }
   } catch (error) {
     postError(id, error);

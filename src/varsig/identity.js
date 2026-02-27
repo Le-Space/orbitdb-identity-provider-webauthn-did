@@ -26,11 +26,11 @@ export async function encodeIdentityValue(value) {
   const { cid, bytes } = await Block.encode({
     value,
     codec: IDENTITY_CODEC,
-    hasher: IDENTITY_HASHER
+    hasher: IDENTITY_HASHER,
   });
   return {
     hash: cid.toString(IDENTITY_HASH_ENCODING),
-    bytes: Uint8Array.from(bytes)
+    bytes: Uint8Array.from(bytes),
   };
 }
 
@@ -46,35 +46,43 @@ export async function createWebAuthnVarsigIdentity({
   credential,
   domainLabels = {},
   userVerification = 'preferred',
-  mediation
+  mediation,
 }) {
   const labels = { ...DEFAULT_DOMAIN_LABELS, ...domainLabels };
-  const provider = new WebAuthnVarsigProvider(credential, { userVerification, mediation });
-  const id = credential.did || DIDKey.fromPublicKey(credential.algorithm, credential.publicKey).did;
+  const provider = new WebAuthnVarsigProvider(credential, {
+    userVerification,
+    mediation,
+  });
+  const id =
+    credential.did ||
+    DIDKey.fromPublicKey(credential.algorithm, credential.publicKey).did;
   const idBytes = encoder.encode(id);
 
   const idSignature = await provider.signPayload(idBytes, labels.id);
   const publicKeyPayload = concat([credential.publicKey, idSignature]);
-  const publicKeySignature = await provider.signPayload(publicKeyPayload, labels.publicKey);
+  const publicKeySignature = await provider.signPayload(
+    publicKeyPayload,
+    labels.publicKey
+  );
 
   const identity = {
     id,
     publicKey: credential.publicKey,
     signatures: {
       id: idSignature,
-      publicKey: publicKeySignature
+      publicKey: publicKeySignature,
     },
     type: 'webauthn-varsig',
     sign: (identityInstance, data) => provider.sign(data, labels.entry),
     verify: (signature, data) =>
-      provider.verify(signature, credential.publicKey, data, labels.entry)
+      provider.verify(signature, credential.publicKey, data, labels.entry),
   };
 
   const { hash, bytes } = await encodeIdentityValue({
     id: identity.id,
     publicKey: identity.publicKey,
     signatures: identity.signatures,
-    type: identity.type
+    type: identity.type,
   });
   identity.hash = hash;
   identity.bytes = bytes;
@@ -111,7 +119,7 @@ export function createWebAuthnVarsigIdentities(identity, domainLabels = {}) {
 
     const publicKeyPayload = concat([
       identityToVerify.publicKey,
-      identityToVerify.signatures.id
+      identityToVerify.signatures.id,
     ]);
 
     return verifyVarsigForPayload(
@@ -128,13 +136,17 @@ export function createWebAuthnVarsigIdentities(identity, domainLabels = {}) {
     if (!storage || !storage.get) return null;
     const bytes = await storage.get(hash);
     if (!bytes) return null;
-    const { value } = await Block.decode({ bytes, codec: IDENTITY_CODEC, hasher: IDENTITY_HASHER });
+    const { value } = await Block.decode({
+      bytes,
+      codec: IDENTITY_CODEC,
+      hasher: IDENTITY_HASHER,
+    });
     const decoded = value;
     const { hash: decodedHash } = await encodeIdentityValue({
       id: decoded.id,
       publicKey: decoded.publicKey,
       signatures: decoded.signatures,
-      type: decoded.type
+      type: decoded.type,
     });
     const storedIdentity = {
       id: decoded.id,
@@ -147,7 +159,12 @@ export function createWebAuthnVarsigIdentities(identity, domainLabels = {}) {
         throw new Error('Remote identity cannot sign');
       },
       verify: (signature, data) =>
-        verifyVarsigForPayload(signature, decoded.publicKey, toBytes(data), labels.entry)
+        verifyVarsigForPayload(
+          signature,
+          decoded.publicKey,
+          toBytes(data),
+          labels.entry
+        ),
     };
     identityByHash.set(decodedHash, storedIdentity);
     return storedIdentity;
@@ -161,9 +178,10 @@ export function createWebAuthnVarsigIdentities(identity, domainLabels = {}) {
     createIdentity: async () => identity,
     verifyIdentity,
     getIdentity,
-    sign: (identityInstance, data) => identityInstance.sign(identityInstance, data),
+    sign: (identityInstance, data) =>
+      identityInstance.sign(identityInstance, data),
     verify,
-    keystore: null
+    keystore: null,
   };
 }
 
@@ -176,13 +194,17 @@ export function createWebAuthnVarsigIdentities(identity, domainLabels = {}) {
  */
 export async function decodeVarsigIdentityFromBytes(bytes, domainLabels = {}) {
   const labels = { ...DEFAULT_DOMAIN_LABELS, ...domainLabels };
-  const { value } = await Block.decode({ bytes, codec: IDENTITY_CODEC, hasher: IDENTITY_HASHER });
+  const { value } = await Block.decode({
+    bytes,
+    codec: IDENTITY_CODEC,
+    hasher: IDENTITY_HASHER,
+  });
   const decoded = value;
   const { hash: decodedHash } = await encodeIdentityValue({
     id: decoded.id,
     publicKey: decoded.publicKey,
     signatures: decoded.signatures,
-    type: decoded.type
+    type: decoded.type,
   });
   return {
     id: decoded.id,
@@ -195,7 +217,12 @@ export async function decodeVarsigIdentityFromBytes(bytes, domainLabels = {}) {
       throw new Error('Remote identity cannot sign');
     },
     verify: (signature, data) =>
-      verifyVarsigForPayload(signature, decoded.publicKey, toBytes(data), labels.entry)
+      verifyVarsigForPayload(
+        signature,
+        decoded.publicKey,
+        toBytes(data),
+        labels.entry
+      ),
   };
 }
 
@@ -219,10 +246,7 @@ export async function verifyVarsigIdentity(identity, domainLabels = {}) {
   );
   if (!idValid) return false;
 
-  const publicKeyPayload = concat([
-    identity.publicKey,
-    identity.signatures.id
-  ]);
+  const publicKeyPayload = concat([identity.publicKey, identity.signatures.id]);
   return verifyVarsigForPayload(
     identity.signatures.publicKey,
     identity.publicKey,
@@ -250,7 +274,7 @@ export function createIpfsIdentityStorage(ipfs) {
     put: async (hash, bytes) => {
       const cid = CID.parse(hash);
       await ipfs.blockstore.put(cid, bytes);
-    }
+    },
   };
 }
 
@@ -263,7 +287,11 @@ export function createIpfsIdentityStorage(ipfs) {
  * @param {Object} [domainLabels] - Domain label overrides.
  * @returns {Object} A wrapped identities object that handles both default and varsig verification.
  */
-export function wrapWithVarsigVerification(defaultIdentities, ipfs, domainLabels = {}) {
+export function wrapWithVarsigVerification(
+  defaultIdentities,
+  ipfs,
+  domainLabels = {}
+) {
   const labels = { ...DEFAULT_DOMAIN_LABELS, ...domainLabels };
   const ipfsStorage = createIpfsIdentityStorage(ipfs);
   const varsigIdentityCache = new Map();
@@ -281,7 +309,12 @@ export function wrapWithVarsigVerification(defaultIdentities, ipfs, domainLabels
     // Try varsig verification (varsig uses Uint8Array public keys)
     if (publicKey instanceof Uint8Array) {
       try {
-        return await verifyVarsigForPayload(signature, publicKey, toBytes(data), labels.entry);
+        return await verifyVarsigForPayload(
+          signature,
+          publicKey,
+          toBytes(data),
+          labels.entry
+        );
       } catch {
         // Varsig verification also failed
       }
@@ -311,7 +344,10 @@ export function wrapWithVarsigVerification(defaultIdentities, ipfs, domainLabels
         try {
           const bytes = await ipfsStorage.get(hash);
           if (bytes) {
-            const decoded = await decodeVarsigIdentityFromBytes(bytes, domainLabels);
+            const decoded = await decodeVarsigIdentityFromBytes(
+              bytes,
+              domainLabels
+            );
             varsigIdentityCache.set(decoded.hash, decoded);
             return decoded;
           }
@@ -354,6 +390,6 @@ export function wrapWithVarsigVerification(defaultIdentities, ipfs, domainLabels
       // Entry.verify(identity, entry) can verify varsig entries
       identity.verify = hybridVerify;
       return identity;
-    }
+    },
   };
 }

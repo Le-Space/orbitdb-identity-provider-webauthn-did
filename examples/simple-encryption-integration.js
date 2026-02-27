@@ -13,13 +13,13 @@
 import { createOrbitDB } from '@orbitdb/core';
 import { createHelia } from 'helia';
 import { SimpleEncryption } from '@orbitdb/simple-encryption';
-import { 
+import {
   OrbitDBWebAuthnIdentityProviderFunction,
   generateSecretKey,
   retrieveSKFromLargeBlob,
   unwrapSKWithHmacSecret,
   loadEncryptedKeystore
-} from 'orbitdb-identity-provider-webauthn-did';
+} from '@le-space/orbitdb-identity-provider-webauthn-did';
 
 /**
  * Convert 32-byte secret key to base64 string for use with SimpleEncryption

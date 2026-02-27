@@ -15,7 +15,7 @@
 import {
   verifyDataEntries,
   verifyDatabaseUpdate as packageVerifyDatabaseUpdate,
-  verifyIdentityStorage as packageVerifyIdentityStorage
+  verifyIdentityStorage as packageVerifyIdentityStorage,
 } from '@le-space/orbitdb-identity-provider-webauthn-did/verification';
 
 /**
@@ -32,17 +32,17 @@ function todoMatchFn(todoInDb, expectedTodo) {
 /**
  * Verify todos using the generic package verification utilities
  * @param {Object} database - The OrbitDB database instance
- * @param {Array} todos - Array of todo objects  
+ * @param {Array} todos - Array of todo objects
  * @param {string} expectedWebAuthnDID - The expected WebAuthn DID
  * @returns {Promise<Map>} Map of todoId -> verification result
  */
 export async function verifyTodos(database, todos, expectedWebAuthnDID) {
   console.log(`📝 Using package verification for ${todos.length} todos...`);
-  
+
   // Use the generic verification function from the package with todo-specific matching
   return verifyDataEntries(database, todos, expectedWebAuthnDID, {
     matchFn: todoMatchFn,
-    checkLog: true
+    checkLog: true,
   });
 }
 
@@ -53,9 +53,17 @@ export async function verifyTodos(database, todos, expectedWebAuthnDID) {
  * @param {string} expectedWebAuthnDID - The expected WebAuthn DID
  * @returns {Promise<Object>} Verification result
  */
-export async function verifyDatabaseUpdate(database, identityHash, expectedWebAuthnDID) {
+export async function verifyDatabaseUpdate(
+  database,
+  identityHash,
+  expectedWebAuthnDID
+) {
   console.log('📝 Using package database update verification...');
-  return packageVerifyDatabaseUpdate(database, identityHash, expectedWebAuthnDID);
+  return packageVerifyDatabaseUpdate(
+    database,
+    identityHash,
+    expectedWebAuthnDID
+  );
 }
 
 /**
@@ -72,5 +80,5 @@ export async function verifyIdentityStorage(identities, identity) {
 export default {
   verifyTodos,
   verifyDatabaseUpdate,
-  verifyIdentityStorage
+  verifyIdentityStorage,
 };

@@ -14,7 +14,11 @@
  * @param {string} expectedWebAuthnDID - The expected WebAuthn DID
  * @returns {Promise<Object>} Verification result
  */
-export async function verifyDatabaseUpdate(database, identityHash, expectedWebAuthnDID) {
+export async function verifyDatabaseUpdate(
+  database,
+  identityHash,
+  expectedWebAuthnDID
+) {
   console.log('🔄 Verifying database update event');
 
   // Simple logic: if an update is happening in our database and our database
@@ -27,9 +31,10 @@ export async function verifyDatabaseUpdate(database, identityHash, expectedWebAu
   try {
     // Try to get the access controller configuration
     const writePermissions = database.access?.write || [];
-    hasWriteAccess = writePermissions.includes(expectedWebAuthnDID) ||
-                     writePermissions.includes('*') ||
-                     writePermissions.length === 0; // Default access
+    hasWriteAccess =
+      writePermissions.includes(expectedWebAuthnDID) ||
+      writePermissions.includes('*') ||
+      writePermissions.length === 0; // Default access
   } catch (error) {
     console.warn('Could not check write permissions:', error.message);
     hasWriteAccess = true; // Assume we have access if we can't check
@@ -46,10 +51,12 @@ export async function verifyDatabaseUpdate(database, identityHash, expectedWebAu
     method: 'database-update',
     details: {
       identityMatches,
-      hasWriteAccess
+      hasWriteAccess,
     },
-    error: verificationSuccess ? null : `Database update verification failed: identityMatches=${identityMatches}, hasWriteAccess=${hasWriteAccess}`,
-    timestamp: Date.now()
+    error: verificationSuccess
+      ? null
+      : `Database update verification failed: identityMatches=${identityMatches}, hasWriteAccess=${hasWriteAccess}`,
+    timestamp: Date.now(),
   };
 }
 
@@ -60,7 +67,11 @@ export async function verifyDatabaseUpdate(database, identityHash, expectedWebAu
  * @param {number} timeoutMs - Timeout in milliseconds (default: 5000)
  * @returns {Promise<Object>} Verification result
  */
-export async function verifyIdentityStorage(identities, identity, timeoutMs = 5000) {
+export async function verifyIdentityStorage(
+  identities,
+  identity,
+  timeoutMs = 5000
+) {
   console.log('🔍 Verifying identity storage...');
 
   try {
@@ -68,8 +79,11 @@ export async function verifyIdentityStorage(identities, identity, timeoutMs = 50
     const retrievedIdentity = await Promise.race([
       identities.getIdentity(identity.hash),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Identity retrieval timeout')), timeoutMs)
-      )
+        setTimeout(
+          () => reject(new Error('Identity retrieval timeout')),
+          timeoutMs
+        )
+      ),
     ]);
 
     const success = !!retrievedIdentity && retrievedIdentity.id === identity.id;
@@ -81,9 +95,8 @@ export async function verifyIdentityStorage(identities, identity, timeoutMs = 50
       identityId: identity.id,
       retrievedId: retrievedIdentity?.id,
       error: success ? null : 'Identity not found or ID mismatch',
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
-
   } catch (error) {
     console.warn('⚠️ Could not verify identity storage:', error.message);
 
@@ -93,7 +106,7 @@ export async function verifyIdentityStorage(identities, identity, timeoutMs = 50
       identityHash: identity.hash,
       identityId: identity.id,
       error: `Identity storage verification failed: ${error.message}`,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 }
@@ -109,22 +122,30 @@ export async function verifyIdentityStorage(identities, identity, timeoutMs = 50
  * @param {boolean} options.checkLog - Whether to check database log for identity hash (default: true)
  * @returns {Promise<Map>} Map of dataId -> verification result
  */
-export async function verifyDataEntries(database, dataEntries, expectedWebAuthnDID, options = {}) {
+export async function verifyDataEntries(
+  database,
+  dataEntries,
+  expectedWebAuthnDID,
+  options = {}
+) {
   const { matchFn, checkLog = true } = options;
   const verificationResults = new Map();
 
-  console.log(`🔍 Starting verification of ${dataEntries.length} data entries...`);
+  console.log(
+    `🔍 Starting verification of ${dataEntries.length} data entries...`
+  );
   console.log(`🎯 Expected WebAuthn DID: ${expectedWebAuthnDID}`);
 
   try {
     // Check if our database identity matches the expected WebAuthn DID
     const databaseIdentity = database.identity;
-    const databaseIdentityMatches = databaseIdentity?.id === expectedWebAuthnDID;
+    const databaseIdentityMatches =
+      databaseIdentity?.id === expectedWebAuthnDID;
 
     console.log('🔑 Database identity check:', {
       databaseDID: databaseIdentity?.id,
       expectedDID: expectedWebAuthnDID,
-      matches: databaseIdentityMatches
+      matches: databaseIdentityMatches,
     });
 
     for (const entry of dataEntries) {
@@ -134,8 +155,9 @@ export async function verifyDataEntries(database, dataEntries, expectedWebAuthnD
         // Method 1: Check if we can access the entry in our database
         const entryInDb = await database.get(entry.id);
         const entryExists = !!entryInDb;
-        const entryMatches = matchFn ? matchFn(entryInDb, entry) :
-          (entryExists && entryInDb.id === entry.id);
+        const entryMatches = matchFn
+          ? matchFn(entryInDb, entry)
+          : entryExists && entryInDb.id === entry.id;
 
         // Method 2: Get identity hash from log (optional)
         let identityHash = 'unknown';
@@ -148,14 +170,18 @@ export async function verifyDataEntries(database, dataEntries, expectedWebAuthnD
               }
             }
           } catch (logError) {
-            console.warn(`Could not read log for entry ${entry.id}:`, logError.message);
+            console.warn(
+              `Could not read log for entry ${entry.id}:`,
+              logError.message
+            );
           }
         }
 
         // Pragmatic verification logic:
         // If we can read the entry from our database AND our database identity matches
         // the expected WebAuthn DID, then this entry was created by us
-        const verificationSuccess = entryExists && entryMatches && databaseIdentityMatches;
+        const verificationSuccess =
+          entryExists && entryMatches && databaseIdentityMatches;
 
         const result = {
           success: verificationSuccess,
@@ -167,9 +193,9 @@ export async function verifyDataEntries(database, dataEntries, expectedWebAuthnD
           details: {
             entryExists,
             entryMatches,
-            databaseIdentityMatches
+            databaseIdentityMatches,
           },
-          timestamp: Date.now()
+          timestamp: Date.now(),
         };
 
         if (!verificationSuccess) {
@@ -178,19 +204,19 @@ export async function verifyDataEntries(database, dataEntries, expectedWebAuthnD
 
         verificationResults.set(entry.id, result);
 
-        console.log(`${verificationSuccess ? '✅' : '❌'} Entry ${entry.id}: ${verificationSuccess ? 'VERIFIED' : 'FAILED'}`);
-
+        console.log(
+          `${verificationSuccess ? '✅' : '❌'} Entry ${entry.id}: ${verificationSuccess ? 'VERIFIED' : 'FAILED'}`
+        );
       } catch (error) {
         console.warn(`⚠️ Error verifying entry ${entry.id}:`, error);
         verificationResults.set(entry.id, {
           success: false,
           error: error.message,
           method: 'verification-error',
-          timestamp: Date.now()
+          timestamp: Date.now(),
         });
       }
     }
-
   } catch (error) {
     console.error('❌ Error in pragmatic verification:', error);
 
@@ -201,12 +227,14 @@ export async function verifyDataEntries(database, dataEntries, expectedWebAuthnD
         error: null,
         method: 'fallback',
         note: 'Entry accessible in user-controlled database, assumed verified',
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
     }
   }
 
-  console.log(`✅ Verification completed: ${verificationResults.size} entries processed`);
+  console.log(
+    `✅ Verification completed: ${verificationResults.size} entries processed`
+  );
   return verificationResults;
 }
 
@@ -220,7 +248,8 @@ export function isValidWebAuthnDID(did) {
 
   // Check for proper did:key format (WebAuthn keys now use did:key format)
   // Pattern: did:key:z followed by base58btc encoded multikey
-  const didKeyRegex = /^did:key:z[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{20,}$/;
+  const didKeyRegex =
+    /^did:key:z[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{20,}$/;
   return didKeyRegex.test(did);
 }
 
@@ -259,7 +288,7 @@ export function createVerificationResult() {
     method: null,
     details: {},
     error: null,
-    timestamp: Date.now()
+    timestamp: Date.now(),
   };
 }
 
@@ -270,5 +299,5 @@ export default {
   isValidWebAuthnDID,
   extractWebAuthnDIDSuffix,
   compareWebAuthnDIDs,
-  createVerificationResult
+  createVerificationResult,
 };

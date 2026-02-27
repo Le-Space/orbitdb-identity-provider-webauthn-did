@@ -9,7 +9,11 @@ export {
   decodeVarsigIdentityFromBytes,
   verifyVarsigIdentity,
   createIpfsIdentityStorage,
-  wrapWithVarsigVerification
+  wrapWithVarsigVerification,
 } from './identity.js';
 export { DEFAULT_DOMAIN_LABELS } from './domain.js';
-export { storeWebAuthnVarsigCredential, loadWebAuthnVarsigCredential, clearWebAuthnVarsigCredential } from './storage.js';
+export {
+  storeWebAuthnVarsigCredential,
+  loadWebAuthnVarsigCredential,
+  clearWebAuthnVarsigCredential,
+} from './storage.js';

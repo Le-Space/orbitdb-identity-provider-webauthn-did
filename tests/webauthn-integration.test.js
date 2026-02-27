@@ -13,8 +13,10 @@ async function installWebAuthnMock(context) {
     if (!window.PublicKeyCredential.prototype) {
       window.PublicKeyCredential.prototype = {};
     }
-    window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = async () => true;
-    window.PublicKeyCredential.isConditionalMediationAvailable = async () => true;
+    window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable =
+      async () => true;
+    window.PublicKeyCredential.isConditionalMediationAvailable = async () =>
+      true;
 
     const mockCredentialId = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
     const mockAttestation = new Uint8Array(300);
@@ -23,7 +25,7 @@ async function installWebAuthnMock(context) {
       if (!window.navigator.credentials) {
         Object.defineProperty(window.navigator, 'credentials', {
           value: {},
-          configurable: true
+          configurable: true,
         });
       }
 
@@ -37,15 +39,20 @@ async function installWebAuthnMock(context) {
           type: 'public-key',
           response: {
             attestationObject: mockAttestation.buffer, // Mock attestation
-            clientDataJSON: new TextEncoder().encode(JSON.stringify({
-              type: 'webauthn.create',
-              challenge: 'mock-challenge',
-              origin: window.location.origin
-            })),
-            getPublicKey: () => new Uint8Array([/* mock public key */]),
+            clientDataJSON: new TextEncoder().encode(
+              JSON.stringify({
+                type: 'webauthn.create',
+                challenge: 'mock-challenge',
+                origin: window.location.origin,
+              })
+            ),
+            getPublicKey: () =>
+              new Uint8Array([
+                /* mock public key */
+              ]),
             getPublicKeyAlgorithm: () => -7, // ES256
           },
-          getClientExtensionResults: () => ({})
+          getClientExtensionResults: () => ({}),
         };
       };
 
@@ -59,15 +66,17 @@ async function installWebAuthnMock(context) {
           type: 'public-key',
           response: {
             authenticatorData: new Uint8Array(37),
-            clientDataJSON: new TextEncoder().encode(JSON.stringify({
-              type: 'webauthn.get',
-              challenge: 'mock-challenge',
-              origin: window.location.origin
-            })),
+            clientDataJSON: new TextEncoder().encode(
+              JSON.stringify({
+                type: 'webauthn.get',
+                challenge: 'mock-challenge',
+                origin: window.location.origin,
+              })
+            ),
             signature: new Uint8Array(64), // Mock signature
-            userHandle: null
+            userHandle: null,
           },
-          getClientExtensionResults: () => ({})
+          getClientExtensionResults: () => ({}),
         };
       };
     };
@@ -75,10 +84,13 @@ async function installWebAuthnMock(context) {
     try {
       installCredentialMock();
     } catch (error) {
-      console.warn('Failed to install WebAuthn mock, retrying with defineProperty:', error);
+      console.warn(
+        'Failed to install WebAuthn mock, retrying with defineProperty:',
+        error
+      );
       Object.defineProperty(window.navigator, 'credentials', {
         value: {},
-        configurable: true
+        configurable: true,
       });
       installCredentialMock();
     }
@@ -91,7 +103,9 @@ async function createCredential(page) {
   await createButton.click();
 
   try {
-    await page.waitForSelector(`text=${CREDENTIAL_SUCCESS_TEXT}`, { timeout: 20000 });
+    await page.waitForSelector(`text=${CREDENTIAL_SUCCESS_TEXT}`, {
+      timeout: 20000,
+    });
   } catch (error) {
     if (page.isClosed()) {
       throw error;
@@ -106,7 +120,9 @@ async function createCredential(page) {
 }
 
 async function authenticate(page) {
-  const authButton = page.locator('button:has-text("Authenticate with WebAuthn")');
+  const authButton = page.locator(
+    'button:has-text("Authenticate with WebAuthn")'
+  );
   await expect(authButton).toBeVisible();
   await authButton.click();
   await page.waitForSelector(`text=${AUTH_SUCCESS_TEXT}`, { timeout: 30000 });
@@ -128,10 +144,14 @@ test.describe('WebAuthn DID Identity Provider Integration', () => {
 
   test('should detect WebAuthn support', async ({ page }) => {
     // Check that WebAuthn support is properly detected
-    await expect(page.locator('text=WebAuthn is fully supported')).toBeVisible();
+    await expect(
+      page.locator('text=WebAuthn is fully supported')
+    ).toBeVisible();
 
     // Check that biometric authentication is available
-    await expect(page.locator('text=Biometric authentication available')).toBeVisible();
+    await expect(
+      page.locator('text=Biometric authentication available')
+    ).toBeVisible();
   });
 
   test('should create WebAuthn credential', async ({ page }) => {
@@ -142,7 +162,9 @@ test.describe('WebAuthn DID Identity Provider Integration', () => {
     await expect(page.locator(`text=${CREDENTIAL_SUCCESS_TEXT}`)).toBeVisible();
 
     // Check that the authenticate button is now visible
-    await expect(page.locator('button:has-text("Authenticate with WebAuthn")')).toBeVisible();
+    await expect(
+      page.locator('button:has-text("Authenticate with WebAuthn")')
+    ).toBeVisible();
   });
 
   test('should authenticate and show WebAuthn DID', async ({ page }) => {
@@ -165,11 +187,17 @@ test.describe('WebAuthn DID Identity Provider Integration', () => {
     expect(didText).toMatch(/^did:key:z[A-Za-z0-9]+$/);
 
     // Check that TODO functionality is available
-    await expect(page.locator('input[placeholder="Add a new TODO..."]')).toBeVisible();
+    await expect(
+      page.locator('input[placeholder="Add a new TODO..."]')
+    ).toBeVisible();
     await expect(page.locator('button:has-text("Add")')).toBeVisible();
   });
 
-  test('should copy DID to clipboard', async ({ page, context, browserName }) => {
+  test('should copy DID to clipboard', async ({
+    page,
+    context,
+    browserName,
+  }) => {
     test.skip(
       browserName !== 'chromium',
       'clipboard permissions are only supported in Chromium'
@@ -195,7 +223,9 @@ test.describe('WebAuthn DID Identity Provider Integration', () => {
     expect(clipboardText).toMatch(/^did:key:z[A-Za-z0-9]+$/);
   });
 
-  test('should add and manage todos with WebAuthn authentication', async ({ page }) => {
+  test('should add and manage todos with WebAuthn authentication', async ({
+    page,
+  }) => {
     // Create credential and authenticate
     await createCredential(page);
     await authenticate(page);
@@ -224,7 +254,10 @@ test.describe('WebAuthn DID Identity Provider Integration', () => {
     await expect(page.locator('text=1 total • 1 completed')).toBeVisible();
   });
 
-  test('should handle WebAuthn errors gracefully', async ({ page, context }) => {
+  test('should handle WebAuthn errors gracefully', async ({
+    page,
+    context,
+  }) => {
     // Override the WebAuthn API to simulate errors
     await context.addInitScript(() => {
       window.navigator.credentials.create = async () => {
@@ -233,13 +266,17 @@ test.describe('WebAuthn DID Identity Provider Integration', () => {
     });
 
     await page.goto('http://localhost:5173');
-    await page.waitForSelector('text=WebAuthn is fully supported', { timeout: 10000 });
+    await page.waitForSelector('text=WebAuthn is fully supported', {
+      timeout: 10000,
+    });
 
     // Try to create a credential (should fail)
     await page.click('button:has-text("Create Credential")');
 
     // Verify error handling
-    await expect(page.locator('text=Failed to create credential')).toBeVisible();
+    await expect(
+      page.locator('text=Failed to create credential')
+    ).toBeVisible();
   });
 
   test('should reset database functionality', async ({ page }) => {
@@ -256,10 +293,14 @@ test.describe('WebAuthn DID Identity Provider Integration', () => {
     await page.click('button:has-text("Reset DB")');
 
     // Wait for reset to complete
-    await page.waitForSelector('text=Database reset complete', { timeout: 15000 });
+    await page.waitForSelector('text=Database reset complete', {
+      timeout: 15000,
+    });
 
     // Verify we're back to unauthenticated state but credential still exists
-    await expect(page.locator('button:has-text("Authenticate with WebAuthn")')).toBeVisible();
+    await expect(
+      page.locator('button:has-text("Authenticate with WebAuthn")')
+    ).toBeVisible();
   });
 
   test('should logout and clear credentials', async ({ page }) => {
@@ -271,11 +312,17 @@ test.describe('WebAuthn DID Identity Provider Integration', () => {
     await page.click('button:has-text("Logout")');
 
     // Wait for logout to complete
-    await page.waitForSelector('text=Logged out successfully', { timeout: 10000 });
+    await page.waitForSelector('text=Logged out successfully', {
+      timeout: 10000,
+    });
 
     // Verify we're back to credential creation state
-    await expect(page.locator('button:has-text("Create Credential")')).toBeVisible();
-    await expect(page.locator('text=Create a WebAuthn credential')).toBeVisible();
+    await expect(
+      page.locator('button:has-text("Create Credential")')
+    ).toBeVisible();
+    await expect(
+      page.locator('text=Create a WebAuthn credential')
+    ).toBeVisible();
   });
 
   test('should work across different browser contexts', async ({ browser }) => {
@@ -285,7 +332,9 @@ test.describe('WebAuthn DID Identity Provider Integration', () => {
     const page1 = await context1.newPage();
 
     await page1.goto('http://localhost:5173');
-    await page1.waitForSelector('text=WebAuthn is fully supported', { timeout: 10000 });
+    await page1.waitForSelector('text=WebAuthn is fully supported', {
+      timeout: 10000,
+    });
 
     // Create credential in first context
     await createCredential(page1);

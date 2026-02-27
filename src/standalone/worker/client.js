@@ -7,7 +7,10 @@ import { base58btc } from 'multiformats/bases/base58';
  * @returns {ArrayBuffer}
  */
 function toDetachedBuffer(bytes) {
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength
+  );
 }
 
 function normalizeArchiveForSerialization(archive) {
@@ -24,9 +27,9 @@ function normalizeArchiveForSerialization(archive) {
             keyBytes instanceof Uint8Array
               ? keyBytes
               : new Uint8Array(keyBytes || [])
-          )
+          ),
         ])
-      )
+      ),
     };
   }
   return archive;
@@ -44,9 +47,13 @@ function normalizeArchiveAfterDeserialization(archive) {
           did,
           keyBytes instanceof Uint8Array
             ? keyBytes
-            : new Uint8Array(Array.isArray(keyBytes) ? keyBytes : Object.values(keyBytes || {}))
+            : new Uint8Array(
+                Array.isArray(keyBytes)
+                  ? keyBytes
+                  : Object.values(keyBytes || {})
+              ),
         ])
-      )
+      ),
     };
   }
   return archive;
@@ -59,7 +66,9 @@ function normalizeArchiveAfterDeserialization(archive) {
  */
 export function createEd25519DidFromPublicKey(publicKeyBytes) {
   if (!(publicKeyBytes instanceof Uint8Array) || publicKeyBytes.length !== 32) {
-    throw new Error(`Invalid Ed25519 public key length: ${publicKeyBytes?.length || 0}`);
+    throw new Error(
+      `Invalid Ed25519 public key length: ${publicKeyBytes?.length || 0}`
+    );
   }
 
   const ED25519_MULTICODEC = 0xed;
@@ -160,10 +169,14 @@ class WorkerKeystoreClient {
       throw new Error('encrypt requires Uint8Array plaintext');
     }
     const plaintextBuffer = toDetachedBuffer(plaintext);
-    const result = await this.request('encrypt', { plaintext: plaintextBuffer }, [plaintextBuffer]);
+    const result = await this.request(
+      'encrypt',
+      { plaintext: plaintextBuffer },
+      [plaintextBuffer]
+    );
     return {
       ciphertext: new Uint8Array(result.ciphertext),
-      iv: new Uint8Array(result.iv)
+      iv: new Uint8Array(result.iv),
     };
   }
 
@@ -197,7 +210,9 @@ class WorkerKeystoreClient {
       throw new Error('sign requires Uint8Array data');
     }
     const dataBuffer = toDetachedBuffer(data);
-    const result = await this.request('sign', { data: dataBuffer }, [dataBuffer]);
+    const result = await this.request('sign', { data: dataBuffer }, [
+      dataBuffer,
+    ]);
     return new Uint8Array(result.signature);
   }
 
@@ -268,8 +283,12 @@ export function createWorkerKeystoreClient(options = {}) {
   if (!isWorkerKeystoreAvailable()) {
     throw new Error('Web Workers are not available in this environment');
   }
-  const workerFactory = options.workerFactory || (() =>
-    new Worker(new URL('./ed25519-keystore.worker.js', import.meta.url), { type: 'module' }));
+  const workerFactory =
+    options.workerFactory ||
+    (() =>
+      new Worker(new URL('./ed25519-keystore.worker.js', import.meta.url), {
+        type: 'module',
+      }));
   return new WorkerKeystoreClient(workerFactory);
 }
 

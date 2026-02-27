@@ -6,7 +6,7 @@
   } from '@le-space/orbitdb-identity-provider-webauthn-did';
 
   import { setupOrbitDB, cleanup, resetDatabaseState } from './libp2p.js';
-import {
+  import {
     openTodoDatabase,
     loadTodos,
     addTodo,
@@ -36,7 +36,7 @@ import {
   let isAuthenticated = false;
   let loading = false;
   let status = 'Checking WebAuthn support...';
-  
+
   // Identity verification tracking (not stored in database)
   let todoVerifications = new Map(); // Map<todoId, {verified: boolean, timestamp: number, identityHash: string}>
 
@@ -215,10 +215,12 @@ import {
 
     try {
       todos = await loadTodos(database);
-      
+
       // Refresh verification states after loading todos
       if (todos.length > 0) {
-        console.log(`📋 Loaded ${todos.length} todos, scheduling verification...`);
+        console.log(
+          `📋 Loaded ${todos.length} todos, scheduling verification...`
+        );
         setTimeout(() => refreshVerificationStates(), 100); // Small delay to let database settle
       } else {
         console.log('📋 No todos loaded, skipping verification');
@@ -243,7 +245,7 @@ import {
 
       await addTodo(database, newTodo, credential);
       await refreshTodos();
-      
+
       // Refresh verification states after a short delay to allow database events to process
       setTimeout(() => refreshVerificationStates(), 2000);
 
@@ -320,36 +322,44 @@ import {
 
   async function refreshVerificationStates() {
     console.log('🔄 Starting refreshVerificationStates...');
-    
+
     // First, get states from the global store (from database events)
     const globalVerifications = getIdentityVerifications();
-    console.log(`💾 Found ${globalVerifications.size} verifications in global store`);
-    
+    console.log(
+      `💾 Found ${globalVerifications.size} verifications in global store`
+    );
+
     // Clear and update with global state
     todoVerifications.clear();
     for (const [todoId, verification] of globalVerifications) {
       todoVerifications.set(todoId, verification);
-      console.log(`✅ Loaded verification for ${todoId}: ${verification.success ? 'PASSED' : 'FAILED'}`);
+      console.log(
+        `✅ Loaded verification for ${todoId}: ${verification.success ? 'PASSED' : 'FAILED'}`
+      );
     }
-    
+
     // For todos that don't have verification yet, use the simple verification approach
     if (database && orbitdbInstances?.identity?.id) {
       try {
         // Use the single verification approach
         const { verifyTodos } = await import('./verification.js');
-        
+
         // Find todos that need verification
-        const unverifiedTodos = todos.filter(todo => !todoVerifications.has(todo.id));
-        
+        const unverifiedTodos = todos.filter(
+          (todo) => !todoVerifications.has(todo.id)
+        );
+
         if (unverifiedTodos.length > 0) {
-          console.log(`🔍 Running verification for ${unverifiedTodos.length} todos...`);
-          
+          console.log(
+            `🔍 Running verification for ${unverifiedTodos.length} todos...`
+          );
+
           const newVerifications = await verifyTodos(
             database,
-            unverifiedTodos, 
+            unverifiedTodos,
             orbitdbInstances.identity.id
           );
-          
+
           // Add new verifications to our map
           for (const [todoId, verification] of newVerifications) {
             todoVerifications.set(todoId, verification);
@@ -359,11 +369,15 @@ import {
         console.error('Error during simple verification:', error);
       }
     }
-    
+
     // Trigger reactivity
     todoVerifications = todoVerifications;
-    
-    console.log('🔄 Refreshed verification states:', todoVerifications.size, 'todos verified');
+
+    console.log(
+      '🔄 Refreshed verification states:',
+      todoVerifications.size,
+      'todos verified'
+    );
   }
 
   async function handleLogout() {
@@ -612,7 +626,7 @@ import {
               >
                 {todo.text}
               </span>
-              
+
               <!-- Identity Verification Badge -->
               {#if todoVerifications.has(todo.id)}
                 {@const verification = todoVerifications.get(todo.id)}

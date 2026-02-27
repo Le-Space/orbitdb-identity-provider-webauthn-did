@@ -7,25 +7,23 @@
 
 import { logger } from '@libp2p/logger';
 
-const log = logger('orbitdb-identity-provider-webauthn-did:keystore-encryption');
+const log = logger(
+  'orbitdb-identity-provider-webauthn-did:keystore-encryption'
+);
 const PRF_INFO = new TextEncoder().encode('orbitdb/keystore-prf');
 
 async function deriveKeyFromPrfSeed(prfSeed) {
   const saltHash = await crypto.subtle.digest('SHA-256', prfSeed);
   const salt = new Uint8Array(saltHash).slice(0, 16);
-  const baseKey = await crypto.subtle.importKey(
-    'raw',
-    prfSeed,
-    'HKDF',
-    false,
-    ['deriveBits']
-  );
+  const baseKey = await crypto.subtle.importKey('raw', prfSeed, 'HKDF', false, [
+    'deriveBits',
+  ]);
   const bits = await crypto.subtle.deriveBits(
     {
       name: 'HKDF',
       hash: 'SHA-256',
       salt,
-      info: PRF_INFO
+      info: PRF_INFO,
     },
     baseKey,
     256
@@ -40,7 +38,10 @@ function getPrfSeed(credential, rawCredentialId) {
       const prfResults = extensions?.prf;
       if (prfResults?.results?.first) {
         log('Using WebAuthn PRF extension for key derivation');
-        return { seed: new Uint8Array(prfResults.results.first), source: 'prf' };
+        return {
+          seed: new Uint8Array(prfResults.results.first),
+          source: 'prf',
+        };
       }
     } catch (error) {
       log('Error reading PRF extension results: %s', error.message);
@@ -91,7 +92,7 @@ export async function encryptWithAESGCM(data, sk) {
 
   return {
     ciphertext: new Uint8Array(ciphertext),
-    iv
+    iv,
   };
 }
 
@@ -146,9 +147,9 @@ export function addLargeBlobToCredentialOptions(credentialOptions, sk) {
       ...credentialOptions.extensions,
       largeBlob: {
         support: 'required',
-        write: sk
-      }
-    }
+        write: sk,
+      },
+    },
   };
 }
 
@@ -158,7 +159,10 @@ export function addLargeBlobToCredentialOptions(credentialOptions, sk) {
  * @param {Uint8Array} [prfInput] - Optional PRF input (salt)
  * @returns {{credentialOptions: Object, prfInput: Uint8Array}}
  */
-export function addPRFToCredentialOptions(credentialOptions, prfInput = crypto.getRandomValues(new Uint8Array(32))) {
+export function addPRFToCredentialOptions(
+  credentialOptions,
+  prfInput = crypto.getRandomValues(new Uint8Array(32))
+) {
   log('Adding PRF extension to credential options');
 
   return {
@@ -167,11 +171,11 @@ export function addPRFToCredentialOptions(credentialOptions, prfInput = crypto.g
       extensions: {
         ...credentialOptions.extensions,
         prf: {
-          eval: { first: prfInput }
-        }
-      }
+          eval: { first: prfInput },
+        },
+      },
     },
-    prfInput
+    prfInput,
   };
 }
 
@@ -188,18 +192,20 @@ export async function retrieveSKFromLargeBlob(credentialId, rpId) {
     const assertion = await navigator.credentials.get({
       publicKey: {
         challenge: crypto.getRandomValues(new Uint8Array(32)),
-        allowCredentials: [{
-          id: credentialId,
-          type: 'public-key'
-        }],
+        allowCredentials: [
+          {
+            id: credentialId,
+            type: 'public-key',
+          },
+        ],
         rpId: rpId,
         userVerification: 'required',
         extensions: {
           largeBlob: {
-            read: true
-          }
-        }
-      }
+            read: true,
+          },
+        },
+      },
     });
 
     const extensions = assertion.getClientExtensionResults();
@@ -213,7 +219,10 @@ export async function retrieveSKFromLargeBlob(credentialId, rpId) {
 
     return sk;
   } catch (error) {
-    log.error('Failed to retrieve secret key from largeBlob: %s', error.message);
+    log.error(
+      'Failed to retrieve secret key from largeBlob: %s',
+      error.message
+    );
     throw new Error(`Failed to retrieve secret key: ${error.message}`);
   }
 }
@@ -230,8 +239,8 @@ export function addHmacSecretToCredentialOptions(credentialOptions) {
     ...credentialOptions,
     extensions: {
       ...credentialOptions.extensions,
-      hmacCreateSecret: true
-    }
+      hmacCreateSecret: true,
+    },
   };
 }
 
@@ -251,18 +260,20 @@ export async function wrapSKWithHmacSecret(credentialId, sk, rpId) {
     const assertion = await navigator.credentials.get({
       publicKey: {
         challenge: crypto.getRandomValues(new Uint8Array(32)),
-        allowCredentials: [{
-          id: credentialId,
-          type: 'public-key'
-        }],
+        allowCredentials: [
+          {
+            id: credentialId,
+            type: 'public-key',
+          },
+        ],
         rpId: rpId,
         userVerification: 'required',
         extensions: {
           hmacGetSecret: {
-            salt1: salt
-          }
-        }
-      }
+            salt1: salt,
+          },
+        },
+      },
     });
 
     const extensions = assertion.getClientExtensionResults();
@@ -281,7 +292,7 @@ export async function wrapSKWithHmacSecret(credentialId, sk, rpId) {
     return {
       wrappedSK: wrappedSK.ciphertext,
       wrappingIV: wrappedSK.iv,
-      salt
+      salt,
     };
   } catch (error) {
     log.error('Failed to wrap secret key with hmac-secret: %s', error.message);
@@ -306,18 +317,20 @@ export async function wrapSKWithPRF(credentialId, sk, rpId, prfInput) {
     const assertion = await navigator.credentials.get({
       publicKey: {
         challenge: crypto.getRandomValues(new Uint8Array(32)),
-        allowCredentials: [{
-          id: credentialId,
-          type: 'public-key'
-        }],
+        allowCredentials: [
+          {
+            id: credentialId,
+            type: 'public-key',
+          },
+        ],
         rpId: rpId,
         userVerification: 'required',
         extensions: {
           prf: {
-            eval: { first: prfEval }
-          }
-        }
-      }
+            eval: { first: prfEval },
+          },
+        },
+      },
     });
 
     const { seed, source } = getPrfSeed(assertion, credentialId);
@@ -330,7 +343,7 @@ export async function wrapSKWithPRF(credentialId, sk, rpId, prfInput) {
       wrappedSK: wrapped.ciphertext,
       wrappingIV: wrapped.iv,
       salt: prfEval,
-      prfSource: source
+      prfSource: source,
     };
   } catch (error) {
     log.error('Failed to wrap secret key with PRF: %s', error.message);
@@ -347,25 +360,33 @@ export async function wrapSKWithPRF(credentialId, sk, rpId, prfInput) {
  * @param {string} rpId - Relying party ID (domain)
  * @returns {Promise<Uint8Array>} Unwrapped secret key
  */
-export async function unwrapSKWithHmacSecret(credentialId, wrappedSK, wrappingIV, salt, rpId) {
+export async function unwrapSKWithHmacSecret(
+  credentialId,
+  wrappedSK,
+  wrappingIV,
+  salt,
+  rpId
+) {
   log('Unwrapping secret key with hmac-secret');
 
   try {
     const assertion = await navigator.credentials.get({
       publicKey: {
         challenge: crypto.getRandomValues(new Uint8Array(32)),
-        allowCredentials: [{
-          id: credentialId,
-          type: 'public-key'
-        }],
+        allowCredentials: [
+          {
+            id: credentialId,
+            type: 'public-key',
+          },
+        ],
         rpId: rpId,
         userVerification: 'required',
         extensions: {
           hmacGetSecret: {
-            salt1: salt
-          }
-        }
-      }
+            salt1: salt,
+          },
+        },
+      },
     });
 
     const extensions = assertion.getClientExtensionResults();
@@ -377,13 +398,20 @@ export async function unwrapSKWithHmacSecret(credentialId, wrappedSK, wrappingIV
     const hmacOutput = new Uint8Array(extensions.hmacGetSecret.output1);
 
     // Unwrap with HMAC output
-    const sk = await decryptWithAESGCM(wrappedSK, hmacOutput.slice(0, 32), wrappingIV);
+    const sk = await decryptWithAESGCM(
+      wrappedSK,
+      hmacOutput.slice(0, 32),
+      wrappingIV
+    );
 
     log('Secret key unwrapped with hmac-secret');
 
     return sk;
   } catch (error) {
-    log.error('Failed to unwrap secret key with hmac-secret: %s', error.message);
+    log.error(
+      'Failed to unwrap secret key with hmac-secret: %s',
+      error.message
+    );
     throw new Error(`Failed to unwrap secret key: ${error.message}`);
   }
 }
@@ -397,7 +425,13 @@ export async function unwrapSKWithHmacSecret(credentialId, wrappedSK, wrappingIV
  * @param {string} rpId - Relying party ID (domain)
  * @returns {Promise<Uint8Array>} Unwrapped secret key
  */
-export async function unwrapSKWithPRF(credentialId, wrappedSK, wrappingIV, salt, rpId) {
+export async function unwrapSKWithPRF(
+  credentialId,
+  wrappedSK,
+  wrappingIV,
+  salt,
+  rpId
+) {
   log('Unwrapping secret key with PRF');
 
   const prfEval = salt || crypto.getRandomValues(new Uint8Array(32));
@@ -406,18 +440,20 @@ export async function unwrapSKWithPRF(credentialId, wrappedSK, wrappingIV, salt,
     const assertion = await navigator.credentials.get({
       publicKey: {
         challenge: crypto.getRandomValues(new Uint8Array(32)),
-        allowCredentials: [{
-          id: credentialId,
-          type: 'public-key'
-        }],
+        allowCredentials: [
+          {
+            id: credentialId,
+            type: 'public-key',
+          },
+        ],
         rpId: rpId,
         userVerification: 'required',
         extensions: {
           prf: {
-            eval: { first: prfEval }
-          }
-        }
-      }
+            eval: { first: prfEval },
+          },
+        },
+      },
     });
 
     const { seed, source } = getPrfSeed(assertion, credentialId);
@@ -446,17 +482,19 @@ export async function storeEncryptedKeystore(data, credentialId) {
     ciphertext: Array.from(data.ciphertext),
     iv: Array.from(data.iv),
     credentialId: data.credentialId,
-    publicKey: data.publicKey ? {
-      ...data.publicKey,
-      x: data.publicKey.x ? Array.from(data.publicKey.x) : undefined,
-      y: data.publicKey.y ? Array.from(data.publicKey.y) : undefined
-    } : undefined,
+    publicKey: data.publicKey
+      ? {
+          ...data.publicKey,
+          x: data.publicKey.x ? Array.from(data.publicKey.x) : undefined,
+          y: data.publicKey.y ? Array.from(data.publicKey.y) : undefined,
+        }
+      : undefined,
     wrappedSK: data.wrappedSK ? Array.from(data.wrappedSK) : undefined,
     wrappingIV: data.wrappingIV ? Array.from(data.wrappingIV) : undefined,
     salt: data.salt ? Array.from(data.salt) : undefined,
     encryptionMethod: data.encryptionMethod || 'largeBlob',
     keyType: data.keyType,
-    timestamp: Date.now()
+    timestamp: Date.now(),
   };
 
   try {
@@ -491,17 +529,19 @@ export async function loadEncryptedKeystore(credentialId) {
       ciphertext: new Uint8Array(data.ciphertext),
       iv: new Uint8Array(data.iv),
       credentialId: data.credentialId,
-      publicKey: data.publicKey ? {
-        ...data.publicKey,
-        x: data.publicKey.x ? new Uint8Array(data.publicKey.x) : undefined,
-        y: data.publicKey.y ? new Uint8Array(data.publicKey.y) : undefined
-      } : undefined,
+      publicKey: data.publicKey
+        ? {
+            ...data.publicKey,
+            x: data.publicKey.x ? new Uint8Array(data.publicKey.x) : undefined,
+            y: data.publicKey.y ? new Uint8Array(data.publicKey.y) : undefined,
+          }
+        : undefined,
       wrappedSK: data.wrappedSK ? new Uint8Array(data.wrappedSK) : undefined,
       wrappingIV: data.wrappingIV ? new Uint8Array(data.wrappingIV) : undefined,
       salt: data.salt ? new Uint8Array(data.salt) : undefined,
       encryptionMethod: data.encryptionMethod || 'largeBlob',
       keyType: data.keyType,
-      timestamp: data.timestamp
+      timestamp: data.timestamp,
     };
 
     log('Encrypted keystore loaded successfully');
@@ -537,7 +577,7 @@ export async function clearEncryptedKeystore(credentialId) {
 export async function checkExtensionSupport() {
   const support = {
     largeBlob: false,
-    hmacSecret: false
+    hmacSecret: false,
   };
 
   if (!window.PublicKeyCredential) {
@@ -546,16 +586,19 @@ export async function checkExtensionSupport() {
 
   try {
     // Check largeBlob support
-    if (window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
-      const available = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+    if (
+      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable
+    ) {
+      const available =
+        await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
       // largeBlob is available in Chrome 106+, Edge 106+
-      support.largeBlob = available && 'largeBlob' in PublicKeyCredential.prototype;
+      support.largeBlob =
+        available && 'largeBlob' in PublicKeyCredential.prototype;
     }
 
     // hmac-secret support cannot be reliably detected without a real credential.
     // Keep it false by default and let users opt-in explicitly.
     support.hmacSecret = false;
-
   } catch (error) {
     log.error('Failed to check extension support: %s', error.message);
   }
@@ -575,5 +618,5 @@ export default {
   storeEncryptedKeystore,
   loadEncryptedKeystore,
   clearEncryptedKeystore,
-  checkExtensionSupport
+  checkExtensionSupport,
 };

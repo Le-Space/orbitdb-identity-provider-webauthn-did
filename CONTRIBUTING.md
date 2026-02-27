@@ -5,18 +5,21 @@ Thank you for your interest in contributing to the OrbitDB WebAuthn Identity Pro
 ## 🚀 Quick Start
 
 1. **Fork and clone the repository**
+
    ```bash
    git clone https://github.com/your-username/orbitdb-identity-provider-webauthn-did.git
    cd orbitdb-identity-provider-webauthn-did
    ```
 
 2. **Install dependencies**
+
    ```bash
    npm install
    cd examples/webauthn-todo-demo && npm install && cd ../..
    ```
 
 3. **Run the tests**
+
    ```bash
    npm run test:focused
    ```
@@ -62,20 +65,24 @@ npm run test:full-flow
 Tests are organized in phases:
 
 **Phase 1 - Initial Setup**
+
 - WebAuthn credential creation
 - Authentication and OrbitDB initialization
 - First TODO creation
 
 **Phase 2 - Browser Persistence**
-- Browser reload simulation  
+
+- Browser reload simulation
 - Credential persistence validation
 - Re-authentication with same identity
 
 **Phase 3 - Data Validation**
+
 - TODO data persistence across reload
 - Database integrity checks
 
 **Phase 4 - Continued Operations**
+
 - Additional TODO operations after reload
 - Biometric-secured database updates
 
@@ -121,7 +128,7 @@ For automated npm publishing, add these repository secrets:
 When working with WebAuthn functionality:
 
 - Always handle errors gracefully
-- Support both platform and cross-platform authenticators  
+- Support both platform and cross-platform authenticators
 - Include proper timeout handling
 - Test with mocked WebAuthn for CI compatibility
 
@@ -173,6 +180,7 @@ For demo app problems:
 ## 📋 Pull Request Process
 
 1. **Create a feature branch**
+
    ```bash
    git checkout -b feature/your-feature-name
    ```
@@ -183,6 +191,7 @@ For demo app problems:
    - Update documentation if needed
 
 3. **Test your changes**
+
    ```bash
    npm run test:focused
    ```
@@ -205,11 +214,13 @@ For demo app problems:
 ### For Maintainers
 
 1. **Ensure main branch is stable**
+
    ```bash
    npm run test:ci
    ```
 
 2. **Update version and changelog**
+
    ```bash
    npm version patch  # or minor/major
    ```

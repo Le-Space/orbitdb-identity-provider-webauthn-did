@@ -16,17 +16,18 @@ export default [
         setTimeout: 'readonly',
         clearTimeout: 'readonly',
         indexedDB: 'readonly',
-        localStorage: 'readonly'
-      }
+        localStorage: 'readonly',
+      },
     },
     rules: {
       'no-unused-vars': 'warn',
       'no-console': 'off',
-      'semi': ['error', 'always'],
-      'quotes': ['error', 'single'],
-      'indent': ['error', 2],
+      semi: ['error', 'always'],
+      quotes: ['error', 'single'],
+      // Prettier handles indentation to avoid formatter/linter conflicts.
+      indent: 'off',
       'no-trailing-spaces': 'error',
-      'eol-last': 'error'
-    }
-  }
+      'eol-last': 'error',
+    },
+  },
 ];

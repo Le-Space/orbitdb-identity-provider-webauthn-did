@@ -11,7 +11,10 @@ const encoder = new TextEncoder();
  * @returns {ArrayBuffer} ArrayBuffer slice.
  */
 function toArrayBuffer(bytes) {
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength
+  );
 }
 
 /**
@@ -31,13 +34,11 @@ function toBytes(data) {
  */
 async function buildChallengeBytes(domainLabel, payloadBytes) {
   const domain = encoder.encode(domainLabel);
-  const hash = await crypto.subtle.digest('SHA-256', concat([domain, payloadBytes]));
+  const hash = await crypto.subtle.digest(
+    'SHA-256',
+    concat([domain, payloadBytes])
+  );
   return new Uint8Array(hash);
 }
 
-export {
-  encoder,
-  toArrayBuffer,
-  toBytes,
-  buildChallengeBytes
-};
+export { encoder, toArrayBuffer, toBytes, buildChallengeBytes };

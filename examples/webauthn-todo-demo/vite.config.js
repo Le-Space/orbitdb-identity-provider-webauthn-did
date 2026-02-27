@@ -1,19 +1,19 @@
-import { sveltekit } from "@sveltejs/kit/vite";
-import { defineConfig } from "vite";
-import { nodePolyfills } from "vite-plugin-node-polyfills";
-import { fileURLToPath } from "url";
-import { readFileSync } from "fs";
+import { sveltekit } from '@sveltejs/kit/vite';
+import { defineConfig } from 'vite';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
+import { fileURLToPath } from 'url';
+import { readFileSync } from 'fs';
 
 // update version in package.json and title
-const file = fileURLToPath(new URL("package.json", import.meta.url));
-const json = readFileSync(file, "utf8");
+const file = fileURLToPath(new URL('package.json', import.meta.url));
+const json = readFileSync(file, 'utf8');
 const pkg = JSON.parse(json);
-const repoRootDir = fileURLToPath(new URL("../..", import.meta.url));
+const repoRootDir = fileURLToPath(new URL('../..', import.meta.url));
 
 // Create build date
 const buildDate =
-  new Date().toISOString().split("T")[0] +
-  " " +
+  new Date().toISOString().split('T')[0] +
+  ' ' +
   new Date().toLocaleTimeString(); // YYYY-MM-DD HH:MM:SS format
 
 export default defineConfig({
@@ -21,15 +21,15 @@ export default defineConfig({
     sveltekit(),
     nodePolyfills({
       include: [
-        "path",
-        "util",
-        "buffer",
-        "process",
-        "events",
-        "crypto",
-        "os",
-        "stream",
-        "string_decoder",
+        'path',
+        'util',
+        'buffer',
+        'process',
+        'events',
+        'crypto',
+        'os',
+        'stream',
+        'string_decoder',
       ],
       globals: {
         Buffer: true,

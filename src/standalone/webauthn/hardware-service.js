@@ -1,9 +1,12 @@
 import {
   clearWebAuthnVarsigCredential,
   loadWebAuthnVarsigCredential,
-  storeWebAuthnVarsigCredential
+  storeWebAuthnVarsigCredential,
 } from '../../varsig/storage.js';
-import { StandaloneWebAuthnVarsigSigner, createWebAuthnSigner } from './signers.js';
+import {
+  StandaloneWebAuthnVarsigSigner,
+  createWebAuthnSigner,
+} from './signers.js';
 
 const DEFAULT_STORAGE_KEY = 'webauthn_ed25519_hardware_signer';
 
@@ -16,7 +19,7 @@ function readLegacySignerMetadata(key) {
     if (typeof parsed?.did !== 'string') return null;
     return {
       did: parsed.did,
-      algorithm: parsed.algorithm === 'P-256' ? 'P-256' : 'Ed25519'
+      algorithm: parsed.algorithm === 'P-256' ? 'P-256' : 'Ed25519',
     };
   } catch {
     return null;
@@ -34,7 +37,7 @@ export function getStoredWebAuthnHardwareSignerInfo(key = DEFAULT_STORAGE_KEY) {
     if (credential?.did) {
       return {
         did: credential.did,
-        algorithm: credential.algorithm === 'P-256' ? 'P-256' : 'Ed25519'
+        algorithm: credential.algorithm === 'P-256' ? 'P-256' : 'Ed25519',
       };
     }
   } catch {

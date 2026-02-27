@@ -5,11 +5,13 @@ This demo uses the WebAuthn DID provider (P-256 DID) and signs each database wri
 ## Running the demo
 
 Install dependencies:
+
 ```sh
 npm install
 ```
 
 Start the dev server:
+
 ```sh
 npm run dev
 ```

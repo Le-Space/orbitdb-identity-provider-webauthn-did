@@ -10,7 +10,7 @@ import * as KeystoreEncryption from './keystore/encryption.js';
 import { WebAuthnDIDProvider } from './webauthn/provider.js';
 import {
   OrbitDBWebAuthnIdentityProvider,
-  OrbitDBWebAuthnIdentityProviderFunction
+  OrbitDBWebAuthnIdentityProviderFunction,
 } from './keystore/provider.js';
 import {
   WebAuthnVarsigProvider,
@@ -24,13 +24,13 @@ import {
   DEFAULT_DOMAIN_LABELS,
   storeWebAuthnVarsigCredential,
   loadWebAuthnVarsigCredential,
-  clearWebAuthnVarsigCredential
+  clearWebAuthnVarsigCredential,
 } from './varsig/index.js';
 
 export {
   WebAuthnDIDProvider,
   OrbitDBWebAuthnIdentityProvider,
-  OrbitDBWebAuthnIdentityProviderFunction
+  OrbitDBWebAuthnIdentityProviderFunction,
 };
 
 /**
@@ -56,31 +56,35 @@ export async function checkWebAuthnSupport() {
     supported: false,
     platformAuthenticator: false,
     error: null,
-    message: ''
+    message: '',
   };
 
   try {
     // Check basic WebAuthn support
     if (!WebAuthnDIDProvider.isSupported()) {
       support.error = 'WebAuthn is not supported in this browser';
-      support.message = 'Please use a modern browser that supports WebAuthn (Chrome 67+, Firefox 60+, Safari 14+)';
+      support.message =
+        'Please use a modern browser that supports WebAuthn (Chrome 67+, Firefox 60+, Safari 14+)';
       return support;
     }
 
     support.supported = true;
 
     // Check platform authenticator availability
-    support.platformAuthenticator = await WebAuthnDIDProvider.isPlatformAuthenticatorAvailable();
+    support.platformAuthenticator =
+      await WebAuthnDIDProvider.isPlatformAuthenticatorAvailable();
 
     if (support.platformAuthenticator) {
-      support.message = 'WebAuthn is fully supported! You can use Face ID, Touch ID, or Windows Hello for secure authentication.';
+      support.message =
+        'WebAuthn is fully supported! You can use Face ID, Touch ID, or Windows Hello for secure authentication.';
     } else {
-      support.message = 'WebAuthn is supported, but no biometric authenticator was detected. You may need to use a security key.';
+      support.message =
+        'WebAuthn is supported, but no biometric authenticator was detected. You may need to use a security key.';
     }
-
   } catch (error) {
     support.error = `WebAuthn support check failed: ${error.message}`;
-    support.message = 'Unable to determine WebAuthn support. Please check your browser settings.';
+    support.message =
+      'Unable to determine WebAuthn support. Please check your browser settings.';
   }
 
   return support;
@@ -91,18 +95,23 @@ export async function checkWebAuthnSupport() {
  * @param {Object} credential - The WebAuthn credential object
  * @param {string} key - The localStorage key (defaults to 'webauthn-credential')
  */
-export function storeWebAuthnCredential(credential, key = 'webauthn-credential') {
+export function storeWebAuthnCredential(
+  credential,
+  key = 'webauthn-credential'
+) {
   try {
     const serializedCredential = {
       ...credential,
       rawCredentialId: Array.from(credential.rawCredentialId),
       attestationObject: Array.from(credential.attestationObject),
-      prfInput: credential.prfInput ? Array.from(credential.prfInput) : undefined,
+      prfInput: credential.prfInput
+        ? Array.from(credential.prfInput)
+        : undefined,
       publicKey: {
         ...credential.publicKey,
         x: Array.from(credential.publicKey.x),
-        y: Array.from(credential.publicKey.y)
-      }
+        y: Array.from(credential.publicKey.y),
+      },
     };
     localStorage.setItem(key, JSON.stringify(serializedCredential));
   } catch (error) {
@@ -129,12 +138,15 @@ export function loadWebAuthnCredential(key = 'webauthn-credential') {
         publicKey: {
           ...parsed.publicKey,
           x: new Uint8Array(parsed.publicKey.x),
-          y: new Uint8Array(parsed.publicKey.y)
-        }
+          y: new Uint8Array(parsed.publicKey.y),
+        },
       };
     }
   } catch (error) {
-    console.warn('Failed to load WebAuthn credential from localStorage:', error);
+    console.warn(
+      'Failed to load WebAuthn credential from localStorage:',
+      error
+    );
     localStorage.removeItem(key);
   }
   return null;
@@ -174,7 +186,7 @@ export {
   DEFAULT_DOMAIN_LABELS,
   storeWebAuthnVarsigCredential,
   loadWebAuthnVarsigCredential,
-  clearWebAuthnVarsigCredential
+  clearWebAuthnVarsigCredential,
 } from './varsig/index.js';
 
 // Re-export individual verification functions for convenience
@@ -185,7 +197,7 @@ export {
   isValidWebAuthnDID,
   extractWebAuthnDIDSuffix,
   compareWebAuthnDIDs,
-  createVerificationResult
+  createVerificationResult,
 } from './verification.js';
 
 // Re-export individual keystore encryption functions for convenience
@@ -204,7 +216,7 @@ export {
   storeEncryptedKeystore,
   loadEncryptedKeystore,
   clearEncryptedKeystore,
-  checkExtensionSupport
+  checkExtensionSupport,
 } from './keystore/encryption.js';
 
 export default {
@@ -228,5 +240,5 @@ export default {
   storeWebAuthnVarsigCredential,
   loadWebAuthnVarsigCredential,
   clearWebAuthnVarsigCredential,
-  VerificationUtils
+  VerificationUtils,
 };

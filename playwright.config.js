@@ -3,6 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 const e2eTestPattern = '**/*e2e.test.js';
 const playwrightPort = process.env.PLAYWRIGHT_PORT || '5173';
 const baseURL = `http://localhost:${playwrightPort}`;
+const isCI = !!process.env.CI;
 
 export default defineConfig({
   testDir: './tests',
@@ -34,34 +35,41 @@ export default defineConfig({
   },
 
   /* Configure projects for major browsers */
-  projects: [
-    {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
-    },
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-      testIgnore: e2eTestPattern,
-    },
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-      testIgnore: e2eTestPattern,
-    },
+  projects: isCI
+    ? [
+        {
+          name: 'chromium',
+          use: { ...devices['Desktop Chrome'] },
+        },
+      ]
+    : [
+        {
+          name: 'chromium',
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          name: 'firefox',
+          use: { ...devices['Desktop Firefox'] },
+          testIgnore: e2eTestPattern,
+        },
+        {
+          name: 'webkit',
+          use: { ...devices['Desktop Safari'] },
+          testIgnore: e2eTestPattern,
+        },
 
-    /* Test against mobile viewports. */
-    {
-      name: 'Mobile Chrome',
-      use: { ...devices['Pixel 5'] },
-      testIgnore: e2eTestPattern,
-    },
-    {
-      name: 'Mobile Safari',
-      use: { ...devices['iPhone 12'] },
-      testIgnore: e2eTestPattern,
-    },
-  ],
+        /* Test against mobile viewports. */
+        {
+          name: 'Mobile Chrome',
+          use: { ...devices['Pixel 5'] },
+          testIgnore: e2eTestPattern,
+        },
+        {
+          name: 'Mobile Safari',
+          use: { ...devices['iPhone 12'] },
+          testIgnore: e2eTestPattern,
+        },
+      ],
 
   /* Run your local dev server before starting the tests */
   webServer: {
@@ -69,7 +77,8 @@ export default defineConfig({
       // Determine which demo to run based on test file or environment variable
       const testFile = process.env.PLAYWRIGHT_TEST_FILE || '';
       const cliArgs = process.argv.join(' ');
-      const useEncryptedDemo = testFile.includes('encrypted-keystore') ||
+      const useEncryptedDemo =
+        testFile.includes('encrypted-keystore') ||
         testFile.includes('ed25519-keystore-did') ||
         testFile.includes('simple-encryption') ||
         cliArgs.includes('ed25519-encrypted-keystore') ||
@@ -78,17 +87,18 @@ export default defineConfig({
         cliArgs.includes('simple-encryption') ||
         process.env.USE_ENCRYPTED_DEMO === 'true';
 
-      const useVarsigDemo = testFile.includes('varsig') ||
+      const useVarsigDemo =
+        testFile.includes('varsig') ||
         cliArgs.includes('varsig') ||
         process.env.USE_VARSIG_DEMO === 'true';
-      
+
       const demoDir = useEncryptedDemo
         ? 'examples/ed25519-encrypted-keystore-demo'
         : useVarsigDemo
           ? 'examples/webauthn-varsig-demo'
           : 'examples/webauthn-todo-demo';
-      
-      return process.env.CI 
+
+      return process.env.CI
         ? `cd ${demoDir} && npm run preview -- --port ${playwrightPort} --host`
         : `cd ${demoDir} && npm run dev -- --port ${playwrightPort} --host`;
     })(),

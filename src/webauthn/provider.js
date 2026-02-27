@@ -32,8 +32,11 @@ export class WebAuthnDIDProvider {
    * @returns {boolean} True if supported.
    */
   static isSupported() {
-    return window.PublicKeyCredential &&
-           typeof window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === 'function';
+    return (
+      window.PublicKeyCredential &&
+      typeof window.PublicKeyCredential
+        .isUserVerifyingPlatformAuthenticatorAvailable === 'function'
+    );
   }
 
   /**
@@ -46,7 +49,10 @@ export class WebAuthnDIDProvider {
     try {
       return await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
     } catch (error) {
-      console.warn('Failed to check platform authenticator availability:', error);
+      console.warn(
+        'Failed to check platform authenticator availability:',
+        error
+      );
       return false;
     }
   }
@@ -68,15 +74,19 @@ export class WebAuthnDIDProvider {
       displayName,
       domain,
       encryptKeystore = false,
-      keystoreEncryptionMethod = 'prf'
+      keystoreEncryptionMethod = 'prf',
     } = {
       userId: `orbitdb-user-${Date.now()}`,
       displayName: 'Local-First Peer-to-Peer OrbitDB User',
       domain: window.location.hostname,
-      ...options
+      ...options,
     };
 
-    webauthnLog('createCredential() called with options: %o', { userId, displayName, domain });
+    webauthnLog('createCredential() called with options: %o', {
+      userId,
+      displayName,
+      domain,
+    });
 
     if (!this.isSupported()) {
       webauthnLog.error('WebAuthn is not supported in this browser');
@@ -95,26 +105,26 @@ export class WebAuthnDIDProvider {
         challenge,
         rp: {
           name: 'OrbitDB Identity',
-          id: domain
+          id: domain,
         },
         user: {
           id: userIdBytes,
           name: userId,
-          displayName
+          displayName,
         },
         pubKeyCredParams: [
           { alg: -7, type: 'public-key' }, // ES256 (P-256 curve)
-          { alg: -257, type: 'public-key' } // RS256 fallback
+          { alg: -257, type: 'public-key' }, // RS256 fallback
         ],
         authenticatorSelection: {
           authenticatorAttachment: 'platform', // Prefer built-in authenticators
           requireResidentKey: false,
           residentKey: 'preferred',
-          userVerification: 'required' // Require biometric/PIN
+          userVerification: 'required', // Require biometric/PIN
         },
         timeout: 60000,
-        attestation: 'none' // Don't need attestation for DID creation
-      }
+        attestation: 'none', // Don't need attestation for DID creation
+      },
     };
 
     // Add encryption extension if requested
@@ -129,9 +139,10 @@ export class WebAuthnDIDProvider {
         credentialOptions.publicKey = prfConfig.credentialOptions;
         prfInput = prfConfig.prfInput;
       } else if (keystoreEncryptionMethod === 'hmac-secret') {
-        credentialOptions.publicKey = KeystoreEncryption.addHmacSecretToCredentialOptions(
-          credentialOptions.publicKey
-        );
+        credentialOptions.publicKey =
+          KeystoreEncryption.addHmacSecretToCredentialOptions(
+            credentialOptions.publicKey
+          );
       }
       // Note: largeBlob write happens after credential creation
     }
@@ -140,13 +151,17 @@ export class WebAuthnDIDProvider {
       const credential = await navigator.credentials.create(credentialOptions);
 
       if (!credential) {
-        webauthnLog.error('Failed to create WebAuthn credential - credential is null');
+        webauthnLog.error(
+          'Failed to create WebAuthn credential - credential is null'
+        );
         throw new Error('Failed to create WebAuthn credential');
       }
 
       webauthnLog('Credential created successfully: %o', {
-        credentialId: this.arrayBufferToBase64url(credential.rawId).substring(0, 16) + '...',
-        type: credential.type
+        credentialId:
+          this.arrayBufferToBase64url(credential.rawId).substring(0, 16) +
+          '...',
+        type: credential.type,
       });
 
       webauthnLog('Extracting public key from credential...');
@@ -154,7 +169,12 @@ export class WebAuthnDIDProvider {
       // Extract public key from credential with timeout
       const publicKey = await Promise.race([
         this.extractPublicKey(credential),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Public key extraction timeout')), 10000))
+        new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error('Public key extraction timeout')),
+            10000
+          )
+        ),
       ]);
 
       webauthnLog('Public key extracted successfully: %o', {
@@ -162,23 +182,26 @@ export class WebAuthnDIDProvider {
         keyType: publicKey.keyType,
         curve: publicKey.curve,
         hasX: !!publicKey.x,
-        hasY: !!publicKey.y
+        hasY: !!publicKey.y,
       });
 
       const result = {
-        credentialId: WebAuthnDIDProvider.arrayBufferToBase64url(credential.rawId),
+        credentialId: WebAuthnDIDProvider.arrayBufferToBase64url(
+          credential.rawId
+        ),
         rawCredentialId: new Uint8Array(credential.rawId),
         publicKey,
         userId,
         displayName,
-        attestationObject: new Uint8Array(credential.response.attestationObject),
-        prfInput: prfInput || undefined
+        attestationObject: new Uint8Array(
+          credential.response.attestationObject
+        ),
+        prfInput: prfInput || undefined,
       };
 
       webauthnLog('Credential creation completed successfully');
 
       return result;
-
     } catch (error) {
       console.error('WebAuthn credential creation failed:', error);
 
@@ -214,13 +237,19 @@ export class WebAuthnDIDProvider {
         throw new Error('CBOR decoder not available from cbor-web');
       }
 
-      const attestationObject = decode(new Uint8Array(credential.response.attestationObject));
+      const attestationObject = decode(
+        new Uint8Array(credential.response.attestationObject)
+      );
       const authData = attestationObject.authData;
 
       // Parse authenticator data structure
       // Skip: rpIdHash (32 bytes) + flags (1 byte) + signCount (4 bytes)
       const credentialDataStart = 32 + 1 + 4 + 16 + 2; // +16 for AAGUID, +2 for credentialIdLength
-      const credentialIdLength = new DataView(authData.buffer, 32 + 1 + 4 + 16, 2).getUint16(0);
+      const credentialIdLength = new DataView(
+        authData.buffer,
+        32 + 1 + 4 + 16,
+        2
+      ).getUint16(0);
       const publicKeyDataStart = credentialDataStart + credentialIdLength;
 
       // Extract and decode the public key (CBOR format)
@@ -233,11 +262,13 @@ export class WebAuthnDIDProvider {
         x: new Uint8Array(publicKeyObject[-2]), // x coordinate
         y: new Uint8Array(publicKeyObject[-3]), // y coordinate
         keyType: publicKeyObject[1], // kty parameter
-        curve: publicKeyObject[-1]   // crv parameter
+        curve: publicKeyObject[-1], // crv parameter
       };
-
     } catch (error) {
-      console.warn('Failed to extract real public key from WebAuthn credential, using fallback:', error);
+      console.warn(
+        'Failed to extract real public key from WebAuthn credential, using fallback:',
+        error
+      );
 
       // Fallback: Create deterministic public key from credential ID
       // This ensures the SAME public key is generated every time for the same credential
@@ -249,7 +280,7 @@ export class WebAuthnDIDProvider {
       // Create a second hash for the y coordinate to ensure uniqueness but determinism
       const yData = new Uint8Array(credentialId.length + 4);
       yData.set(credentialId, 0);
-      yData.set([0x59, 0x43, 0x4F, 0x4F], credentialId.length); // "YCOO" marker
+      yData.set([0x59, 0x43, 0x4f, 0x4f], credentialId.length); // "YCOO" marker
       const yHash = await crypto.subtle.digest('SHA-256', yData);
       const ySeed = new Uint8Array(yHash);
 
@@ -258,9 +289,8 @@ export class WebAuthnDIDProvider {
         x: seed.slice(0, 32), // Use first 32 bytes as x coordinate
         y: ySeed.slice(0, 32), // Deterministic y coordinate based on credential
         keyType: 2, // EC2 key type
-        curve: 1    // P-256 curve
+        curve: 1, // P-256 curve
       };
-
 
       return fallbackKey;
     }
@@ -305,16 +335,20 @@ export class WebAuthnDIDProvider {
       publicKeyBytes.set(x, 1);
       publicKeyBytes.set(y, 33);
 
-      const multikey = new Uint8Array(codecBytes.length + publicKeyBytes.length);
+      const multikey = new Uint8Array(
+        codecBytes.length + publicKeyBytes.length
+      );
       multikey.set(codecBytes, 0);
       multikey.set(publicKeyBytes, codecBytes.length);
 
       // Encode as base58btc and create did:key
       const multikeyEncoded = base58btc.encode(multikey);
       return `did:key:${multikeyEncoded}`;
-
     } catch (error) {
-      console.warn('Failed to create DID with multiformats, using fallback:', error);
+      console.warn(
+        'Failed to create DID with multiformats, using fallback:',
+        error
+      );
 
       // Fallback: Simple DID creation without multiformats dependency
       const { x, y } = credentialInfo.publicKey;
@@ -325,7 +359,8 @@ export class WebAuthnDIDProvider {
       combined.set(y, x.length);
 
       // Simple base58-like encoding for fallback
-      const base58Chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+      const base58Chars =
+        '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
       let encoded = 'z'; // base58btc prefix
 
       for (let i = 0; i < Math.min(combined.length, 32); i += 4) {
@@ -364,35 +399,54 @@ export class WebAuthnDIDProvider {
       webauthnLog('Signer context: %o', {
         signer: 'webauthn',
         credentialIdPrefix: this.credentialId?.slice?.(0, 12),
-        rawCredentialIdLength: this.rawCredentialId?.length
+        rawCredentialIdLength: this.rawCredentialId?.length,
       });
-      const dataBytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
+      const dataBytes =
+        typeof data === 'string'
+          ? new TextEncoder().encode(data)
+          : new Uint8Array(data);
       const dataHash = await crypto.subtle.digest('SHA-256', dataBytes);
-      const dataHashStr = Array.from(new Uint8Array(dataHash)).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
+      const dataHashStr = Array.from(new Uint8Array(dataHash))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('')
+        .substring(0, 16);
 
-      webauthnLog('sign() called with data length: %d, hash: %s...', dataBytes.length, dataHashStr);
+      webauthnLog(
+        'sign() called with data length: %d, hash: %s...',
+        dataBytes.length,
+        dataHashStr
+      );
 
       // Create a deterministic challenge based on the credential ID and data
-      const combined = new Uint8Array(this.rawCredentialId.length + dataBytes.length);
+      const combined = new Uint8Array(
+        this.rawCredentialId.length + dataBytes.length
+      );
       combined.set(this.rawCredentialId, 0);
       combined.set(dataBytes, this.rawCredentialId.length);
       const challenge = await crypto.subtle.digest('SHA-256', combined);
-      const challengeHashStr = Array.from(new Uint8Array(challenge)).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
+      const challengeHashStr = Array.from(new Uint8Array(challenge))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('')
+        .substring(0, 16);
 
       webauthnLog('Challenge created: %s...', challengeHashStr);
-      webauthnLog('Calling navigator.credentials.get() - biometric prompt should appear');
+      webauthnLog(
+        'Calling navigator.credentials.get() - biometric prompt should appear'
+      );
 
       // Use WebAuthn to authenticate (this proves the user is present and verified)
       const assertion = await navigator.credentials.get({
         publicKey: {
           challenge,
-          allowCredentials: [{
-            id: this.rawCredentialId,
-            type: 'public-key'
-          }],
+          allowCredentials: [
+            {
+              id: this.rawCredentialId,
+              type: 'public-key',
+            },
+          ],
           userVerification: 'required',
-          timeout: 60000
-        }
+          timeout: 60000,
+        },
       });
 
       if (!assertion) {
@@ -403,7 +457,7 @@ export class WebAuthnDIDProvider {
       webauthnLog('Assertion received from navigator.credentials.get(): %o', {
         hasAuthenticatorData: !!assertion.response.authenticatorData,
         hasSignature: !!assertion.response.signature,
-        signatureLength: assertion.response.signature?.byteLength || 0
+        signatureLength: assertion.response.signature?.byteLength || 0,
       });
 
       // Create a signature that includes the original data and credential proof
@@ -411,24 +465,36 @@ export class WebAuthnDIDProvider {
       webauthnLog('Creating proof object...');
       const webauthnProof = {
         credentialId: this.credentialId,
-        dataHash: WebAuthnDIDProvider.arrayBufferToBase64url(await crypto.subtle.digest('SHA-256', dataBytes)),
-        authenticatorData: WebAuthnDIDProvider.arrayBufferToBase64url(assertion.response.authenticatorData),
-        clientDataJSON: new TextDecoder().decode(assertion.response.clientDataJSON),
-        signature: WebAuthnDIDProvider.arrayBufferToBase64url(assertion.response.signature),
-        timestamp: Date.now()
+        dataHash: WebAuthnDIDProvider.arrayBufferToBase64url(
+          await crypto.subtle.digest('SHA-256', dataBytes)
+        ),
+        authenticatorData: WebAuthnDIDProvider.arrayBufferToBase64url(
+          assertion.response.authenticatorData
+        ),
+        clientDataJSON: new TextDecoder().decode(
+          assertion.response.clientDataJSON
+        ),
+        signature: WebAuthnDIDProvider.arrayBufferToBase64url(
+          assertion.response.signature
+        ),
+        timestamp: Date.now(),
       };
 
       webauthnLog('Proof created successfully: %o', {
         credentialId: webauthnProof.credentialId.substring(0, 16) + '...',
         dataHash: webauthnProof.dataHash.substring(0, 16) + '...',
-        timestamp: webauthnProof.timestamp
+        timestamp: webauthnProof.timestamp,
       });
 
       // Return the proof as a base64url encoded string for OrbitDB
-      const encodedProof = WebAuthnDIDProvider.arrayBufferToBase64url(new TextEncoder().encode(JSON.stringify(webauthnProof)));
-      webauthnLog('sign() completed successfully, proof length: %d', encodedProof.length);
+      const encodedProof = WebAuthnDIDProvider.arrayBufferToBase64url(
+        new TextEncoder().encode(JSON.stringify(webauthnProof))
+      );
+      webauthnLog(
+        'sign() completed successfully, proof length: %d',
+        encodedProof.length
+      );
       return encodedProof;
-
     } catch (error) {
       webauthnLog.error('WebAuthn signing failed: %s', error.message);
 
@@ -449,11 +515,15 @@ export class WebAuthnDIDProvider {
    * @returns {Promise<boolean>} True if verification succeeds.
    */
   async verify(signatureData) {
-    webauthnLog('verify() called with signature length: %d', signatureData.length);
+    webauthnLog(
+      'verify() called with signature length: %d',
+      signatureData.length
+    );
 
     try {
       // Decode the WebAuthn proof object
-      const proofBytes = WebAuthnDIDProvider.base64urlToArrayBuffer(signatureData);
+      const proofBytes =
+        WebAuthnDIDProvider.base64urlToArrayBuffer(signatureData);
       const proofText = new TextDecoder().decode(proofBytes);
       const proof = JSON.parse(proofText);
 
@@ -465,7 +535,9 @@ export class WebAuthnDIDProvider {
       // Check if credential ID matches
       webauthnLog('Verification step: checking credential ID');
       if (proof.credentialId !== this.credentialId) {
-        webauthnLog.error('Credential ID mismatch in WebAuthn proof verification');
+        webauthnLog.error(
+          'Credential ID mismatch in WebAuthn proof verification'
+        );
         throw new Error('Credential ID mismatch');
       }
       webauthnLog('Verification step: credential ID check PASSED');
@@ -492,7 +564,10 @@ export class WebAuthnDIDProvider {
         webauthnLog.error('WebAuthn proof is too old: %d ms', proofAge);
         throw new Error('WebAuthn proof has expired');
       }
-      webauthnLog('Verification step: timestamp check PASSED (age: %d ms)', proofAge);
+      webauthnLog(
+        'Verification step: timestamp check PASSED (age: %d ms)',
+        proofAge
+      );
 
       // Verify authenticator data exists
       webauthnLog('Verification step: checking authenticator data');
@@ -504,9 +579,11 @@ export class WebAuthnDIDProvider {
 
       webauthnLog('Verification result: SUCCESS');
       return true;
-
     } catch (error) {
-      webauthnLog.error('WebAuthn proof verification failed: %s', error.message);
+      webauthnLog.error(
+        'WebAuthn proof verification failed: %s',
+        error.message
+      );
       return false;
     }
   }

@@ -18,7 +18,6 @@ This package provides:
 
 Note: WebAuthn varsig support in this repo relies on our forked `@le-space/iso-*` packages of [Hugo Dias iso-repo](https://github.com/hugomrdias/iso-repo/) (notably `@le-space/iso-did` and `@le-space/iso-webauthn-varsig`) to align with the updated varsig flow.
 
-
 ## Install
 
 ```bash
@@ -30,26 +29,34 @@ Note: `@orbitdb/core` is patched (via `patch-package`) to support Ed25519 keysto
 ## Memory Keystore Quick Start
 
 ```javascript
-import { WebAuthnDIDProvider, OrbitDBWebAuthnIdentityProviderFunction } from '@le-space/orbitdb-identity-provider-webauthn-did';
+import {
+  WebAuthnDIDProvider,
+  OrbitDBWebAuthnIdentityProviderFunction,
+} from '@le-space/orbitdb-identity-provider-webauthn-did';
 
 const credential = await WebAuthnDIDProvider.createCredential({
   userId: 'alice@example.com',
-  displayName: 'Alice'
+  displayName: 'Alice',
 });
 
 const identity = await identities.createIdentity({
-  provider: OrbitDBWebAuthnIdentityProviderFunction({ webauthnCredential: credential })
+  provider: OrbitDBWebAuthnIdentityProviderFunction({
+    webauthnCredential: credential,
+  }),
 });
 ```
 
 ### Hardware-Secured Varsig Quick Start
 
 ```javascript
-import { WebAuthnVarsigProvider, createWebAuthnVarsigIdentity } from '@le-space/orbitdb-identity-provider-webauthn-did';
+import {
+  WebAuthnVarsigProvider,
+  createWebAuthnVarsigIdentity,
+} from '@le-space/orbitdb-identity-provider-webauthn-did';
 
 const credential = await WebAuthnVarsigProvider.createCredential({
   userId: 'alice@example.com',
-  displayName: 'Alice'
+  displayName: 'Alice',
 });
 
 const identity = await createWebAuthnVarsigIdentity({ credential });
@@ -63,13 +70,13 @@ Use the standalone export when you want WebAuthn signer and worker-keystore feat
 import {
   createWebAuthnSigner,
   WebAuthnHardwareSignerService,
-  createWorkerKeystoreClient
+  createWorkerKeystoreClient,
 } from '@le-space/orbitdb-identity-provider-webauthn-did/standalone';
 
 // Create a hardware-backed WebAuthn varsig signer
 const signer = await createWebAuthnSigner({
   userId: 'alice@example.com',
-  displayName: 'Alice'
+  displayName: 'Alice',
 });
 
 // Optional: bridge to UCAN signer surface
@@ -77,7 +84,10 @@ const ucantoSigner = signer.toUcantoSigner();
 
 // Optional: persisted hardware signer lifecycle
 const hardwareService = new WebAuthnHardwareSignerService();
-await hardwareService.initialize({ userId: 'alice@example.com', displayName: 'Alice' });
+await hardwareService.initialize({
+  userId: 'alice@example.com',
+  displayName: 'Alice',
+});
 
 // Optional: worker-based Ed25519 keystore client
 const workerClient = createWorkerKeystoreClient();
@@ -96,12 +106,11 @@ const orbitdbUcantoSigner = signer.toUcantoSigner();
 
 // UCAN-specific override
 const ucanUcantoSigner = signer.toUcantoSigner({
-  domainLabel: 'ucan-webauthn-v1:'
+  domainLabel: 'ucan-webauthn-v1:',
 });
 ```
 
 The verifier side and app protocol should define which domain label is required. IPFS deployment does not change this requirement.
-
 
 ### Keystore-based DID (WebAuthn + OrbitDB keystore)
 
@@ -153,7 +162,7 @@ sequenceDiagram
   DB->>KS: sign entry with keystore key
   KS-->>DB: Entry signature
 
-  Note over App,KS: Keystore private key is stored encrypted at rest.
+  Note over App,KS: Keystore private key is encrypted at rest when `encryptKeystore=true`.
 ```
 
 ### Varsig (no keystore)
@@ -197,16 +206,19 @@ sequenceDiagram
 ## Examples
 
 Svelte demos:
+
 - `examples/webauthn-todo-demo/` - WebAuthn DID (no keystore signing; identity-only).
 - `examples/ed25519-encrypted-keystore-demo/` - Ed25519 keystore DID; keystore encrypted at rest with WebAuthn (PRF when available, otherwise largeBlob/hmac-secret).
 - `examples/webauthn-varsig-demo/` - Varsig provider with passkey signing for each entry. Live demo: https://dweb.link/ipfs/bafybeib6tpwiby7pik67ufb3lxpr3j4by2l7r3ov3zzk6hjbzjzgsvckhy
 
 Scripted examples:
+
 - `examples/ed25519-keystore-did-example.js` - Keystore DID flow.
 - `examples/encrypted-keystore-example.js` - Keystore encryption flow.
 - `examples/simple-encryption-integration.js` - Keystore + database content encryption.
 
 Mermaid sequences for scripts:
+
 - `docs/EXAMPLE-SEQUENCES.md`
 
 ## Documentation

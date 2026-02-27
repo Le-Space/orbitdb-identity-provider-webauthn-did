@@ -9,6 +9,7 @@ This branch implements a new flag `useKeystoreDID` that allows creating **Ed2551
 ### 1. Core Implementation (`src/index.js`)
 
 #### Modified `OrbitDBWebAuthnIdentityProvider` class:
+
 - Added `useKeystoreDID` flag to constructor
 - Added `keystore` parameter to constructor
 - Modified `getId()` to check flag and route to appropriate DID creation method
@@ -19,17 +20,20 @@ This branch implements a new flag `useKeystoreDID` that allows creating **Ed2551
   - Returns `did:key:z6Mk...` format
 
 #### Updated `createIdentity()` static method:
+
 - Accepts `useKeystoreDID` and `keystore` parameters
 - Passes them to provider constructor
 - Logs DID type in identity creation
 
 #### Enhanced documentation:
+
 - Added JSDoc comments for new parameters
 - Documented the `useKeystoreDID` flag usage
 
 ### 2. Documentation
 
 #### New files:
+
 - **`docs/ED25519-KEYSTORE-DID.md`**: Comprehensive documentation including:
   - Feature overview and motivation
   - Usage examples
@@ -40,7 +44,8 @@ This branch implements a new flag `useKeystoreDID` that allows creating **Ed2551
   - FAQ
 
 #### Updated files:
-- **`README.md`**: 
+
+- **`README.md`**:
   - Added Ed25519 keystore DID to features list
   - Added "New: Ed25519 Keystore DID Option" section
   - Linked to documentation
@@ -71,9 +76,9 @@ This branch implements a new flag `useKeystoreDID` that allows creating **Ed2551
 
 ```javascript
 const identity = await orbitdb.identities.createIdentity({
-  provider: OrbitDBWebAuthnIdentityProviderFunction({ 
-    webauthnCredential: credential
-  })
+  provider: OrbitDBWebAuthnIdentityProviderFunction({
+    webauthnCredential: credential,
+  }),
 });
 // DID: did:key:zDna... (P-256)
 ```
@@ -82,11 +87,11 @@ const identity = await orbitdb.identities.createIdentity({
 
 ```javascript
 const identity = await orbitdb.identities.createIdentity({
-  provider: OrbitDBWebAuthnIdentityProviderFunction({ 
+  provider: OrbitDBWebAuthnIdentityProviderFunction({
     webauthnCredential: credential,
-    useKeystoreDID: true,        // 🎯 Enable Ed25519 keystore DID
-    keystore: orbitdb.keystore   // 🎯 Pass keystore instance
-  })
+    useKeystoreDID: true, // 🎯 Enable Ed25519 keystore DID
+    keystore: orbitdb.keystore, // 🎯 Pass keystore instance
+  }),
 });
 // DID: did:key:z6Mk... (Ed25519)
 ```
@@ -124,6 +129,7 @@ did:key:z6Mk...
 ## Testing
 
 All tests pass:
+
 ```bash
 npm test
 # ✓ 4 existing tests pass (webauthn-focused.test.js)
@@ -141,6 +147,7 @@ npm test
 ## Security Considerations
 
 ⚠️ **Important Notes:**
+
 - WebAuthn is still required for authentication
 - Keystore is currently unencrypted (OrbitDB limitation)
 - Ed25519 key is software-based (not hardware-backed)
@@ -155,6 +162,6 @@ npm test
 ## References
 
 - [Ed25519 Keystore DID Documentation](./docs/ED25519-KEYSTORE-DID.md)
-- [Keystore Security Architecture](./docs/KEYSTORE-SECURITY-ARCHITECTURE.md)
+- [WebAuthn-Encrypted Keystore Integration](./docs/WEBAUTHN-ENCRYPTED-KEYSTORE-INTEGRATION.md)
 - [UCAN Specification](https://github.com/ucan-wg/spec)
 - [DID Key Format](https://w3c-ccg.github.io/did-method-key/)

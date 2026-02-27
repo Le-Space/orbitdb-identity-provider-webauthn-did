@@ -9,10 +9,12 @@ This feature adds support for creating **Ed25519 DIDs from the OrbitDB keystore*
 ### The Problem
 
 In the default implementation:
+
 - **Identity DID**: Derived from WebAuthn P-256 public key (hardware-backed)
 - **Database operations**: Signed by OrbitDB Ed25519 keystore (software key)
 
 This creates a **key mismatch**:
+
 - The DID represents one key (P-256 from WebAuthn)
 - Database entries are signed by a different key (Ed25519 from keystore)
 - Two separate cryptographic identities for one user
@@ -20,6 +22,7 @@ This creates a **key mismatch**:
 ### The Solution
 
 With the `useKeystoreDID` flag:
+
 - **Identity DID**: Derived from Ed25519 keystore public key
 - **Database operations**: Signed by the same Ed25519 keystore key
 - **WebAuthn**: Still used for authentication and session establishment
@@ -30,13 +33,16 @@ With the `useKeystoreDID` flag:
 ### Basic Usage
 
 ```javascript
-import { WebAuthnDIDProvider, OrbitDBWebAuthnIdentityProviderFunction } from 'orbitdb-identity-provider-webauthn-did';
+import {
+  WebAuthnDIDProvider,
+  OrbitDBWebAuthnIdentityProviderFunction,
+} from '@le-space/orbitdb-identity-provider-webauthn-did';
 import { createOrbitDB } from '@orbitdb/core';
 
 // Create WebAuthn credential (for authentication)
 const credential = await WebAuthnDIDProvider.createCredential({
   userId: 'user@example.com',
-  displayName: 'User Name'
+  displayName: 'User Name',
 });
 
 // Initialize OrbitDB
@@ -44,11 +50,11 @@ const orbitdb = await createOrbitDB({ ipfs });
 
 // Create identity with Ed25519 keystore DID
 const identity = await orbitdb.identities.createIdentity({
-  provider: OrbitDBWebAuthnIdentityProviderFunction({ 
+  provider: OrbitDBWebAuthnIdentityProviderFunction({
     webauthnCredential: credential,
-    useKeystoreDID: true,        // 🎯 Enable Ed25519 keystore DID
-    keystore: orbitdb.keystore   // 🎯 Pass keystore instance
-  })
+    useKeystoreDID: true, // 🎯 Enable Ed25519 keystore DID
+    keystore: orbitdb.keystore, // 🎯 Pass keystore instance
+  }),
 });
 
 console.log(`Ed25519 DID: ${identity.id}`);
@@ -62,9 +68,9 @@ console.log(`Ed25519 DID: ${identity.id}`);
 ```javascript
 // Without the flag - uses P-256 from WebAuthn
 const identity = await orbitdb.identities.createIdentity({
-  provider: OrbitDBWebAuthnIdentityProviderFunction({ 
-    webauthnCredential: credential
-  })
+  provider: OrbitDBWebAuthnIdentityProviderFunction({
+    webauthnCredential: credential,
+  }),
 });
 
 // DID: did:key:zDna... (P-256-based, starts with 'zDna')
@@ -75,11 +81,11 @@ const identity = await orbitdb.identities.createIdentity({
 ```javascript
 // With the flag - uses Ed25519 from keystore
 const identity = await orbitdb.identities.createIdentity({
-  provider: OrbitDBWebAuthnIdentityProviderFunction({ 
+  provider: OrbitDBWebAuthnIdentityProviderFunction({
     webauthnCredential: credential,
     useKeystoreDID: true,
-    keystore: orbitdb.keystore
-  })
+    keystore: orbitdb.keystore,
+  }),
 });
 
 // DID: did:key:z6Mk... (Ed25519-based, starts with 'z6Mk')
@@ -93,11 +99,11 @@ const identity = await orbitdb.identities.createIdentity({
 interface Options {
   // WebAuthn credential for authentication (required)
   webauthnCredential: WebAuthnCredential;
-  
+
   // If true, creates Ed25519 DID from keystore instead of P-256 DID from WebAuthn
   // Default: false
   useKeystoreDID?: boolean;
-  
+
   // OrbitDB keystore instance (required if useKeystoreDID is true)
   keystore?: KeyStore;
 }
@@ -140,6 +146,7 @@ did:key:z6Mk... (Ed25519 multicodec prefix: 0xed)
 ```
 
 **Structure:**
+
 1. Multicodec prefix: `0xed` (Ed25519 public key)
 2. Public key bytes: 32 bytes from keystore
 3. Encoded as base58btc
@@ -152,6 +159,7 @@ did:key:zDna... (P-256 multicodec prefix: 0x1200)
 ```
 
 **Structure:**
+
 1. Multicodec prefix: `0x1200` (P-256 public key)
 2. Compressed public key: 33 bytes from WebAuthn
 3. Encoded as base58btc
@@ -196,6 +204,7 @@ did:key:z6Mk...
 ### 1. Unified Key Management
 
 ✅ **Single key for identity and operations**
+
 - DID derived from Ed25519 keystore key
 - Database entries signed by same Ed25519 key
 - No key mismatch between identity and operations
@@ -203,6 +212,7 @@ did:key:z6Mk...
 ### 2. Better UCAN Compatibility
 
 ✅ **Ed25519 is widely supported in UCAN**
+
 - Most UCAN implementations prefer Ed25519
 - Better interoperability with IPFS/Filecoin ecosystem
 - Simplified delegation chains
@@ -210,6 +220,7 @@ did:key:z6Mk...
 ### 3. Simplified Security Model
 
 ✅ **Clear separation of concerns**
+
 - WebAuthn: Authentication and session establishment
 - Ed25519 Keystore: Identity and database operations
 - Easier to reason about security properties
@@ -217,6 +228,7 @@ did:key:z6Mk...
 ### 4. Backward Compatible
 
 ✅ **Opt-in feature**
+
 - Default behavior unchanged (P-256 from WebAuthn)
 - Existing applications continue to work
 - Can be enabled with a single flag
@@ -228,6 +240,7 @@ did:key:z6Mk...
 ⚠️ **WebAuthn is still mandatory** even with `useKeystoreDID: true`
 
 The WebAuthn credential is used for:
+
 - User authentication
 - Session establishment
 - Proving user presence
@@ -238,17 +251,20 @@ The WebAuthn credential is used for:
 ⚠️ **Keystore is stored in browser/filesystem**
 
 The Ed25519 keystore key is:
+
 - Stored in IndexedDB (browser) or filesystem (Node.js)
 - **Currently unencrypted** (OrbitDB limitation)
 - Vulnerable to XSS, malicious extensions, physical access
 
-**Recommendation:** 
+**Recommendation:**
+
 - Use WebAuthn-encrypted keystore (future enhancement)
-- See [Keystore Security Architecture](./KEYSTORE-SECURITY-ARCHITECTURE.md)
+- See [WebAuthn-Encrypted Keystore Integration](./WEBAUTHN-ENCRYPTED-KEYSTORE-INTEGRATION.md)
 
 ### Identity Trust Model
 
 With `useKeystoreDID: true`:
+
 - ✅ Identity is tied to keystore key
 - ✅ Database operations provably from same key
 - ⚠️ Keystore key is software-based (not hardware-backed)
@@ -265,18 +281,18 @@ If you have existing applications using P-256 DIDs and want to switch:
 ```javascript
 // Before
 const identity = await orbitdb.identities.createIdentity({
-  provider: OrbitDBWebAuthnIdentityProviderFunction({ 
-    webauthnCredential: credential
-  })
+  provider: OrbitDBWebAuthnIdentityProviderFunction({
+    webauthnCredential: credential,
+  }),
 });
 
 // After
 const identity = await orbitdb.identities.createIdentity({
-  provider: OrbitDBWebAuthnIdentityProviderFunction({ 
+  provider: OrbitDBWebAuthnIdentityProviderFunction({
     webauthnCredential: credential,
-    useKeystoreDID: true,          // Add this
-    keystore: orbitdb.keystore     // Add this
-  })
+    useKeystoreDID: true, // Add this
+    keystore: orbitdb.keystore, // Add this
+  }),
 });
 ```
 
@@ -288,6 +304,7 @@ const identity = await orbitdb.identities.createIdentity({
 - New DID: `did:key:z6Mk...` (Ed25519)
 
 This means:
+
 - New identity in OrbitDB
 - Databases need to be re-permissioned
 - Cannot access old databases without P-256 DID
@@ -325,12 +342,12 @@ npm test
 
 ```javascript
 const identity = await orbitdb.identities.createIdentity({
-  provider: OrbitDBWebAuthnIdentityProviderFunction({ 
+  provider: OrbitDBWebAuthnIdentityProviderFunction({
     webauthnCredential: credential,
     useKeystoreDID: true,
     keystore: orbitdb.keystore,
-    encryptKeystore: true  // 🔮 Future feature
-  })
+    encryptKeystore: true, // 🔮 Future feature
+  }),
 });
 ```
 
@@ -340,7 +357,7 @@ const identity = await orbitdb.identities.createIdentity({
 // 🔮 Future feature
 await identity.rotateKey({
   newKeyType: 'ed25519',
-  preserveDID: true
+  preserveDID: true,
 });
 ```
 
@@ -349,7 +366,7 @@ await identity.rotateKey({
 ```javascript
 // 🔮 Future feature (if WebAuthn adds Ed25519 support)
 const credential = await WebAuthnDIDProvider.createCredential({
-  algorithm: 'Ed25519'  // Currently only P-256 is widely supported
+  algorithm: 'Ed25519', // Currently only P-256 is widely supported
 });
 ```
 
@@ -369,17 +386,18 @@ const credential = await WebAuthnDIDProvider.createCredential({
 
 ### Q: Is the Ed25519 keystore encrypted?
 
-**A:** Currently no (OrbitDB limitation). This is a known issue. See [Keystore Security Architecture](./KEYSTORE-SECURITY-ARCHITECTURE.md) for details and future solutions.
+**A:** Currently no (OrbitDB limitation). This is a known issue. See [WebAuthn-Encrypted Keystore Integration](./WEBAUTHN-ENCRYPTED-KEYSTORE-INTEGRATION.md) for details and future solutions.
 
 ### Q: Which should I use: P-256 or Ed25519 DID?
 
-**A:** 
+**A:**
+
 - **P-256 (default)**: If you want hardware-backed DID and don't need UCAN
 - **Ed25519 (new)**: If you need UCAN compatibility or want unified key management
 
 ## References
 
-- [Keystore Security Architecture](./KEYSTORE-SECURITY-ARCHITECTURE.md)
+- [WebAuthn-Encrypted Keystore Integration](./WEBAUTHN-ENCRYPTED-KEYSTORE-INTEGRATION.md)
 - [UCAN Specification](https://github.com/ucan-wg/spec)
 - [DID Key Format](https://w3c-ccg.github.io/did-method-key/)
 - [Multicodec Table](https://github.com/multiformats/multicodec/blob/master/table.csv)

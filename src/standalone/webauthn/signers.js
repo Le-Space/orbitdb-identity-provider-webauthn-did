@@ -5,8 +5,14 @@ const wrapQueuedSign = (signer) => {
   let pending = Promise.resolve();
   const queued = Object.create(signer);
   queued.sign = async (data) => {
-    const run = pending.then(() => signer.sign(data), () => signer.sign(data));
-    pending = run.then(() => undefined, () => undefined);
+    const run = pending.then(
+      () => signer.sign(data),
+      () => signer.sign(data)
+    );
+    pending = run.then(
+      () => undefined,
+      () => undefined
+    );
     return run;
   };
   return queued;
@@ -14,14 +20,18 @@ const wrapQueuedSign = (signer) => {
 
 const UCAN_SIGNATURE_CODES = {
   EdDSA: 0xd0ed,
-  ES256: 0xd01200
+  ES256: 0xd01200,
 };
 
 function normalizeCredentialId(credentialId) {
   if (credentialId instanceof Uint8Array) return credentialId;
   if (credentialId instanceof ArrayBuffer) return new Uint8Array(credentialId);
   if (ArrayBuffer.isView(credentialId)) {
-    return new Uint8Array(credentialId.buffer, credentialId.byteOffset, credentialId.byteLength);
+    return new Uint8Array(
+      credentialId.buffer,
+      credentialId.byteOffset,
+      credentialId.byteLength
+    );
   }
   if (Array.isArray(credentialId)) return new Uint8Array(credentialId);
   throw new Error('Unsupported credentialId type');
@@ -34,7 +44,7 @@ export class StandaloneWebAuthnVarsigSigner {
   constructor(credential) {
     this.credential = {
       ...credential,
-      credentialId: normalizeCredentialId(credential.credentialId)
+      credentialId: normalizeCredentialId(credential.credentialId),
     };
     this.did = credential.did;
     this.publicKey = credential.publicKey;
@@ -69,7 +79,12 @@ export class StandaloneWebAuthnVarsigSigner {
    * @returns {Promise<boolean>}
    */
   async verify(signature, data, domainLabel) {
-    return this.provider.verify(signature, this.credential.publicKey, data, domainLabel);
+    return this.provider.verify(
+      signature,
+      this.credential.publicKey,
+      data,
+      domainLabel
+    );
   }
 
   /**
@@ -91,7 +106,7 @@ export class StandaloneWebAuthnVarsigSigner {
       return {
         signatureAlgorithm,
         signatureCode,
-        signatureCreate: DagUcanSignature.create
+        signatureCreate: DagUcanSignature.create,
       };
     };
 
@@ -109,12 +124,12 @@ export class StandaloneWebAuthnVarsigSigner {
       toArchive: () => ({
         id: this.did,
         keys: {
-          [this.did]: this.publicKey
-        }
+          [this.did]: this.publicKey,
+        },
       }),
       export: () => {
         throw new Error('Cannot export WebAuthn hardware-backed keys');
-      }
+      },
     };
 
     return wrapQueuedSign(signer);
@@ -128,7 +143,7 @@ export class WebAuthnEd25519Signer extends StandaloneWebAuthnVarsigSigner {
       did,
       publicKey,
       algorithm: 'Ed25519',
-      cose: null
+      cose: null,
     });
   }
 }
@@ -140,7 +155,7 @@ export class WebAuthnP256Signer extends StandaloneWebAuthnVarsigSigner {
       did,
       publicKey,
       algorithm: 'P-256',
-      cose: null
+      cose: null,
     });
   }
 }
@@ -163,7 +178,9 @@ export async function createWebAuthnSigner(options = {}) {
 export async function createWebAuthnEd25519Signer(options = {}) {
   const signer = await createWebAuthnSigner(options);
   if (signer.algorithm !== 'Ed25519') {
-    throw new Error(`Expected Ed25519 credential, received ${signer.algorithm}`);
+    throw new Error(
+      `Expected Ed25519 credential, received ${signer.algorithm}`
+    );
   }
   return signer;
 }
@@ -188,16 +205,19 @@ export async function createWebAuthnP256Signer(options = {}) {
  * @param {{authenticatorType?: 'platform' | 'cross-platform' | 'any'}} [options]
  * @returns {Promise<StandaloneWebAuthnVarsigSigner|null>}
  */
-export async function createWebAuthnEd25519Credential(userId, displayName, options = {}) {
+export async function createWebAuthnEd25519Credential(
+  userId,
+  displayName,
+  options = {}
+) {
   try {
     const forceP256Hardware =
-      typeof window !== 'undefined' &&
-      Boolean(window.__FORCE_P256_HARDWARE__);
+      typeof window !== 'undefined' && Boolean(window.__FORCE_P256_HARDWARE__);
     return createWebAuthnSigner({
       userId,
       displayName,
       authenticatorType: options.authenticatorType || 'any',
-      forceP256: forceP256Hardware
+      forceP256: forceP256Hardware,
     });
   } catch {
     return null;
@@ -209,6 +229,7 @@ export async function createWebAuthnEd25519Credential(userId, displayName, optio
  * @returns {Promise<boolean>}
  */
 export async function checkEd25519Support() {
-  if (typeof window === 'undefined' || !window.PublicKeyCredential) return false;
+  if (typeof window === 'undefined' || !window.PublicKeyCredential)
+    return false;
   return Boolean(navigator.credentials?.create);
 }

@@ -13,14 +13,14 @@ Explains the relationship between DIDs and OrbitDB identity hashes.
 
 ```javascript
 // Example: did:key with P-256 public key (multicodec 0x1200)
-"did:key:zDnaerx9CtfPpYYn5FcfKUfCAdgUcBhXM94YX9PidT23cRgRe"
+'did:key:zDnaerx9CtfPpYYn5FcfKUfCAdgUcBhXM94YX9PidT23cRgRe';
 ```
 
 ### Ed25519/secp256k1 Keystore DID
 
 ```javascript
 // Example: did:key with Ed25519 public key (multicodec 0xed)
-"did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK"
+'did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK';
 ```
 
 DIDs are deterministic - always the same for the same credential/keystore.
@@ -47,7 +47,7 @@ The identity object is CBOR-encoded, hashed (SHA-256), and stored in IPFS:
 
 ```javascript
 // Example: IPFS CID of identity object
-"zdpuAseKQt3ZanUES4jJmPsvzV1ARNdnaMFRaetR7X3S6MLKH"
+'zdpuAseKQt3ZanUES4jJmPsvzV1ARNdnaMFRaetR7X3S6MLKH';
 ```
 
 ## Relationship
@@ -57,7 +57,7 @@ Database events show the identity hash:
 ```javascript
 {
   address: {
-    identity: "zdpuAseKQt3ZanUES4jJmPsvzV1ARNdnaMFRaetR7X3S6MLKH"
+    identity: 'zdpuAseKQt3ZanUES4jJmPsvzV1ARNdnaMFRaetR7X3S6MLKH';
   }
 }
 ```
@@ -66,7 +66,7 @@ Your identity shows the DID:
 
 ```javascript
 {
-  id: 'did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK'
+  id: 'did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK';
 }
 ```
 
@@ -75,17 +75,21 @@ Your identity shows the DID:
 ## Verification
 
 ```javascript
-import * as Block from 'multiformats/block'
-import * as dagCbor from '@ipld/dag-cbor'
-import { sha256 } from 'multiformats/hashes/sha2'
-import { CID } from 'multiformats/cid'
-import { base58btc } from 'multiformats/bases/base58'
+import * as Block from 'multiformats/block';
+import * as dagCbor from '@ipld/dag-cbor';
+import { sha256 } from 'multiformats/hashes/sha2';
+import { CID } from 'multiformats/cid';
+import { base58btc } from 'multiformats/bases/base58';
 
 async function verifyIdentityRelationship(ipfs, identityHash, expectedDID) {
   const cid = CID.parse(identityHash, base58btc);
   const bytes = await ipfs.blockstore.get(cid);
-  const { value } = await Block.decode({ bytes, codec: dagCbor, hasher: sha256 });
-  
+  const { value } = await Block.decode({
+    bytes,
+    codec: dagCbor,
+    hasher: sha256,
+  });
+
   return value.id === expectedDID;
 }
 ```
@@ -111,8 +115,8 @@ async function verifyIdentityRelationship(ipfs, identityHash, expectedDID) {
 ```javascript
 database.events.on('update', async (address, entry) => {
   const isValid = await verifyIdentityRelationship(
-    ipfs, 
-    address.identity, 
+    ipfs,
+    address.identity,
     expectedDID
   );
 });

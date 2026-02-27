@@ -10,11 +10,13 @@ import { OrbitDBWebAuthnIdentityProvider } from '../src/index.js';
 
 async function waitForKeystoreEncryption(page) {
   try {
-    await page.waitForFunction(() =>
-      window.KeystoreEncryption &&
-      typeof window.KeystoreEncryption.generateSecretKey === 'function' &&
-      typeof window.KeystoreEncryption.checkExtensionSupport === 'function'
-    , { timeout: 20000 });
+    await page.waitForFunction(
+      () =>
+        window.KeystoreEncryption &&
+        typeof window.KeystoreEncryption.generateSecretKey === 'function' &&
+        typeof window.KeystoreEncryption.checkExtensionSupport === 'function',
+      { timeout: 20000 }
+    );
   } catch {
     throw new Error(
       'KeystoreEncryption not available. Run with USE_ENCRYPTED_DEMO=true (ed25519-encrypted-keystore-demo).'
@@ -23,65 +25,69 @@ async function waitForKeystoreEncryption(page) {
 }
 
 async function installLargeBlobMock(context, { hasBlob }) {
-  await context.addInitScript(({ hasBlob }) => {
-    const mockCredentialId = new Uint8Array([1, 2, 3, 4]);
-    const mockSecretKey = new Uint8Array(32);
-    for (let i = 0; i < mockSecretKey.length; i++) {
-      mockSecretKey[i] = i * 7 % 256;
-    }
-
-    const installMock = () => {
-      if (!window.navigator.credentials) {
-        Object.defineProperty(window.navigator, 'credentials', {
-          value: {},
-          configurable: true
-        });
+  await context.addInitScript(
+    ({ hasBlob }) => {
+      const mockCredentialId = new Uint8Array([1, 2, 3, 4]);
+      const mockSecretKey = new Uint8Array(32);
+      for (let i = 0; i < mockSecretKey.length; i++) {
+        mockSecretKey[i] = (i * 7) % 256;
       }
 
-      const mockGet = async () => {
-        window.__largeBlobMockCalled = true;
-        return {
-          id: 'test-credential',
-          rawId: mockCredentialId,
-          type: 'public-key',
-          response: {
-            authenticatorData: new Uint8Array(37),
-            clientDataJSON: new TextEncoder().encode(JSON.stringify({
-              type: 'webauthn.get',
-              challenge: 'test',
-              origin: window.location.origin
-            })),
-            signature: new Uint8Array(64)
-          },
-          getClientExtensionResults: () => ({
-            largeBlob: hasBlob ? { blob: mockSecretKey } : null
-          })
+      const installMock = () => {
+        if (!window.navigator.credentials) {
+          Object.defineProperty(window.navigator, 'credentials', {
+            value: {},
+            configurable: true,
+          });
+        }
+
+        const mockGet = async () => {
+          window.__largeBlobMockCalled = true;
+          return {
+            id: 'test-credential',
+            rawId: mockCredentialId,
+            type: 'public-key',
+            response: {
+              authenticatorData: new Uint8Array(37),
+              clientDataJSON: new TextEncoder().encode(
+                JSON.stringify({
+                  type: 'webauthn.get',
+                  challenge: 'test',
+                  origin: window.location.origin,
+                })
+              ),
+              signature: new Uint8Array(64),
+            },
+            getClientExtensionResults: () => ({
+              largeBlob: hasBlob ? { blob: mockSecretKey } : null,
+            }),
+          };
         };
+
+        Object.defineProperty(window.navigator.credentials, 'get', {
+          value: mockGet,
+          configurable: true,
+          writable: true,
+        });
       };
 
-      Object.defineProperty(window.navigator.credentials, 'get', {
-        value: mockGet,
-        configurable: true,
-        writable: true
-      });
-    };
+      try {
+        installMock();
+      } catch {
+        Object.defineProperty(window.navigator, 'credentials', {
+          value: {},
+          configurable: true,
+        });
+        installMock();
+      }
 
-    try {
-      installMock();
-    } catch {
-      Object.defineProperty(window.navigator, 'credentials', {
-        value: {},
-        configurable: true
-      });
-      installMock();
-    }
-
-    window.__largeBlobMockInstalled = true;
-  }, { hasBlob });
+      window.__largeBlobMockInstalled = true;
+    },
+    { hasBlob }
+  );
 }
 
 test.describe('WebAuthn-Encrypted Keystore Feature', () => {
-
   test('should check encryption extension support', async ({ page }) => {
     await page.goto('http://localhost:5173');
     await waitForKeystoreEncryption(page);
@@ -109,7 +115,7 @@ test.describe('WebAuthn-Encrypted Keystore Feature', () => {
 
       return {
         length: sk.length,
-        isUint8Array: sk instanceof Uint8Array
+        isUint8Array: sk instanceof Uint8Array,
       };
     });
 
@@ -131,7 +137,10 @@ test.describe('WebAuthn-Encrypted Keystore Feature', () => {
       const originalData = new TextEncoder().encode('Hello, encrypted world!');
 
       // Encrypt
-      const encrypted = await KeystoreEncryption.encryptWithAESGCM(originalData, sk);
+      const encrypted = await KeystoreEncryption.encryptWithAESGCM(
+        originalData,
+        sk
+      );
 
       // Decrypt
       const decrypted = await KeystoreEncryption.decryptWithAESGCM(
@@ -147,7 +156,7 @@ test.describe('WebAuthn-Encrypted Keystore Feature', () => {
         decryptedText,
         hasCiphertext: encrypted.ciphertext.length > 0,
         hasIV: encrypted.iv.length === 12,
-        matches: decryptedText === 'Hello, encrypted world!'
+        matches: decryptedText === 'Hello, encrypted world!',
       };
     });
 
@@ -171,7 +180,10 @@ test.describe('WebAuthn-Encrypted Keystore Feature', () => {
       const originalData = new TextEncoder().encode('Secret message');
 
       // Encrypt with sk1
-      const encrypted = await KeystoreEncryption.encryptWithAESGCM(originalData, sk1);
+      const encrypted = await KeystoreEncryption.encryptWithAESGCM(
+        originalData,
+        sk1
+      );
 
       // Try to decrypt with sk2 (wrong key)
       try {
@@ -199,7 +211,10 @@ test.describe('WebAuthn-Encrypted Keystore Feature', () => {
 
       const sk = KeystoreEncryption.generateSecretKey();
       const testData = new TextEncoder().encode('Test keystore data');
-      const encrypted = await KeystoreEncryption.encryptWithAESGCM(testData, sk);
+      const encrypted = await KeystoreEncryption.encryptWithAESGCM(
+        testData,
+        sk
+      );
 
       const credentialId = 'test-credential-' + Date.now();
 
@@ -208,13 +223,17 @@ test.describe('WebAuthn-Encrypted Keystore Feature', () => {
         ciphertext: encrypted.ciphertext,
         iv: encrypted.iv,
         credentialId: credentialId,
-        encryptionMethod: 'test'
+        encryptionMethod: 'test',
       };
 
-      await KeystoreEncryption.storeEncryptedKeystore(dataToStore, credentialId);
+      await KeystoreEncryption.storeEncryptedKeystore(
+        dataToStore,
+        credentialId
+      );
 
       // Load encrypted keystore
-      const loaded = await KeystoreEncryption.loadEncryptedKeystore(credentialId);
+      const loaded =
+        await KeystoreEncryption.loadEncryptedKeystore(credentialId);
 
       // Clean up
       await KeystoreEncryption.clearEncryptedKeystore(credentialId);
@@ -222,9 +241,13 @@ test.describe('WebAuthn-Encrypted Keystore Feature', () => {
       return {
         stored: true,
         loaded: !!loaded,
-        ciphertextMatches: Array.from(loaded.ciphertext).join(',') === Array.from(encrypted.ciphertext).join(','),
-        ivMatches: Array.from(loaded.iv).join(',') === Array.from(encrypted.iv).join(','),
-        credentialIdMatches: loaded.credentialId === credentialId
+        ciphertextMatches:
+          Array.from(loaded.ciphertext).join(',') ===
+          Array.from(encrypted.ciphertext).join(','),
+        ivMatches:
+          Array.from(loaded.iv).join(',') ===
+          Array.from(encrypted.iv).join(','),
+        credentialIdMatches: loaded.credentialId === credentialId,
       };
     });
 
@@ -235,12 +258,15 @@ test.describe('WebAuthn-Encrypted Keystore Feature', () => {
     expect(result.credentialIdMatches).toBe(true);
   });
 
-  test('should create identity with encrypted keystore option', async ({ page }) => {
+  test('should create identity with encrypted keystore option', async ({
+    page,
+  }) => {
     await page.addInitScript(() => {
       if (!window.PublicKeyCredential) {
         window.PublicKeyCredential = function PublicKeyCredential() {};
       }
-      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = async () => true;
+      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable =
+        async () => true;
 
       const storedCredential = {
         credentialId: 'test-credential-id',
@@ -251,11 +277,14 @@ test.describe('WebAuthn-Encrypted Keystore Feature', () => {
           keyType: 2,
           curve: 1,
           x: Array.from(new Uint8Array(32)),
-          y: Array.from(new Uint8Array(32))
-        }
+          y: Array.from(new Uint8Array(32)),
+        },
       };
 
-      localStorage.setItem('webauthn-credential', JSON.stringify(storedCredential));
+      localStorage.setItem(
+        'webauthn-credential',
+        JSON.stringify(storedCredential)
+      );
     });
     await page.goto('http://localhost:5173');
     await waitForKeystoreEncryption(page);
@@ -278,26 +307,26 @@ test.describe('WebAuthn-Encrypted Keystore Feature', () => {
       rawCredentialId: new Uint8Array([1, 2, 3]),
       publicKey: {
         x: new Uint8Array(32),
-        y: new Uint8Array(32)
-      }
+        y: new Uint8Array(32),
+      },
     };
 
     // Test without encryption
     const provider1 = new OrbitDBWebAuthnIdentityProvider({
-      webauthnCredential: mockCredential
+      webauthnCredential: mockCredential,
     });
 
     // Test with encryption
     const provider2 = new OrbitDBWebAuthnIdentityProvider({
       webauthnCredential: mockCredential,
       encryptKeystore: true,
-      keystoreEncryptionMethod: 'largeBlob'
+      keystoreEncryptionMethod: 'largeBlob',
     });
 
     const result = {
       provider1HasEncryption: provider1.encryptKeystore,
       provider2HasEncryption: provider2.encryptKeystore,
-      provider2Method: provider2.keystoreEncryptionMethod
+      provider2Method: provider2.keystoreEncryptionMethod,
     };
 
     expect(result.provider1HasEncryption).toBe(false);
@@ -307,7 +336,6 @@ test.describe('WebAuthn-Encrypted Keystore Feature', () => {
 });
 
 test.describe('Encryption Utilities', () => {
-
   test('should generate different keys each time', async ({ page }) => {
     await page.goto('http://localhost:5173');
     await waitForKeystoreEncryption(page);
@@ -323,7 +351,7 @@ test.describe('Encryption Utilities', () => {
 
       return {
         keysAreDifferent: sk1Str !== sk2Str,
-        bothAre32Bytes: sk1.length === 32 && sk2.length === 32
+        bothAre32Bytes: sk1.length === 32 && sk2.length === 32,
       };
     });
 
@@ -331,7 +359,9 @@ test.describe('Encryption Utilities', () => {
     expect(result.bothAre32Bytes).toBe(true);
   });
 
-  test('should produce different ciphertext for same data', async ({ page }) => {
+  test('should produce different ciphertext for same data', async ({
+    page,
+  }) => {
     await page.goto('http://localhost:5173');
     await waitForKeystoreEncryption(page);
 
@@ -349,8 +379,16 @@ test.describe('Encryption Utilities', () => {
       const cipher2Str = Array.from(encrypted2.ciphertext).join(',');
 
       // But both should decrypt to same value
-      const decrypted1 = await KeystoreEncryption.decryptWithAESGCM(encrypted1.ciphertext, sk, encrypted1.iv);
-      const decrypted2 = await KeystoreEncryption.decryptWithAESGCM(encrypted2.ciphertext, sk, encrypted2.iv);
+      const decrypted1 = await KeystoreEncryption.decryptWithAESGCM(
+        encrypted1.ciphertext,
+        sk,
+        encrypted1.iv
+      );
+      const decrypted2 = await KeystoreEncryption.decryptWithAESGCM(
+        encrypted2.ciphertext,
+        sk,
+        encrypted2.iv
+      );
 
       const text1 = new TextDecoder().decode(decrypted1);
       const text2 = new TextDecoder().decode(decrypted2);
@@ -358,7 +396,7 @@ test.describe('Encryption Utilities', () => {
       return {
         ciphertextsAreDifferent: cipher1Str !== cipher2Str,
         plaintextsAreSame: text1 === text2,
-        bothDecryptCorrectly: text1 === 'Same data' && text2 === 'Same data'
+        bothDecryptCorrectly: text1 === 'Same data' && text2 === 'Same data',
       };
     });
 
@@ -370,8 +408,10 @@ test.describe('Encryption Utilities', () => {
   test('should add PRF extension to credential options', async ({ page }) => {
     await page.goto('http://localhost:5173');
     await waitForKeystoreEncryption(page);
-    const hasPRFHelper = await page.evaluate(() =>
-      typeof window.KeystoreEncryption?.addPRFToCredentialOptions === 'function'
+    const hasPRFHelper = await page.evaluate(
+      () =>
+        typeof window.KeystoreEncryption?.addPRFToCredentialOptions ===
+        'function'
     );
     test.skip(!hasPRFHelper, 'PRF helper is not exposed in this demo runtime.');
 
@@ -384,9 +424,9 @@ test.describe('Encryption Utilities', () => {
         user: {
           id: new Uint8Array(16),
           name: 'test',
-          displayName: 'Test User'
+          displayName: 'Test User',
         },
-        pubKeyCredParams: [{ alg: -7, type: 'public-key' }]
+        pubKeyCredParams: [{ alg: -7, type: 'public-key' }],
       };
 
       const { credentialOptions, prfInput } =
@@ -396,7 +436,7 @@ test.describe('Encryption Utilities', () => {
         hasPrf: !!credentialOptions.extensions?.prf,
         hasEval: !!credentialOptions.extensions?.prf?.eval?.first,
         prfInputLength: prfInput ? prfInput.length : 0,
-        originalUnmodified: !baseOptions.extensions
+        originalUnmodified: !baseOptions.extensions,
       };
     });
 
@@ -406,7 +446,11 @@ test.describe('Encryption Utilities', () => {
     expect(result.originalUnmodified).toBe(true);
   });
 
-  test('should wrap and unwrap secret key with PRF (mocked)', async ({ page, context, browserName }) => {
+  test('should wrap and unwrap secret key with PRF (mocked)', async ({
+    page,
+    context,
+    browserName,
+  }) => {
     test.skip(
       browserName === 'webkit',
       'WebKit blocks WebAuthn PRF in this test context.'
@@ -415,7 +459,7 @@ test.describe('Encryption Utilities', () => {
       if (!window.navigator.credentials) {
         Object.defineProperty(window.navigator, 'credentials', {
           value: {},
-          configurable: true
+          configurable: true,
         });
       }
 
@@ -431,29 +475,35 @@ test.describe('Encryption Utilities', () => {
           type: 'public-key',
           response: {
             authenticatorData: new Uint8Array(37),
-            clientDataJSON: new TextEncoder().encode(JSON.stringify({
-              type: 'webauthn.get',
-              challenge: 'test',
-              origin: window.location.origin
-            })),
-            signature: new Uint8Array(64)
+            clientDataJSON: new TextEncoder().encode(
+              JSON.stringify({
+                type: 'webauthn.get',
+                challenge: 'test',
+                origin: window.location.origin,
+              })
+            ),
+            signature: new Uint8Array(64),
           },
           getClientExtensionResults: () => ({
-            prf: { results: { first: prfSeed.buffer } }
-          })
+            prf: { results: { first: prfSeed.buffer } },
+          }),
         }),
         configurable: true,
-        writable: true
+        writable: true,
       });
     });
 
     await page.goto('http://localhost:5173');
     await waitForKeystoreEncryption(page);
-    const hasPRFHelpers = await page.evaluate(() =>
-      typeof window.KeystoreEncryption?.wrapSKWithPRF === 'function' &&
-      typeof window.KeystoreEncryption?.unwrapSKWithPRF === 'function'
+    const hasPRFHelpers = await page.evaluate(
+      () =>
+        typeof window.KeystoreEncryption?.wrapSKWithPRF === 'function' &&
+        typeof window.KeystoreEncryption?.unwrapSKWithPRF === 'function'
     );
-    test.skip(!hasPRFHelpers, 'PRF wrap/unwrap helpers are not exposed in this demo runtime.');
+    test.skip(
+      !hasPRFHelpers,
+      'PRF wrap/unwrap helpers are not exposed in this demo runtime.'
+    );
 
     const result = await page.evaluate(async () => {
       const { KeystoreEncryption } = window;
@@ -481,7 +531,7 @@ test.describe('Encryption Utilities', () => {
       return {
         matches: Array.from(sk).join(',') === Array.from(unwrapped).join(','),
         prfSource: wrapped.prfSource,
-        saltLength: wrapped.salt ? wrapped.salt.length : 0
+        saltLength: wrapped.salt ? wrapped.salt.length : 0,
       };
     });
 
@@ -506,16 +556,24 @@ test.describe('Encryption Utilities', () => {
       }
 
       const start = performance.now();
-      const encrypted = await KeystoreEncryption.encryptWithAESGCM(largeData, sk);
+      const encrypted = await KeystoreEncryption.encryptWithAESGCM(
+        largeData,
+        sk
+      );
       const encryptTime = performance.now() - start;
 
       const start2 = performance.now();
-      const decrypted = await KeystoreEncryption.decryptWithAESGCM(encrypted.ciphertext, sk, encrypted.iv);
+      const decrypted = await KeystoreEncryption.decryptWithAESGCM(
+        encrypted.ciphertext,
+        sk,
+        encrypted.iv
+      );
       const decryptTime = performance.now() - start2;
 
       // Verify first and last bytes
       const firstMatches = decrypted[0] === largeData[0];
-      const lastMatches = decrypted[largeData.length - 1] === largeData[largeData.length - 1];
+      const lastMatches =
+        decrypted[largeData.length - 1] === largeData[largeData.length - 1];
 
       return {
         dataSize: largeData.length,
@@ -523,7 +581,7 @@ test.describe('Encryption Utilities', () => {
         decryptTime,
         firstMatches,
         lastMatches,
-        decryptedSize: decrypted.length
+        decryptedSize: decrypted.length,
       };
     });
 
@@ -533,13 +591,16 @@ test.describe('Encryption Utilities', () => {
     expect(result.encryptTime).toBeLessThan(1000); // Should be fast
     expect(result.decryptTime).toBeLessThan(1000);
 
-    console.log(`Encrypted ${result.dataSize} bytes in ${result.encryptTime.toFixed(2)}ms`);
-    console.log(`Decrypted ${result.dataSize} bytes in ${result.decryptTime.toFixed(2)}ms`);
+    console.log(
+      `Encrypted ${result.dataSize} bytes in ${result.encryptTime.toFixed(2)}ms`
+    );
+    console.log(
+      `Decrypted ${result.dataSize} bytes in ${result.decryptTime.toFixed(2)}ms`
+    );
   });
 });
 
 test.describe('Storage Management', () => {
-
   test('should clear encrypted keystore', async ({ page }) => {
     await page.goto('http://localhost:5173');
     await waitForKeystoreEncryption(page);
@@ -553,14 +614,18 @@ test.describe('Storage Management', () => {
       const encrypted = await KeystoreEncryption.encryptWithAESGCM(data, sk);
 
       // Store
-      await KeystoreEncryption.storeEncryptedKeystore({
-        ciphertext: encrypted.ciphertext,
-        iv: encrypted.iv,
+      await KeystoreEncryption.storeEncryptedKeystore(
+        {
+          ciphertext: encrypted.ciphertext,
+          iv: encrypted.iv,
+          credentialId,
+        },
         credentialId
-      }, credentialId);
+      );
 
       // Verify it's stored
-      const loaded1 = await KeystoreEncryption.loadEncryptedKeystore(credentialId);
+      const loaded1 =
+        await KeystoreEncryption.loadEncryptedKeystore(credentialId);
       const stored = !!loaded1;
 
       // Clear
@@ -600,17 +665,21 @@ test.describe('Storage Management', () => {
         const data = new TextEncoder().encode(`Data ${i}`);
         const encrypted = await KeystoreEncryption.encryptWithAESGCM(data, sk);
 
-        await KeystoreEncryption.storeEncryptedKeystore({
-          ciphertext: encrypted.ciphertext,
-          iv: encrypted.iv,
+        await KeystoreEncryption.storeEncryptedKeystore(
+          {
+            ciphertext: encrypted.ciphertext,
+            iv: encrypted.iv,
+            credentialId,
+          },
           credentialId
-        }, credentialId);
+        );
       }
 
       // Load all and verify
       const loaded = [];
       for (const credentialId of credentialIds) {
-        const data = await KeystoreEncryption.loadEncryptedKeystore(credentialId);
+        const data =
+          await KeystoreEncryption.loadEncryptedKeystore(credentialId);
         loaded.push(data);
         // Clean up
         await KeystoreEncryption.clearEncryptedKeystore(credentialId);
@@ -619,8 +688,10 @@ test.describe('Storage Management', () => {
       return {
         storedCount: count,
         loadedCount: loaded.length,
-        allLoaded: loaded.every(d => !!d),
-        credentialIdsMatch: loaded.every((d, i) => d.credentialId === credentialIds[i])
+        allLoaded: loaded.every((d) => !!d),
+        credentialIdsMatch: loaded.every(
+          (d, i) => d.credentialId === credentialIds[i]
+        ),
       };
     });
 
@@ -631,8 +702,9 @@ test.describe('Storage Management', () => {
 });
 
 test.describe('WebAuthn largeBlob Extension', () => {
-
-  test('should add largeBlob extension to credential options', async ({ page }) => {
+  test('should add largeBlob extension to credential options', async ({
+    page,
+  }) => {
     await page.goto('http://localhost:5173');
     await waitForKeystoreEncryption(page);
 
@@ -646,19 +718,22 @@ test.describe('WebAuthn largeBlob Extension', () => {
         user: {
           id: new Uint8Array(16),
           name: 'test',
-          displayName: 'Test User'
+          displayName: 'Test User',
         },
-        pubKeyCredParams: [{ alg: -7, type: 'public-key' }]
+        pubKeyCredParams: [{ alg: -7, type: 'public-key' }],
       };
 
-      const optionsWithLargeBlob = KeystoreEncryption.addLargeBlobToCredentialOptions(baseOptions, sk);
+      const optionsWithLargeBlob =
+        KeystoreEncryption.addLargeBlobToCredentialOptions(baseOptions, sk);
 
       return {
         hasExtensions: !!optionsWithLargeBlob.extensions,
         hasLargeBlob: !!optionsWithLargeBlob.extensions?.largeBlob,
-        largeBlobSupport: optionsWithLargeBlob.extensions?.largeBlob?.support ?? null,
-        hasWriteKey: optionsWithLargeBlob.extensions?.largeBlob?.write?.length === 32,
-        originalUnmodified: !baseOptions.extensions // Should not modify original
+        largeBlobSupport:
+          optionsWithLargeBlob.extensions?.largeBlob?.support ?? null,
+        hasWriteKey:
+          optionsWithLargeBlob.extensions?.largeBlob?.write?.length === 32,
+        originalUnmodified: !baseOptions.extensions, // Should not modify original
       };
     });
 
@@ -669,7 +744,11 @@ test.describe('WebAuthn largeBlob Extension', () => {
     expect(result.originalUnmodified).toBe(true);
   });
 
-  test('should retrieve secret key from largeBlob (mocked)', async ({ page, context, browserName }) => {
+  test('should retrieve secret key from largeBlob (mocked)', async ({
+    page,
+    context,
+    browserName,
+  }) => {
     test.skip(
       browserName !== 'chromium',
       'WebKit blocks WebAuthn credential.get in this test context.'
@@ -688,19 +767,20 @@ test.describe('WebAuthn largeBlob Extension', () => {
         // Mock credential with rawId
         const rawCredentialId = new Uint8Array([1, 2, 3, 4]);
 
-        const sk = await KeystoreEncryption.retrieveSKFromLargeBlob(rawCredentialId);
+        const sk =
+          await KeystoreEncryption.retrieveSKFromLargeBlob(rawCredentialId);
 
         return {
           success: true,
           secretKeyLength: sk ? sk.length : 0,
           isUint8Array: sk instanceof Uint8Array,
           firstByte: sk ? sk[0] : null,
-          lastByte: sk ? sk[31] : null
+          lastByte: sk ? sk[31] : null,
         };
       } catch (error) {
         return {
           success: false,
-          error: error.message
+          error: error.message,
         };
       }
     });
@@ -712,7 +792,11 @@ test.describe('WebAuthn largeBlob Extension', () => {
     expect(result.lastByte).toBe(217); // i * 7 % 256 for i=31
   });
 
-  test('should handle largeBlob not available', async ({ page, context, browserName }) => {
+  test('should handle largeBlob not available', async ({
+    page,
+    context,
+    browserName,
+  }) => {
     test.skip(
       browserName !== 'chromium',
       'WebKit blocks WebAuthn credential.get in this test context.'
@@ -735,7 +819,7 @@ test.describe('WebAuthn largeBlob Extension', () => {
       } catch (error) {
         return {
           threwError: true,
-          errorMessage: error.message
+          errorMessage: error.message,
         };
       }
     });

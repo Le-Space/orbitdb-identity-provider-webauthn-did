@@ -12,10 +12,11 @@ test.describe('WebAuthn Credential Creation Test', () => {
       }
 
       // Mock the support detection methods
-      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = async () => {
-        console.log('🔍 Mock: Platform authenticator available');
-        return true;
-      };
+      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable =
+        async () => {
+          console.log('🔍 Mock: Platform authenticator available');
+          return true;
+        };
 
       window.PublicKeyCredential.isConditionalMediationAvailable = async () => {
         console.log('🔍 Mock: Conditional mediation available');
@@ -23,7 +24,9 @@ test.describe('WebAuthn Credential Creation Test', () => {
       };
 
       // Create a consistent mock credential ID
-      const mockCredentialId = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+      const mockCredentialId = new Uint8Array([
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+      ]);
 
       // Mock navigator.credentials
       if (!window.navigator.credentials) {
@@ -31,19 +34,22 @@ test.describe('WebAuthn Credential Creation Test', () => {
       }
 
       window.navigator.credentials.create = async (options) => {
-        console.log('🔐 Mock: Creating WebAuthn credential with options:', options);
+        console.log(
+          '🔐 Mock: Creating WebAuthn credential with options:',
+          options
+        );
 
         // Simulate slight delay like real WebAuthn
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         // Create a realistic mock attestation object (300 bytes)
         const mockAttestation = new Uint8Array(300);
         // Fill with some realistic-looking data
         mockAttestation.set([
           // CBOR map indicator and some mock data
-          0xa3, 0x63, 0x66, 0x6d, 0x74, 0x66, 0x70, 0x61, 0x63, 0x6b, 0x65, 0x64,
-          0x67, 0x61, 0x74, 0x74, 0x53, 0x74, 0x6d, 0x74, 0xa0, 0x68, 0x61, 0x75,
-          0x74, 0x68, 0x44, 0x61, 0x74, 0x61
+          0xa3, 0x63, 0x66, 0x6d, 0x74, 0x66, 0x70, 0x61, 0x63, 0x6b, 0x65,
+          0x64, 0x67, 0x61, 0x74, 0x74, 0x53, 0x74, 0x6d, 0x74, 0xa0, 0x68,
+          0x61, 0x75, 0x74, 0x68, 0x44, 0x61, 0x74, 0x61,
         ]);
 
         const mockCredential = {
@@ -52,19 +58,21 @@ test.describe('WebAuthn Credential Creation Test', () => {
           type: 'public-key',
           response: {
             attestationObject: mockAttestation,
-            clientDataJSON: new TextEncoder().encode(JSON.stringify({
-              type: 'webauthn.create',
-              challenge: 'mock-challenge',
-              origin: window.location.origin,
-              crossOrigin: false
-            })),
+            clientDataJSON: new TextEncoder().encode(
+              JSON.stringify({
+                type: 'webauthn.create',
+                challenge: 'mock-challenge',
+                origin: window.location.origin,
+                crossOrigin: false,
+              })
+            ),
             getPublicKey: () => {
               console.log('🔑 Mock: Getting public key');
               return new Uint8Array(65); // Mock P-256 public key
             },
-            getPublicKeyAlgorithm: () => -7 // ES256
+            getPublicKeyAlgorithm: () => -7, // ES256
           },
-          getClientExtensionResults: () => ({})
+          getClientExtensionResults: () => ({}),
         };
 
         console.log('✅ Mock: WebAuthn credential created successfully');
@@ -72,10 +80,13 @@ test.describe('WebAuthn Credential Creation Test', () => {
       };
 
       window.navigator.credentials.get = async (options) => {
-        console.log('🔐 Mock: Getting WebAuthn credential with options:', options);
+        console.log(
+          '🔐 Mock: Getting WebAuthn credential with options:',
+          options
+        );
 
         // Simulate slight delay
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         const mockAssertion = {
           id: 'mock-credential-id',
@@ -83,16 +94,18 @@ test.describe('WebAuthn Credential Creation Test', () => {
           type: 'public-key',
           response: {
             authenticatorData: new Uint8Array(37), // Standard length
-            clientDataJSON: new TextEncoder().encode(JSON.stringify({
-              type: 'webauthn.get',
-              challenge: 'mock-challenge',
-              origin: window.location.origin,
-              crossOrigin: false
-            })),
+            clientDataJSON: new TextEncoder().encode(
+              JSON.stringify({
+                type: 'webauthn.get',
+                challenge: 'mock-challenge',
+                origin: window.location.origin,
+                crossOrigin: false,
+              })
+            ),
             signature: new Uint8Array(64), // Mock signature
-            userHandle: null
+            userHandle: null,
           },
-          getClientExtensionResults: () => ({})
+          getClientExtensionResults: () => ({}),
         };
 
         console.log('✅ Mock: WebAuthn assertion created successfully');
@@ -130,7 +143,9 @@ test.describe('WebAuthn Credential Creation Test', () => {
 
     // Wait for the app to detect WebAuthn support
     console.log('⏳ Waiting for WebAuthn support detection...');
-    await page.waitForSelector('text=WebAuthn is fully supported', { timeout: 30000 });
+    await page.waitForSelector('text=WebAuthn is fully supported', {
+      timeout: 30000,
+    });
     console.log('✅ WebAuthn support detected');
 
     // Take a screenshot for debugging
@@ -142,7 +157,7 @@ test.describe('WebAuthn Credential Creation Test', () => {
     console.log('✅ Create Credential button is visible');
 
     // Add some console monitoring
-    page.on('console', msg => {
+    page.on('console', (msg) => {
       if (msg.type() === 'log' || msg.type() === 'error') {
         console.log(`🌐 Browser console [${msg.type()}]:`, msg.text());
       }
@@ -161,18 +176,25 @@ test.describe('WebAuthn Credential Creation Test', () => {
     // Look for either success or error message
     try {
       // Try to wait for success message
-      await page.waitForSelector('text=Credential created successfully!', { timeout: 30000 });
+      await page.waitForSelector('text=Credential created successfully!', {
+        timeout: 30000,
+      });
       console.log('✅ Credential creation successful!');
 
       // Verify the credential was created
-      await expect(page.locator('text=Credential created successfully!')).toBeVisible();
+      await expect(
+        page.locator('text=Credential created successfully!')
+      ).toBeVisible();
 
       // Check that the authenticate button appears
-      await expect(page.locator('button:has-text("Authenticate with WebAuthn")')).toBeVisible();
+      await expect(
+        page.locator('button:has-text("Authenticate with WebAuthn")')
+      ).toBeVisible();
       console.log('✅ Authenticate button appeared');
-
     } catch (error) {
-      console.log('❌ Waiting for success message failed, checking for error messages...');
+      console.log(
+        '❌ Waiting for success message failed, checking for error messages...'
+      );
 
       // Take a screenshot on error
       await page.screenshot({ path: 'test-error.png', fullPage: true });
@@ -183,7 +205,7 @@ test.describe('WebAuthn Credential Creation Test', () => {
         'text=WebAuthn error',
         'text=Error:',
         'text=Biometric authentication was cancelled',
-        'text=WebAuthn is not supported'
+        'text=WebAuthn is not supported',
       ];
 
       for (const selector of errorSelectors) {
@@ -201,7 +223,11 @@ test.describe('WebAuthn Credential Creation Test', () => {
       console.log(`📄 Page title: ${pageTitle}`);
 
       // Get any visible text in the status area
-      const statusElements = await page.locator('[class*="status"], [class*="notification"], [class*="message"]').all();
+      const statusElements = await page
+        .locator(
+          '[class*="status"], [class*="notification"], [class*="message"]'
+        )
+        .all();
       for (const element of statusElements) {
         const text = await element.textContent();
         if (text && text.trim()) {
@@ -219,17 +245,25 @@ test.describe('WebAuthn Credential Creation Test', () => {
     console.log('🧪 Testing WebAuthn support detection...');
 
     // This should be visible after the mocks are set up
-    await expect(page.locator('text=WebAuthn is fully supported')).toBeVisible({ timeout: 30000 });
-    await expect(page.locator('text=Biometric authentication available')).toBeVisible();
+    await expect(page.locator('text=WebAuthn is fully supported')).toBeVisible({
+      timeout: 30000,
+    });
+    await expect(
+      page.locator('text=Biometric authentication available')
+    ).toBeVisible();
 
     console.log('✅ WebAuthn support detection working correctly');
   });
 
   test('should create credential and authenticate', async ({ page }) => {
-    console.log('🧪 Starting full credential creation + authentication test...');
+    console.log(
+      '🧪 Starting full credential creation + authentication test...'
+    );
 
     // Wait for WebAuthn support detection
-    await page.waitForSelector('text=WebAuthn is fully supported', { timeout: 30000 });
+    await page.waitForSelector('text=WebAuthn is fully supported', {
+      timeout: 30000,
+    });
     console.log('✅ WebAuthn support detected');
 
     // Create credential first
@@ -239,16 +273,20 @@ test.describe('WebAuthn Credential Creation Test', () => {
     console.log('👆 Clicked Create Credential button');
 
     // Wait for credential creation to complete
-    await page.waitForSelector('text=Credential created successfully!', { timeout: 30000 });
+    await page.waitForSelector('text=Credential created successfully!', {
+      timeout: 30000,
+    });
     console.log('✅ Credential created successfully');
 
     // Now test authentication
-    const authButton = page.locator('button:has-text("Authenticate with WebAuthn")');
+    const authButton = page.locator(
+      'button:has-text("Authenticate with WebAuthn")'
+    );
     await expect(authButton).toBeVisible();
     console.log('✅ Authenticate button is visible');
 
     // Add console monitoring for authentication
-    page.on('console', msg => {
+    page.on('console', (msg) => {
       if (msg.type() === 'log' || msg.type() === 'error') {
         console.log(`🌐 Browser console [${msg.type()}]:`, msg.text());
       }
@@ -261,7 +299,9 @@ test.describe('WebAuthn Credential Creation Test', () => {
     // Wait for authentication to complete - look for the TODO app to appear
     try {
       // Wait for the header of the TODO application to appear
-      await page.waitForSelector('text=OrbitDB WebAuthn Demo DID', { timeout: 15000 });
+      await page.waitForSelector('text=OrbitDB WebAuthn Demo DID', {
+        timeout: 15000,
+      });
       console.log('✅ Authentication successful - TODO app loaded!');
 
       // Check for the DID being displayed
@@ -271,13 +311,14 @@ test.describe('WebAuthn Credential Creation Test', () => {
       console.log(`🆔 DID created: ${didText}`);
 
       // Check for the TODO input field
-      await expect(page.locator('input[placeholder="Add a new TODO..."]')).toBeVisible();
+      await expect(
+        page.locator('input[placeholder="Add a new TODO..."]')
+      ).toBeVisible();
       console.log('✅ TODO input field is visible');
 
       // Check for Add TODO button
       await expect(page.locator('button:has-text("Add")')).toBeVisible();
       console.log('✅ Add TODO button is visible');
-
     } catch (error) {
       console.log('❌ Authentication failed or timed out');
 
@@ -285,7 +326,7 @@ test.describe('WebAuthn Credential Creation Test', () => {
       const errorSelectors = [
         'text=Authentication failed',
         'text=WebAuthn authentication error',
-        'text=Error:'
+        'text=Error:',
       ];
 
       for (const selector of errorSelectors) {
@@ -301,14 +342,18 @@ test.describe('WebAuthn Credential Creation Test', () => {
     console.log('🎉 Full authentication flow completed successfully!');
   });
 
-  test('should persist credential across browser reload and maintain TODO data', async ({ page }) => {
+  test('should persist credential across browser reload and maintain TODO data', async ({
+    page,
+  }) => {
     console.log('🧪 Starting persistence and TODO operations test...');
 
     // === PHASE 1: Initial setup and first TODO ===
     console.log('📋 Phase 1: Initial authentication and first TODO');
 
     // Wait for WebAuthn support detection
-    await page.waitForSelector('text=WebAuthn is fully supported', { timeout: 30000 });
+    await page.waitForSelector('text=WebAuthn is fully supported', {
+      timeout: 30000,
+    });
     console.log('✅ WebAuthn support detected');
 
     // Create credential
@@ -318,17 +363,23 @@ test.describe('WebAuthn Credential Creation Test', () => {
     console.log('👆 Clicked Create Credential button');
 
     // Wait for credential creation
-    await page.waitForSelector('text=Credential created successfully!', { timeout: 30000 });
+    await page.waitForSelector('text=Credential created successfully!', {
+      timeout: 30000,
+    });
     console.log('✅ Credential created successfully');
 
     // Authenticate
-    const authButton = page.locator('button:has-text("Authenticate with WebAuthn")');
+    const authButton = page.locator(
+      'button:has-text("Authenticate with WebAuthn")'
+    );
     await expect(authButton).toBeVisible();
     await authButton.click();
     console.log('🔐 Clicked Authenticate with WebAuthn button');
 
     // Wait for TODO app to load
-    await page.waitForSelector('text=OrbitDB WebAuthn Demo DID', { timeout: 15000 });
+    await page.waitForSelector('text=OrbitDB WebAuthn Demo DID', {
+      timeout: 15000,
+    });
     console.log('✅ Authentication successful - TODO app loaded');
 
     // Get and store the DID for comparison later
@@ -349,8 +400,11 @@ test.describe('WebAuthn Credential Creation Test', () => {
     console.log(`📝 Entered first TODO: "${firstTodo}"`);
 
     // Add console monitoring for TODO operations
-    page.on('console', msg => {
-      if (msg.type() === 'log' && (msg.text().includes('TODO') || msg.text().includes('Database'))) {
+    page.on('console', (msg) => {
+      if (
+        msg.type() === 'log' &&
+        (msg.text().includes('TODO') || msg.text().includes('Database'))
+      ) {
         console.log(`🌐 Browser console [${msg.type()}]:`, msg.text());
       }
     });
@@ -378,17 +432,26 @@ test.describe('WebAuthn Credential Creation Test', () => {
     console.log('✅ Page reloaded successfully');
 
     // Should see the credential exists (not showing create credential button)
-    await page.waitForSelector('text=Use your biometric authentication to access your secure TODO list.', { timeout: 15000 });
-    console.log('✅ Credential persistence detected - no create credential button shown');
+    await page.waitForSelector(
+      'text=Use your biometric authentication to access your secure TODO list.',
+      { timeout: 15000 }
+    );
+    console.log(
+      '✅ Credential persistence detected - no create credential button shown'
+    );
 
     // Authenticate again with the persisted credential
-    const authButtonReload = page.locator('button:has-text("Authenticate with WebAuthn")');
+    const authButtonReload = page.locator(
+      'button:has-text("Authenticate with WebAuthn")'
+    );
     await expect(authButtonReload).toBeVisible();
     await authButtonReload.click();
     console.log('🔐 Clicked Authenticate button after reload');
 
     // Wait for TODO app to load again
-    await page.waitForSelector('text=OrbitDB WebAuthn Demo DID', { timeout: 15000 });
+    await page.waitForSelector('text=OrbitDB WebAuthn Demo DID', {
+      timeout: 15000,
+    });
     console.log('✅ Re-authentication successful - TODO app loaded again');
 
     // Verify same DID is used
@@ -401,7 +464,9 @@ test.describe('WebAuthn Credential Creation Test', () => {
       console.log('✅ DID persistence confirmed - same identity used');
     } else {
       console.log('❌ DID mismatch - different identity after reload');
-      throw new Error(`DID mismatch: original=${originalDID}, reload=${reloadDID}`);
+      throw new Error(
+        `DID mismatch: original=${originalDID}, reload=${reloadDID}`
+      );
     }
 
     // === PHASE 3: Data persistence verification ===
@@ -421,7 +486,9 @@ test.describe('WebAuthn Credential Creation Test', () => {
     // === PHASE 4: Add second TODO to confirm functionality ===
     console.log('➕ Phase 4: Adding second TODO to confirm functionality');
 
-    const todoInputReload = page.locator('input[placeholder="Add a new TODO..."]');
+    const todoInputReload = page.locator(
+      'input[placeholder="Add a new TODO..."]'
+    );
     const addButtonReload = page.locator('button:has-text("Add")');
 
     const secondTodo = 'Test TODO #2 - After Reload';
@@ -448,7 +515,11 @@ test.describe('WebAuthn Credential Creation Test', () => {
     console.log('✅ Phase 5: Testing TODO completion with biometric security');
 
     // Click the checkbox for the first TODO to complete it
-    const firstTodoCheckbox = page.locator(`text=${firstTodo}`).locator('..').locator('button').first();
+    const firstTodoCheckbox = page
+      .locator(`text=${firstTodo}`)
+      .locator('..')
+      .locator('button')
+      .first();
     await firstTodoCheckbox.click();
     console.log('👆 Clicked checkbox to complete first TODO');
 

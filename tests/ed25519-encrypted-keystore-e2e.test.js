@@ -13,7 +13,6 @@ import { test, expect } from '@playwright/test';
  */
 
 test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
-
   test.beforeEach(async ({ page, context }) => {
     // Clear localStorage before each test
     await context.clearCookies();
@@ -29,15 +28,18 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
         window.PublicKeyCredential.prototype = {};
       }
 
-      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = async () => {
-        return true;
-      };
+      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable =
+        async () => {
+          return true;
+        };
 
       window.PublicKeyCredential.isConditionalMediationAvailable = async () => {
         return true;
       };
 
-      const mockCredentialId = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+      const mockCredentialId = new Uint8Array([
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+      ]);
 
       if (!window.navigator.credentials) {
         window.navigator.credentials = {};
@@ -46,13 +48,13 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
       window.navigator.credentials.create = async (options) => {
         console.log('🔐 WEBAUTHN_MOCK: navigator.credentials.create() called');
         console.log('🔐 Extensions requested:', options?.publicKey?.extensions);
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         const mockAttestation = new Uint8Array(300);
         mockAttestation.set([
-          0xa3, 0x63, 0x66, 0x6d, 0x74, 0x66, 0x70, 0x61, 0x63, 0x6b, 0x65, 0x64,
-          0x67, 0x61, 0x74, 0x74, 0x53, 0x74, 0x6d, 0x74, 0xa0, 0x68, 0x61, 0x75,
-          0x74, 0x68, 0x44, 0x61, 0x74, 0x61
+          0xa3, 0x63, 0x66, 0x6d, 0x74, 0x66, 0x70, 0x61, 0x63, 0x6b, 0x65,
+          0x64, 0x67, 0x61, 0x74, 0x74, 0x53, 0x74, 0x6d, 0x74, 0xa0, 0x68,
+          0x61, 0x75, 0x74, 0x68, 0x44, 0x61, 0x74, 0x61,
         ]);
 
         // Mock extension results - simulate hmac-secret support
@@ -72,30 +74,32 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
           type: 'public-key',
           response: {
             attestationObject: mockAttestation,
-            clientDataJSON: new TextEncoder().encode(JSON.stringify({
-              type: 'webauthn.create',
-              challenge: 'mock-challenge',
-              origin: window.location.origin,
-              crossOrigin: false
-            })),
+            clientDataJSON: new TextEncoder().encode(
+              JSON.stringify({
+                type: 'webauthn.create',
+                challenge: 'mock-challenge',
+                origin: window.location.origin,
+                crossOrigin: false,
+              })
+            ),
             getPublicKey: () => new Uint8Array(65),
-            getPublicKeyAlgorithm: () => -7
+            getPublicKeyAlgorithm: () => -7,
           },
-          getClientExtensionResults: () => extensionResults
+          getClientExtensionResults: () => extensionResults,
         };
       };
 
       window.navigator.credentials.get = async (options) => {
         console.log('🔐 WEBAUTHN_MOCK: navigator.credentials.get() called');
         console.log('🔐 Extensions requested:', options?.publicKey?.extensions);
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         // Mock extension results for authentication
         const extensionResults = {};
         if (options?.publicKey?.extensions?.hmacGetSecret) {
           // Generate mock HMAC secret (32 bytes)
           extensionResults.hmacGetSecret = {
-            output1: new Uint8Array(32).fill(42) // Mock secret
+            output1: new Uint8Array(32).fill(42), // Mock secret
           };
           console.log('🔐 WEBAUTHN_MOCK: hmac-secret output returned');
         }
@@ -110,16 +114,18 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
           type: 'public-key',
           response: {
             authenticatorData: new Uint8Array(37),
-            clientDataJSON: new TextEncoder().encode(JSON.stringify({
-              type: 'webauthn.get',
-              challenge: 'mock-challenge',
-              origin: window.location.origin,
-              crossOrigin: false
-            })),
+            clientDataJSON: new TextEncoder().encode(
+              JSON.stringify({
+                type: 'webauthn.get',
+                challenge: 'mock-challenge',
+                origin: window.location.origin,
+                crossOrigin: false,
+              })
+            ),
             signature: new Uint8Array(64),
-            userHandle: null
+            userHandle: null,
           },
-          getClientExtensionResults: () => extensionResults
+          getClientExtensionResults: () => extensionResults,
         };
       };
 
@@ -129,28 +135,40 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     // Navigate to the demo
     await page.goto('http://localhost:5173', { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => document.readyState === 'complete');
-    await page.waitForSelector('button:has-text("Create Credential")', { timeout: 30000 });
+    await page.waitForSelector('button:has-text("Create Credential")', {
+      timeout: 30000,
+    });
   });
 
-  test('should display extension support status correctly', async ({ page }) => {
+  test('should display extension support status correctly', async ({
+    page,
+  }) => {
     console.log('\n🧪 Testing extension support detection...');
 
     // Wait for WebAuthn support detection
-    await page.waitForSelector('text=WebAuthn is fully supported', { timeout: 30000 });
+    await page.waitForSelector('text=WebAuthn is fully supported', {
+      timeout: 30000,
+    });
 
     // Create credential first to show encryption options
     const createButton = page.locator('button:has-text("Create Credential")');
     await createButton.click();
-    await page.waitForSelector('text=Credential created successfully!', { timeout: 30000 });
+    await page.waitForSelector('text=Credential created successfully!', {
+      timeout: 30000,
+    });
 
     // Wait for security options to render
-    await expect(page.getByRole('heading', { name: /Security Options/i })).toBeVisible({ timeout: 10000 });
+    await expect(
+      page.getByRole('heading', { name: /Security Options/i })
+    ).toBeVisible({ timeout: 10000 });
 
     // Wait for extension support check to complete
     await page.waitForTimeout(1000);
 
     // Check that extension support indicators are visible when encryption is enabled
-    const encryptionCheckbox = page.getByLabel('Encrypt keystore with WebAuthn');
+    const encryptionCheckbox = page.getByLabel(
+      'Encrypt keystore with WebAuthn'
+    );
     const hmacSecretStatus = page.getByLabel('hmac-secret');
     const largeBlobStatus = page.getByLabel('largeBlob');
 
@@ -158,7 +176,9 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
 
     const encryptionDisabled = await encryptionCheckbox.isDisabled();
     const hmacVisible = await hmacSecretStatus.isVisible().catch(() => false);
-    const largeBlobVisible = await largeBlobStatus.isVisible().catch(() => false);
+    const largeBlobVisible = await largeBlobStatus
+      .isVisible()
+      .catch(() => false);
 
     if (encryptionDisabled || (!hmacVisible && !largeBlobVisible)) {
       await expect(hmacSecretStatus).toHaveCount(0);
@@ -172,30 +192,42 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     console.log('✅ Extension support indicators are displayed');
   });
 
-  test('should show UI controls for Ed25519 DID and encryption options', async ({ page }) => {
+  test('should show UI controls for Ed25519 DID and encryption options', async ({
+    page,
+  }) => {
     console.log('\n🧪 Testing UI controls presence...');
 
     // Wait for WebAuthn support detection
-    await page.waitForSelector('text=WebAuthn is fully supported', { timeout: 30000 });
+    await page.waitForSelector('text=WebAuthn is fully supported', {
+      timeout: 30000,
+    });
 
     // Create credential to show security options
     const createButton = page.locator('button:has-text("Create Credential")');
     await createButton.click();
-    await page.waitForSelector('text=Credential created successfully!', { timeout: 30000 });
+    await page.waitForSelector('text=Credential created successfully!', {
+      timeout: 30000,
+    });
 
     // Check Ed25519 DID checkbox
     const ed25519Checkbox = page.getByLabel('Use persistent keystore identity');
     await expect(ed25519Checkbox).toBeVisible();
 
     // Check encryption checkbox
-    const encryptionCheckbox = page.getByLabel('Encrypt keystore with WebAuthn');
+    const encryptionCheckbox = page.getByLabel(
+      'Encrypt keystore with WebAuthn'
+    );
     await expect(encryptionCheckbox).toBeVisible();
 
     // Check encryption method radio buttons (only visible if encryption is enabled)
     await page.waitForTimeout(500);
 
-    const hmacSecretRadio = page.locator('input[type="radio"][value="hmac-secret"]');
-    const largeBlobRadio = page.locator('input[type="radio"][value="largeBlob"]');
+    const hmacSecretRadio = page.locator(
+      'input[type="radio"][value="hmac-secret"]'
+    );
+    const largeBlobRadio = page.locator(
+      'input[type="radio"][value="largeBlob"]'
+    );
 
     if (await encryptionCheckbox.isDisabled()) {
       await expect(hmacSecretRadio).toHaveCount(0);
@@ -215,22 +247,30 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     console.log('\n🧪 Testing Ed25519 DID creation...');
 
     // Wait for WebAuthn support
-    await page.waitForSelector('text=WebAuthn is fully supported', { timeout: 30000 });
+    await page.waitForSelector('text=WebAuthn is fully supported', {
+      timeout: 30000,
+    });
 
     // Create credential
     await page.locator('button:has-text("Create Credential")').click();
-    await page.waitForSelector('text=Credential created successfully!', { timeout: 30000 });
+    await page.waitForSelector('text=Credential created successfully!', {
+      timeout: 30000,
+    });
 
     // Keystore DID option is already enabled by default (useKeystoreDID = true, keystoreKeyType = 'Ed25519')
     // But we can toggle it to test
     await page.waitForTimeout(500);
 
     // Authenticate
-    const authenticateButton = page.locator('button:has-text("Authenticate with WebAuthn")');
+    const authenticateButton = page.locator(
+      'button:has-text("Authenticate with WebAuthn")'
+    );
     await authenticateButton.click();
 
     // Wait for either success or authenticated status
-    await page.waitForSelector('text=Successfully authenticated', { timeout: 60000 });
+    await page.waitForSelector('text=Successfully authenticated', {
+      timeout: 60000,
+    });
     console.log('✅ Authentication successful');
 
     // Wait for identity to be created
@@ -238,7 +278,7 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
 
     // Check console logs for Ed25519 DID format (z6Mk...)
     const logs = [];
-    page.on('console', msg => logs.push(msg.text()));
+    page.on('console', (msg) => logs.push(msg.text()));
 
     // Look for DID in the page or logs
     const hasDID = await page.evaluate(() => {
@@ -247,29 +287,40 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
       return bodyText.includes('did:key:z6Mk') || bodyText.includes('z6Mk');
     });
 
-    console.log('✅ Ed25519 DID verification:', hasDID ? 'FOUND' : 'NOT DISPLAYED (check logs)');
+    console.log(
+      '✅ Ed25519 DID verification:',
+      hasDID ? 'FOUND' : 'NOT DISPLAYED (check logs)'
+    );
   });
 
   test('should encrypt keystore with hmac-secret method', async ({ page }) => {
     console.log('\n🧪 Testing keystore encryption with hmac-secret...');
 
-    await page.waitForSelector('text=WebAuthn is fully supported', { timeout: 30000 });
+    await page.waitForSelector('text=WebAuthn is fully supported', {
+      timeout: 30000,
+    });
 
     // Create credential
     const createButton = page.locator('button:has-text("Create Credential")');
     await createButton.click();
 
-    await page.waitForSelector('text=Credential created successfully!', { timeout: 30000 });
+    await page.waitForSelector('text=Credential created successfully!', {
+      timeout: 30000,
+    });
     console.log('✅ Credential created with encryption enabled');
 
     // Encryption is enabled by default and hmac-secret will be auto-selected if supported
     await page.waitForTimeout(500);
 
     // Authenticate
-    const authenticateButton = page.locator('button:has-text("Authenticate with WebAuthn")');
+    const authenticateButton = page.locator(
+      'button:has-text("Authenticate with WebAuthn")'
+    );
     await authenticateButton.click();
 
-    await page.waitForSelector('text=Successfully authenticated', { timeout: 60000 });
+    await page.waitForSelector('text=Successfully authenticated', {
+      timeout: 60000,
+    });
     console.log('✅ Authentication successful with encrypted keystore');
 
     // Wait for encryption to complete
@@ -279,20 +330,28 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     const hasEncryptedData = await page.evaluate(() => {
       const keys = Object.keys(localStorage);
       // Look for encryption-related keys
-      return keys.some(key =>
-        key.includes('encrypted') ||
-        key.includes('keystore') ||
-        key.includes('cipher')
+      return keys.some(
+        (key) =>
+          key.includes('encrypted') ||
+          key.includes('keystore') ||
+          key.includes('cipher')
       );
     });
 
-    console.log('✅ Encrypted data in localStorage:', hasEncryptedData ? 'FOUND' : 'NOT FOUND');
+    console.log(
+      '✅ Encrypted data in localStorage:',
+      hasEncryptedData ? 'FOUND' : 'NOT FOUND'
+    );
   });
 
-  test('should create and authenticate with P-256 DID (default)', async ({ page }) => {
+  test('should create and authenticate with P-256 DID (default)', async ({
+    page,
+  }) => {
     console.log('\n🧪 Testing default P-256 DID creation...');
 
-    await page.waitForSelector('text=WebAuthn is fully supported', { timeout: 30000 });
+    await page.waitForSelector('text=WebAuthn is fully supported', {
+      timeout: 30000,
+    });
 
     // Do NOT enable Ed25519 DID - test default P-256
     // Do NOT enable encryption - test default unencrypted
@@ -301,14 +360,20 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     const createButton = page.locator('button:has-text("Create Credential")');
     await createButton.click();
 
-    await page.waitForSelector('text=Credential created successfully!', { timeout: 30000 });
+    await page.waitForSelector('text=Credential created successfully!', {
+      timeout: 30000,
+    });
     console.log('✅ Credential created (P-256 default)');
 
     // Authenticate
-    const authenticateButton = page.locator('button:has-text("Authenticate with WebAuthn")');
+    const authenticateButton = page.locator(
+      'button:has-text("Authenticate with WebAuthn")'
+    );
     await authenticateButton.click();
 
-    await page.waitForSelector('text=Successfully authenticated', { timeout: 60000 });
+    await page.waitForSelector('text=Successfully authenticated', {
+      timeout: 60000,
+    });
     console.log('✅ Authentication successful (P-256 default)');
 
     await page.waitForTimeout(3000);
@@ -319,21 +384,32 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
       return bodyText.includes('did:key:zDna') || bodyText.includes('zDna');
     });
 
-    console.log('✅ P-256 DID verification:', hasP256DID ? 'FOUND' : 'NOT DISPLAYED (check logs)');
+    console.log(
+      '✅ P-256 DID verification:',
+      hasP256DID ? 'FOUND' : 'NOT DISPLAYED (check logs)'
+    );
   });
 
-  test('should add TODOs successfully with encrypted keystore', async ({ page }) => {
+  test('should add TODOs successfully with encrypted keystore', async ({
+    page,
+  }) => {
     console.log('\n🧪 Testing TODO operations with encrypted keystore...');
 
-    await page.waitForSelector('text=WebAuthn is fully supported', { timeout: 30000 });
+    await page.waitForSelector('text=WebAuthn is fully supported', {
+      timeout: 30000,
+    });
 
     // Both Ed25519 and encryption are enabled by default
     // Create and authenticate
     await page.locator('button:has-text("Create Credential")').click();
-    await page.waitForSelector('text=Credential created successfully!', { timeout: 30000 });
+    await page.waitForSelector('text=Credential created successfully!', {
+      timeout: 30000,
+    });
 
     await page.locator('button:has-text("Authenticate with WebAuthn")').click();
-    await page.waitForSelector('text=Successfully authenticated', { timeout: 60000 });
+    await page.waitForSelector('text=Successfully authenticated', {
+      timeout: 60000,
+    });
 
     await page.waitForTimeout(3000);
 
@@ -355,14 +431,20 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     console.log('✅ TODO is visible in the list');
   });
 
-  test('should display features summary when options are enabled', async ({ page }) => {
+  test('should display features summary when options are enabled', async ({
+    page,
+  }) => {
     console.log('\n🧪 Testing features summary display...');
 
-    await page.waitForSelector('text=WebAuthn is fully supported', { timeout: 30000 });
+    await page.waitForSelector('text=WebAuthn is fully supported', {
+      timeout: 30000,
+    });
 
     // Create credential first (security options only visible after credential creation)
     await page.locator('button:has-text("Create Credential")').click();
-    await page.waitForSelector('text=Credential created successfully!', { timeout: 30000 });
+    await page.waitForSelector('text=Credential created successfully!', {
+      timeout: 30000,
+    });
 
     // Wait for UI to stabilize and security options to render
     await page.waitForTimeout(2000);
@@ -394,20 +476,30 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
 
     // Check for key type specific benefits - either Ed25519 or secp256k1
     // Use a flexible check since the exact key type shown depends on state
-    const hasEd25519 = await page.locator('text=Ed25519: Faster signing').isVisible().catch(() => false);
-    const hasSecp256k1 = await page.locator('text=secp256k1: Ethereum').isVisible().catch(() => false);
+    const hasEd25519 = await page
+      .locator('text=Ed25519: Faster signing')
+      .isVisible()
+      .catch(() => false);
+    const hasSecp256k1 = await page
+      .locator('text=secp256k1: Ethereum')
+      .isVisible()
+      .catch(() => false);
 
     if (hasEd25519) {
       console.log('✅ Ed25519 key type benefit shown');
     } else if (hasSecp256k1) {
       console.log('✅ secp256k1 key type benefit shown');
     } else {
-      console.log('⚠️ No specific key type benefit found (may be timing or state issue)');
+      console.log(
+        '⚠️ No specific key type benefit found (may be timing or state issue)'
+      );
     }
 
     // Check for encryption benefit only if encryption is enabled
     const encryptionCheckbox = page.locator('input[type="checkbox"]').nth(1);
-    const encryptionEnabled = (await encryptionCheckbox.isDisabled()) ? false : await encryptionCheckbox.isChecked();
+    const encryptionEnabled = (await encryptionCheckbox.isDisabled())
+      ? false
+      : await encryptionCheckbox.isChecked();
     const encryptionBenefit = page.locator('text=Keystore encrypted');
     if (encryptionEnabled) {
       await expect(encryptionBenefit).toBeVisible({ timeout: 10000 });
@@ -417,17 +509,25 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
       console.log('✅ Encryption benefit hidden when encryption disabled');
     }
   });
-  test('should handle browser reload persistence (session management)', async ({ page }) => {
+  test('should handle browser reload persistence (session management)', async ({
+    page,
+  }) => {
     console.log('\n🧪 Testing session persistence after reload...');
 
-    await page.waitForSelector('text=WebAuthn is fully supported', { timeout: 30000 });
+    await page.waitForSelector('text=WebAuthn is fully supported', {
+      timeout: 30000,
+    });
 
     // Options are enabled by default, just create and authenticate
     await page.locator('button:has-text("Create Credential")').click();
-    await page.waitForSelector('text=Credential created successfully!', { timeout: 30000 });
+    await page.waitForSelector('text=Credential created successfully!', {
+      timeout: 30000,
+    });
 
     await page.locator('button:has-text("Authenticate with WebAuthn")').click();
-    await page.waitForSelector('text=Successfully authenticated', { timeout: 60000 });
+    await page.waitForSelector('text=Successfully authenticated', {
+      timeout: 60000,
+    });
 
     await page.waitForTimeout(2000);
 
@@ -445,13 +545,19 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     await page.waitForTimeout(2000);
 
     // Check if re-authentication is required
-    const authenticateButton = page.locator('button:has-text("Authenticate with WebAuthn")');
+    const authenticateButton = page.locator(
+      'button:has-text("Authenticate with WebAuthn")'
+    );
     const needsAuth = await authenticateButton.isVisible().catch(() => false);
 
     if (needsAuth) {
-      console.log('🔐 Re-authentication required after reload (expected for encrypted keystore)');
+      console.log(
+        '🔐 Re-authentication required after reload (expected for encrypted keystore)'
+      );
       await authenticateButton.click();
-      await page.waitForSelector('text=Successfully authenticated', { timeout: 30000 });
+      await page.waitForSelector('text=Successfully authenticated', {
+        timeout: 30000,
+      });
       console.log('✅ Re-authenticated successfully');
     } else {
       console.log('⚠️  No authentication required (session may be cached)');
@@ -469,25 +575,35 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     }
   });
 
-  test('should show encryption method selection only when encryption is enabled', async ({ page }) => {
+  test('should show encryption method selection only when encryption is enabled', async ({
+    page,
+  }) => {
     console.log('\n🧪 Testing conditional encryption method controls...');
 
-    await page.waitForSelector('text=WebAuthn is fully supported', { timeout: 30000 });
+    await page.waitForSelector('text=WebAuthn is fully supported', {
+      timeout: 30000,
+    });
 
     // Create credential to show security options
     await page.locator('button:has-text("Create Credential")').click();
-    await page.waitForSelector('text=Credential created successfully!', { timeout: 30000 });
+    await page.waitForSelector('text=Credential created successfully!', {
+      timeout: 30000,
+    });
 
     await page.waitForTimeout(500);
 
     const hmacRadio = page.locator('input[type="radio"][value="hmac-secret"]');
-    const largeBlobRadio = page.locator('input[type="radio"][value="largeBlob"]');
+    const largeBlobRadio = page.locator(
+      'input[type="radio"][value="largeBlob"]'
+    );
     const encryptionCheckbox = page.locator('input[type="checkbox"]').nth(1);
 
     if (await encryptionCheckbox.isDisabled()) {
       await expect(hmacRadio).toHaveCount(0);
       await expect(largeBlobRadio).toHaveCount(0);
-      console.log('✅ Encryption method controls hidden when encryption unavailable');
+      console.log(
+        '✅ Encryption method controls hidden when encryption unavailable'
+      );
       return;
     }
 
@@ -502,43 +618,60 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     }
 
     const finalHmacVisible = await hmacRadio.isVisible().catch(() => false);
-    const finalLargeBlobVisible = await largeBlobRadio.isVisible().catch(() => false);
+    const finalLargeBlobVisible = await largeBlobRadio
+      .isVisible()
+      .catch(() => false);
 
-    console.log('✅ Encryption method controls hidden after disabling encryption:',
-      !(finalHmacVisible || finalLargeBlobVisible) ? 'YES' : 'NO');
+    console.log(
+      '✅ Encryption method controls hidden after disabling encryption:',
+      !(finalHmacVisible || finalLargeBlobVisible) ? 'YES' : 'NO'
+    );
   });
 
   test('should log correct DID type to console', async ({ page }) => {
     console.log('\n🧪 Testing DID type logging...');
 
     const consoleLogs = [];
-    page.on('console', msg => {
+    page.on('console', (msg) => {
       consoleLogs.push(msg.text());
     });
 
-    await page.waitForSelector('text=WebAuthn is fully supported', { timeout: 30000 });
+    await page.waitForSelector('text=WebAuthn is fully supported', {
+      timeout: 30000,
+    });
 
     // Ed25519 DID is enabled by default
     await page.locator('button:has-text("Create Credential")').click();
-    await page.waitForSelector('text=Credential created successfully!', { timeout: 30000 });
+    await page.waitForSelector('text=Credential created successfully!', {
+      timeout: 30000,
+    });
 
     await page.locator('button:has-text("Authenticate with WebAuthn")').click();
-    await page.waitForSelector('text=Successfully authenticated', { timeout: 60000 });
+    await page.waitForSelector('text=Successfully authenticated', {
+      timeout: 60000,
+    });
 
     await page.waitForTimeout(3000);
 
     // Check logs for Ed25519 DID mentions
-    const hasEd25519Log = consoleLogs.some(log =>
-      log.includes('Ed25519') ||
-      log.includes('ed25519') ||
-      log.includes('z6Mk')
+    const hasEd25519Log = consoleLogs.some(
+      (log) =>
+        log.includes('Ed25519') ||
+        log.includes('ed25519') ||
+        log.includes('z6Mk')
     );
 
-    console.log('✅ Ed25519 DID logging:', hasEd25519Log ? 'FOUND' : 'NOT FOUND');
+    console.log(
+      '✅ Ed25519 DID logging:',
+      hasEd25519Log ? 'FOUND' : 'NOT FOUND'
+    );
 
     if (hasEd25519Log) {
-      const relevantLog = consoleLogs.find(log =>
-        log.includes('Ed25519') || log.includes('ed25519') || log.includes('z6Mk')
+      const relevantLog = consoleLogs.find(
+        (log) =>
+          log.includes('Ed25519') ||
+          log.includes('ed25519') ||
+          log.includes('z6Mk')
       );
       console.log('   Log sample:', relevantLog?.substring(0, 100));
     }
@@ -548,15 +681,19 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     console.log('\n🧪 Testing Ed25519 keystore key type selection...');
 
     const consoleLogs = [];
-    page.on('console', msg => {
+    page.on('console', (msg) => {
       consoleLogs.push(msg.text());
     });
 
-    await page.waitForSelector('text=WebAuthn is fully supported', { timeout: 30000 });
+    await page.waitForSelector('text=WebAuthn is fully supported', {
+      timeout: 30000,
+    });
 
     // Create credential
     await page.locator('button:has-text("Create Credential")').click();
-    await page.waitForSelector('text=Credential created successfully!', { timeout: 30000 });
+    await page.waitForSelector('text=Credential created successfully!', {
+      timeout: 30000,
+    });
 
     // Select Ed25519 key type
     await page.locator('input[type="radio"][value="Ed25519"]').click();
@@ -565,23 +702,32 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
 
     // Authenticate
     await page.locator('button:has-text("Authenticate with WebAuthn")').click();
-    await page.waitForSelector('text=Successfully authenticated', { timeout: 60000 });
+    await page.waitForSelector('text=Successfully authenticated', {
+      timeout: 60000,
+    });
     console.log('✅ Authentication successful with Ed25519 key type');
 
     await page.waitForTimeout(3000);
 
     // Check logs for Ed25519 key type
-    const hasEd25519KeyLog = consoleLogs.some(log =>
-      log.includes('keystoreKeyType: Ed25519') ||
-      log.includes('type: Ed25519') ||
-      log.includes('Ed25519')
+    const hasEd25519KeyLog = consoleLogs.some(
+      (log) =>
+        log.includes('keystoreKeyType: Ed25519') ||
+        log.includes('type: Ed25519') ||
+        log.includes('Ed25519')
     );
 
-    console.log('✅ Ed25519 key type logging:', hasEd25519KeyLog ? 'FOUND' : 'NOT FOUND');
+    console.log(
+      '✅ Ed25519 key type logging:',
+      hasEd25519KeyLog ? 'FOUND' : 'NOT FOUND'
+    );
 
     // Check for Ed25519 DID format (z6Mk...)
-    const hasEd25519DID = consoleLogs.some(log => log.includes('z6Mk'));
-    console.log('✅ Ed25519 DID format (z6Mk):', hasEd25519DID ? 'FOUND' : 'NOT FOUND');
+    const hasEd25519DID = consoleLogs.some((log) => log.includes('z6Mk'));
+    console.log(
+      '✅ Ed25519 DID format (z6Mk):',
+      hasEd25519DID ? 'FOUND' : 'NOT FOUND'
+    );
   });
 
   // NOTE: largeBlob E2E testing is complex due to:
@@ -600,7 +746,9 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
   // 3. Select "largeBlob" encryption method
   // 4. Authenticate and verify encrypted keystore works
 
-  test.skip('should support largeBlob encryption method (manual test recommended)', async ({ browser }) => {
+  test.skip('should support largeBlob encryption method (manual test recommended)', async ({
+    browser,
+  }) => {
     console.log('\n🧪 Testing largeBlob encryption method...');
 
     // Create a new context with largeBlob support enabled
@@ -615,15 +763,19 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
         window.PublicKeyCredential = {};
       }
 
-      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = async () => true;
-      window.PublicKeyCredential.isConditionalMediationAvailable = async () => true;
+      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable =
+        async () => true;
+      window.PublicKeyCredential.isConditionalMediationAvailable = async () =>
+        true;
 
-      const mockCredentialId = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+      const mockCredentialId = new Uint8Array([
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+      ]);
 
       // Generate deterministic 32-byte key for largeBlob
       const mockLargeBlobKey = new Uint8Array(32);
       for (let i = 0; i < 32; i++) {
-        mockLargeBlobKey[i] = i * 7 % 256;
+        mockLargeBlobKey[i] = (i * 7) % 256;
       }
 
       if (!window.navigator.credentials) {
@@ -633,13 +785,13 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
       window.navigator.credentials.create = async (options) => {
         console.log('🔐 WEBAUTHN_MOCK: navigator.credentials.create() called');
         console.log('🔐 Extensions requested:', options?.publicKey?.extensions);
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         const mockAttestation = new Uint8Array(300);
         mockAttestation.set([
-          0xa3, 0x63, 0x66, 0x6d, 0x74, 0x66, 0x70, 0x61, 0x63, 0x6b, 0x65, 0x64,
-          0x67, 0x61, 0x74, 0x74, 0x53, 0x74, 0x6d, 0x74, 0xa0, 0x68, 0x61, 0x75,
-          0x74, 0x68, 0x44, 0x61, 0x74, 0x61
+          0xa3, 0x63, 0x66, 0x6d, 0x74, 0x66, 0x70, 0x61, 0x63, 0x6b, 0x65,
+          0x64, 0x67, 0x61, 0x74, 0x74, 0x53, 0x74, 0x6d, 0x74, 0xa0, 0x68,
+          0x61, 0x75, 0x74, 0x68, 0x44, 0x61, 0x74, 0x61,
         ]);
 
         const extensionResults = {};
@@ -658,35 +810,37 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
           type: 'public-key',
           response: {
             attestationObject: mockAttestation,
-            clientDataJSON: new TextEncoder().encode(JSON.stringify({
-              type: 'webauthn.create',
-              challenge: 'mock-challenge',
-              origin: window.location.origin,
-              crossOrigin: false
-            })),
+            clientDataJSON: new TextEncoder().encode(
+              JSON.stringify({
+                type: 'webauthn.create',
+                challenge: 'mock-challenge',
+                origin: window.location.origin,
+                crossOrigin: false,
+              })
+            ),
             getPublicKey: () => new Uint8Array(65),
-            getPublicKeyAlgorithm: () => -7
+            getPublicKeyAlgorithm: () => -7,
           },
-          getClientExtensionResults: () => extensionResults
+          getClientExtensionResults: () => extensionResults,
         };
       };
 
       window.navigator.credentials.get = async (options) => {
         console.log('🔐 WEBAUTHN_MOCK: navigator.credentials.get() called');
         console.log('🔐 Extensions requested:', options?.publicKey?.extensions);
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         const extensionResults = {};
         if (options?.publicKey?.extensions?.hmacGetSecret) {
           extensionResults.hmacGetSecret = {
-            output1: new Uint8Array(32).fill(42)
+            output1: new Uint8Array(32).fill(42),
           };
           console.log('🔐 WEBAUTHN_MOCK: hmac-secret output returned');
         }
         if (options?.publicKey?.extensions?.largeBlob?.read) {
           extensionResults.largeBlob = {
             supported: true,
-            blob: mockLargeBlobKey.buffer
+            blob: mockLargeBlobKey.buffer,
           };
           console.log('🔐 WEBAUTHN_MOCK: largeBlob blob returned');
         }
@@ -697,16 +851,18 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
           type: 'public-key',
           response: {
             authenticatorData: new Uint8Array(37),
-            clientDataJSON: new TextEncoder().encode(JSON.stringify({
-              type: 'webauthn.get',
-              challenge: 'mock-challenge',
-              origin: window.location.origin,
-              crossOrigin: false
-            })),
+            clientDataJSON: new TextEncoder().encode(
+              JSON.stringify({
+                type: 'webauthn.get',
+                challenge: 'mock-challenge',
+                origin: window.location.origin,
+                crossOrigin: false,
+              })
+            ),
             signature: new Uint8Array(64),
-            userHandle: null
+            userHandle: null,
           },
-          getClientExtensionResults: () => extensionResults
+          getClientExtensionResults: () => extensionResults,
         };
       };
 
@@ -716,7 +872,7 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     const page = await context.newPage();
 
     const consoleLogs = [];
-    page.on('console', msg => {
+    page.on('console', (msg) => {
       consoleLogs.push(msg.text());
     });
 
@@ -724,11 +880,15 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     await page.waitForLoadState('networkidle');
     await page.waitForFunction(() => document.readyState === 'complete');
 
-    await page.waitForSelector('text=WebAuthn is fully supported', { timeout: 30000 });
+    await page.waitForSelector('text=WebAuthn is fully supported', {
+      timeout: 30000,
+    });
 
     // Create credential FIRST
     await page.locator('button:has-text("Create Credential")').click();
-    await page.waitForSelector('text=Credential created successfully!', { timeout: 30000 });
+    await page.waitForSelector('text=Credential created successfully!', {
+      timeout: 30000,
+    });
     console.log('✅ Credential created');
 
     await page.waitForTimeout(2000);
@@ -739,12 +899,18 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
 
     // Check if Security Options section is visible
     const securityOptions = page.locator('text=🔐 Security Options');
-    const isSecurityVisible = await securityOptions.isVisible().catch(() => false);
+    const isSecurityVisible = await securityOptions
+      .isVisible()
+      .catch(() => false);
     console.log('✅ Security Options visible:', isSecurityVisible);
 
     // NOW select largeBlob encryption method (radio appears after credential creation)
-    const largeBlobRadio = page.locator('input[type="radio"][value="largeBlob"]');
-    const isRadioVisible = await largeBlobRadio.isVisible({ timeout: 5000 }).catch(() => false);
+    const largeBlobRadio = page.locator(
+      'input[type="radio"][value="largeBlob"]'
+    );
+    const isRadioVisible = await largeBlobRadio
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
     console.log('✅ largeBlob radio visible:', isRadioVisible);
 
     await largeBlobRadio.click();
@@ -758,24 +924,33 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
 
     // Authenticate with largeBlob
     await page.locator('button:has-text("Authenticate with WebAuthn")').click();
-    await page.waitForSelector('text=Successfully authenticated', { timeout: 60000 });
+    await page.waitForSelector('text=Successfully authenticated', {
+      timeout: 60000,
+    });
     console.log('✅ Authentication successful with largeBlob method');
 
     await page.waitForTimeout(3000);
 
     // Check logs for largeBlob usage
-    const hasLargeBlobLog = consoleLogs.some(log =>
-      log.includes('largeBlob') ||
-      log.includes('LargeBlob') ||
-      log.includes('large blob')
+    const hasLargeBlobLog = consoleLogs.some(
+      (log) =>
+        log.includes('largeBlob') ||
+        log.includes('LargeBlob') ||
+        log.includes('large blob')
     );
-    console.log('✅ largeBlob logging:', hasLargeBlobLog ? 'FOUND' : 'NOT FOUND');
+    console.log(
+      '✅ largeBlob logging:',
+      hasLargeBlobLog ? 'FOUND' : 'NOT FOUND'
+    );
 
     // Verify that encryption method shows largeBlob in logs
-    const hasEncryptionMethodLog = consoleLogs.some(log =>
-      log.includes('encryptionMethod') && log.includes('largeBlob')
+    const hasEncryptionMethodLog = consoleLogs.some(
+      (log) => log.includes('encryptionMethod') && log.includes('largeBlob')
     );
-    console.log('✅ Encryption method in logs:', hasEncryptionMethodLog ? 'FOUND' : 'NOT FOUND');
+    console.log(
+      '✅ Encryption method in logs:',
+      hasEncryptionMethodLog ? 'FOUND' : 'NOT FOUND'
+    );
 
     // Add a TODO to verify everything still works
     const addButton = page.locator('button:has-text("Add")').first();
@@ -792,7 +967,9 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
 
     // Verify TODO persists after reload
     await page.reload();
-    await page.waitForSelector('text=WebAuthn is fully supported', { timeout: 30000 });
+    await page.waitForSelector('text=WebAuthn is fully supported', {
+      timeout: 30000,
+    });
 
     // Should show "Authenticator found" and auto-connect
     await page.waitForTimeout(3000);
