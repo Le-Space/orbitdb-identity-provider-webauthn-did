@@ -1,5 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const e2eTestPattern = '**/*e2e.test.js';
+const playwrightPort = process.env.PLAYWRIGHT_PORT || '5173';
+const baseURL = `http://localhost:${playwrightPort}`;
+
 export default defineConfig({
   testDir: './tests',
   /* Only run Playwright tests, ignore mocha tests */
@@ -17,7 +21,7 @@ export default defineConfig({
   /* Shared settings for all the tests. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: 'http://localhost:5173',
+    baseURL,
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
@@ -38,20 +42,24 @@ export default defineConfig({
     {
       name: 'firefox',
       use: { ...devices['Desktop Firefox'] },
+      testIgnore: e2eTestPattern,
     },
     {
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
+      testIgnore: e2eTestPattern,
     },
 
     /* Test against mobile viewports. */
     {
       name: 'Mobile Chrome',
       use: { ...devices['Pixel 5'] },
+      testIgnore: e2eTestPattern,
     },
     {
       name: 'Mobile Safari',
       use: { ...devices['iPhone 12'] },
+      testIgnore: e2eTestPattern,
     },
   ],
 
@@ -62,8 +70,10 @@ export default defineConfig({
       const testFile = process.env.PLAYWRIGHT_TEST_FILE || '';
       const cliArgs = process.argv.join(' ');
       const useEncryptedDemo = testFile.includes('encrypted-keystore') ||
+        testFile.includes('ed25519-keystore-did') ||
         testFile.includes('simple-encryption') ||
         cliArgs.includes('ed25519-encrypted-keystore') ||
+        cliArgs.includes('ed25519-keystore-did') ||
         cliArgs.includes('encrypted-keystore') ||
         cliArgs.includes('simple-encryption') ||
         process.env.USE_ENCRYPTED_DEMO === 'true';
@@ -79,10 +89,10 @@ export default defineConfig({
           : 'examples/webauthn-todo-demo';
       
       return process.env.CI 
-        ? `cd ${demoDir} && npm run preview -- --port 5173 --host`
-        : `cd ${demoDir} && npm run dev`;
+        ? `cd ${demoDir} && npm run preview -- --port ${playwrightPort} --host`
+        : `cd ${demoDir} && npm run dev -- --port ${playwrightPort} --host`;
     })(),
-    url: 'http://localhost:5173',
+    url: baseURL,
     reuseExistingServer: process.env.PLAYWRIGHT_REUSE_SERVER === 'true',
     timeout: 120 * 1000,
   },

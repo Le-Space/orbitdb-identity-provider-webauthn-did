@@ -85,18 +85,28 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
       };
     });
 
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle');
     const moduleUrl = `/@fs${process.cwd().replace(/\\/g, '/')}/src/index.js`;
-    await page.evaluate(async (url) => {
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const module = await import(url);
-        window.WebAuthnModule = module;
-        window.moduleLoaded = true;
+        await page.evaluate(async (url) => {
+          try {
+            const module = await import(url);
+            window.WebAuthnModule = module;
+            window.moduleLoaded = true;
+          } catch (error) {
+            window.moduleLoadError = String(error?.stack || error);
+            window.moduleLoaded = false;
+          }
+        }, moduleUrl);
+        break;
       } catch (error) {
-        window.moduleLoadError = String(error?.stack || error);
-        window.moduleLoaded = false;
+        const isContextReset = String(error).includes('Execution context was destroyed');
+        if (!isContextReset || attempt === 2) throw error;
+        await page.waitForLoadState('networkidle');
       }
-    }, moduleUrl);
+    }
     await page.waitForFunction(() => window.moduleLoaded === true || !!window.moduleLoadError);
     const moduleLoadError = await page.evaluate(() => window.moduleLoadError || null);
     expect(moduleLoadError).toBeNull();

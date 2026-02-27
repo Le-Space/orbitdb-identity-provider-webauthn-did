@@ -127,9 +127,9 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     });
 
     // Navigate to the demo
-    await page.goto('http://localhost:5173');
-    await page.waitForLoadState('networkidle');
+    await page.goto('http://localhost:5173', { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => document.readyState === 'complete');
+    await page.waitForSelector('button:has-text("Create Credential")', { timeout: 30000 });
   });
 
   test('should display extension support status correctly', async ({ page }) => {
