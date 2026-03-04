@@ -23,6 +23,7 @@
 
   // OrbitDB state
   let manager = null; // MultiDeviceManager instance
+  let credential = null; // WebAuthn credential
   let dbAddress = null;
   let devices = [];
   let qrPayload = null;
@@ -46,7 +47,6 @@
       }
       try {
         const payload = manager.getPeerInfo();
-        console.log('[qr-watch] poll tick — multiaddrs (' + payload.multiaddrs.length + '):', payload.multiaddrs);
         if (JSON.stringify(payload.multiaddrs) !== JSON.stringify(qrPayload?.multiaddrs ?? [])) {
           console.log('[qr-watch] address change detected by poll — updating QR');
           qrPayload = payload;
@@ -73,7 +73,7 @@
       status = 'Checking for existing passkey…';
       const result = await WebAuthnDIDProvider.detectExistingCredential();
 
-      let credential;
+      credential;
       if (result.hasCredentials && result.credential) {
         credential = {
           credentialId: WebAuthnDIDProvider.arrayBufferToBase64url(result.credential.rawId),
@@ -101,6 +101,8 @@
             libp2p: orbitdbState.ipfs.libp2p,
             identity: orbitdbState.identity,
             onPairingRequest: handleIncomingPairRequest,
+            onDeviceJoined: refreshDevices,
+            onDeviceLinked: refreshDevices,
           });
           
           await manager.openExistingDb(existingDbAddress);
@@ -127,6 +129,8 @@
             libp2p: orbitdbState.ipfs.libp2p,
             identity: orbitdbState.identity,
             onPairingRequest: handleIncomingPairRequest,
+            onDeviceJoined: refreshDevices,
+            onDeviceLinked: refreshDevices,
           });
           
           appMode = 'link-or-create';
@@ -134,7 +138,7 @@
           isLogin = false;
         }
       } else {
-        // No existing credential - create new one (new user)
+        // No existing credential - create new one, then ask user what to do
         status = 'Creating new credential…';
         isLogin = false;
         
@@ -145,30 +149,9 @@
           keystoreEncryptionMethod: 'prf',
         });
 
-        status = 'Setting up OrbitDB identity (biometric prompt will appear)…';
-        const orbitdbState = await setupOrbitDB(credential, {
-          encryptKeystore: true,
-          keystoreEncryptionMethod: 'prf',
-        });
-
-        manager = await MultiDeviceManager.createFromExisting({
-          credential,
-          orbitdb: orbitdbState.orbitdb,
-          ipfs: orbitdbState.ipfs,
-          libp2p: orbitdbState.ipfs.libp2p,
-          identity: orbitdbState.identity,
-          onPairingRequest: handleIncomingPairRequest,
-        });
-        
-        const created = await manager.createNew();
-        dbAddress = created.dbAddress;
-        
-        saveDbAddress(dbAddress);
-        startWatchingQR();
-        await refreshDevices();
-        
-        appMode = 'ready';
-        status = 'Ready! Show QR code to link a new device.';
+        // Don't setup OrbitDB yet - let user choose first
+        appMode = 'link-or-create';
+        status = 'New device set up. Would you like to link to an existing device or create a new setup?';
       }
 
     } catch (err) {
@@ -207,8 +190,26 @@
     status = 'Setting up to link to existing device…';
     
     try {
-      // Manager already created in handleStart with restore() result
-      // Just need to wait for OrbitDB to be ready
+      // If manager doesn't exist yet (new credential case), create it first
+      if (!manager) {
+        const orbitdbState = await setupOrbitDB(credential, {
+          encryptKeystore: true,
+          keystoreEncryptionMethod: 'prf',
+        });
+        
+        manager = await MultiDeviceManager.createFromExisting({
+          credential,
+          orbitdb: orbitdbState.orbitdb,
+          ipfs: orbitdbState.ipfs,
+          libp2p: orbitdbState.ipfs.libp2p,
+          identity: orbitdbState.identity,
+          onPairingRequest: handleIncomingPairRequest,
+          onDeviceJoined: refreshDevices,
+          onDeviceLinked: refreshDevices,
+        });
+      }
+      
+      // Show PairView for scanning QR / pasting JSON
       loading = false;
       status = 'Ready. Scan or paste Device A\'s QR code.';
     } catch (err) {
@@ -224,6 +225,25 @@
     status = 'Creating new device setup…';
     
     try {
+      // If manager doesn't exist yet (new credential case), create it first
+      if (!manager) {
+        const orbitdbState = await setupOrbitDB(credential, {
+          encryptKeystore: true,
+          keystoreEncryptionMethod: 'prf',
+        });
+        
+        manager = await MultiDeviceManager.createFromExisting({
+          credential,
+          orbitdb: orbitdbState.orbitdb,
+          ipfs: orbitdbState.ipfs,
+          libp2p: orbitdbState.ipfs.libp2p,
+          identity: orbitdbState.identity,
+          onPairingRequest: handleIncomingPairRequest,
+          onDeviceJoined: refreshDevices,
+          onDeviceLinked: refreshDevices,
+        });
+      }
+      
       const created = await manager.createNew();
       dbAddress = created.dbAddress;
       
@@ -405,7 +425,7 @@
     <div class="link-or-create-view">
       <h2>Link or Create?</h2>
       <p class="subtitle">
-        You have an existing passkey but no local database. Would you like to:
+        Set up your new device. Would you like to:
       </p>
       
       {#if error}
@@ -593,6 +613,24 @@
   }
 
   .btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .btn-secondary {
+    padding: 0.875rem 1.5rem;
+    background: var(--cds-layer, #e8e8e8);
+    color: var(--cds-text-primary, #333);
+    border: 1px solid var(--cds-border-subtle, #ccc);
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    width: 100%;
+  }
+
+  .btn-secondary:disabled {
     opacity: 0.6;
     cursor: not-allowed;
   }

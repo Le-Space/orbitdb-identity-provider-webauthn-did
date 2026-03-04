@@ -73,9 +73,11 @@ export class MultiDeviceManager {
   async _finalizeDb() {
     await this._setupSyncListeners();
     if (this._onPairingRequest) {
+      console.log('[manager] Registering link device handler for peer:', this._libp2p?.peerId?.toString());
       await registerLinkDeviceHandler(
         this._libp2p, this._devicesDb, this._onPairingRequest, this._onDeviceLinked
       );
+      console.log('[manager] Link device handler registered');
     }
   }
 
@@ -112,25 +114,44 @@ export class MultiDeviceManager {
   }
 
   async _setupSyncListeners() {
-    if (!this._devicesDb) return;
+    if (!this._devicesDb) {
+      console.log('[manager] _setupSyncListeners: no devicesDb, skipping');
+      return;
+    }
+
+    console.log('[manager] Setting up sync listeners for DB:', this._devicesDb.address?.toString());
 
     if (this._onDeviceJoined) {
-      this._devicesDb.events.on('join', (peerId, details) => {
-        this._onDeviceJoined(peerId.toString(), details);
+      console.log('[manager] Subscribing to join events');
+      this._devicesDb.events.on('join', async (peerId, details) => {
+        console.log('[manager] JOIN event fired:', peerId.toString(), details);
+        if (this._onDeviceJoined) {
+          this._onDeviceJoined(peerId.toString(), details);
+        }
+        // Also refresh device list on join to show all devices
+        if (this._onDeviceLinked) {
+          const devices = await listDevices(this._devicesDb);
+          console.log('[manager] JOIN: Refreshing device list, found:', devices.length);
+          for (const device of devices) {
+            this._onDeviceLinked(device);
+          }
+        }
       });
     }
 
     this._devicesDb.events.on('update', async (_entry) => {
+      console.log('[manager] UPDATE event fired, _onDeviceLinked:', !!this._onDeviceLinked);
       if (this._onDeviceLinked) {
         const devices = await listDevices(this._devicesDb);
-        const myDid = this._identity?.id;
+        console.log('[manager] UPDATE: Devices found:', devices.length);
+        // Trigger callback for all devices to refresh the list
         for (const device of devices) {
-          if (device.ed25519_did !== myDid && device.status === 'active') {
-            this._onDeviceLinked(device);
-          }
+          console.log('[manager] UPDATE: Triggering callback for device:', device.device_label, device.ed25519_did, 'status:', device.status);
+          this._onDeviceLinked(device);
         }
       }
     });
+    console.log('[manager] Sync listeners setup complete');
   }
 
   async restore() {
@@ -160,6 +181,9 @@ export class MultiDeviceManager {
       throw new Error('orbitdb not provided. Pass orbitdb, ipfs, libp2p, identity in config.');
     }
 
+    console.log('[linkToDevice] QR payload:', JSON.stringify(qrPayload));
+    console.log('[linkToDevice] My peerId:', this._libp2p?.peerId?.toString());
+
     const result = await sendPairingRequest(
       this._libp2p,
       qrPayload.peerId,
@@ -174,17 +198,40 @@ export class MultiDeviceManager {
 
     if (result.type === 'rejected') return result;
 
+    console.log('[linkToDevice] Got granted, opening database...');
     this._devicesDb = await openDeviceRegistry(this._orbitdb, this._identity.id, result.orbitdbAddress);
     this._dbAddress = this._devicesDb.address;
+    console.log('[linkToDevice] Database opened, attempting to register device...');
 
-    await registerDevice(this._devicesDb, {
-      credential_id: this._credential.credentialId,
-      public_key: this._getPublicKey(),
-      device_label: detectDeviceLabel(),
-      created_at: Date.now(),
-      status: 'active',
-      ed25519_did: this._identity.id,
-    });
+    // Wait for access grant to propagate before registering
+    // The access controller needs time to sync permissions from Device A
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    try {
+      await registerDevice(this._devicesDb, {
+        credential_id: this._credential.credentialId,
+        public_key: this._getPublicKey(),
+        device_label: detectDeviceLabel(),
+        created_at: Date.now(),
+        status: 'active',
+        ed25519_did: this._identity.id,
+      });
+      console.log('[linkToDevice] Device registered successfully');
+    } catch (registerErr) {
+      console.error('[linkToDevice] Failed to register device:', registerErr.message);
+      // Wait and retry
+      console.log('[linkToDevice] Retrying after delay...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      await registerDevice(this._devicesDb, {
+        credential_id: this._credential.credentialId,
+        public_key: this._getPublicKey(),
+        device_label: detectDeviceLabel(),
+        created_at: Date.now(),
+        status: 'active',
+        ed25519_did: this._identity.id,
+      });
+      console.log('[linkToDevice] Device registered successfully on retry');
+    }
 
     await this.syncDevices();
     await this._finalizeDb();
@@ -199,7 +246,7 @@ export class MultiDeviceManager {
       .map((ma) => ma.toString())
       .filter((ma) => {
         const lower = ma.toLowerCase();
-        return (lower.includes('/ws/') || lower.includes('/wss/') || lower.includes('/webtransport'))
+        return (lower.includes('/ws/') || lower.includes('/wss/') || lower.includes('/webtransport') || lower.includes('/p2p-circuit'))
           && !lower.includes('/ip4/127.') && !lower.includes('/ip4/localhost') && !lower.includes('/ip6/::1');
       });
     return { peerId, multiaddrs: filteredMultiaddrs };

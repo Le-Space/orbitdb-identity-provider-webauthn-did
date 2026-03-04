@@ -36,17 +36,12 @@
     }
     dispatch('pair', { qrPayload });
   }
-
-  function handleCreateOnly() {
-    dispatch('createCredential');
-  }
 </script>
 
 <div class="pair-view">
-  <h2>Device B — Link to Existing Device</h2>
+  <h2>Link to Existing Device</h2>
   <p class="subtitle">
-    Create your WebAuthn credential, then scan (or paste) Device A's QR code to
-    request access to the shared database.
+    Scan (or paste) Device A's QR code to request access to the shared database.
   </p>
 
   {#if error}
@@ -59,14 +54,7 @@
 
   {#if !dbAddress}
     <div class="step">
-      <h3>Step 1 — Create credential (if not done yet)</h3>
-      <button class="btn-secondary" on:click={handleCreateOnly} disabled={loading}>
-        {loading ? 'Creating…' : '🔑 Create WebAuthn Credential'}
-      </button>
-    </div>
-
-    <div class="step">
-      <h3>Step 2 — Connect to Device A</h3>
+      <h3>Connect to Device A</h3>
 
       <div class="mode-toggle">
         <button
