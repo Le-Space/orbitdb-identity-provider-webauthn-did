@@ -13,7 +13,7 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
       const mockCredentialId = crypto.getRandomValues(new Uint8Array(16));
       const mockPublicKey = {
         x: crypto.getRandomValues(new Uint8Array(32)),
-        y: crypto.getRandomValues(new Uint8Array(32))
+        y: crypto.getRandomValues(new Uint8Array(32)),
       };
 
       const mockCredentials = {
@@ -21,26 +21,38 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
           rawId: mockCredentialId,
           response: {
             attestationObject: crypto.getRandomValues(new Uint8Array(300)),
-            clientDataJSON: new TextEncoder().encode(JSON.stringify({
-              type: 'webauthn.create',
-              challenge: Array.from(new Uint8Array(options.publicKey.challenge)).map(b => String.fromCharCode(b)).join(''),
-              origin: window.location.origin
-            }))
-          }
+            clientDataJSON: new TextEncoder().encode(
+              JSON.stringify({
+                type: 'webauthn.create',
+                challenge: Array.from(
+                  new Uint8Array(options.publicKey.challenge)
+                )
+                  .map((b) => String.fromCharCode(b))
+                  .join(''),
+                origin: window.location.origin,
+              })
+            ),
+          },
         }),
 
         get: async (options) => ({
           rawId: options.publicKey.allowCredentials[0].id,
           response: {
             authenticatorData: crypto.getRandomValues(new Uint8Array(37)),
-            clientDataJSON: new TextEncoder().encode(JSON.stringify({
-              type: 'webauthn.get',
-              challenge: Array.from(new Uint8Array(options.publicKey.challenge)).map(b => String.fromCharCode(b)).join(''),
-              origin: window.location.origin
-            })),
-            signature: crypto.getRandomValues(new Uint8Array(64))
-          }
-        })
+            clientDataJSON: new TextEncoder().encode(
+              JSON.stringify({
+                type: 'webauthn.get',
+                challenge: Array.from(
+                  new Uint8Array(options.publicKey.challenge)
+                )
+                  .map((b) => String.fromCharCode(b))
+                  .join(''),
+                origin: window.location.origin,
+              })
+            ),
+            signature: crypto.getRandomValues(new Uint8Array(64)),
+          },
+        }),
       };
 
       if (window.navigator.credentials) {
@@ -50,14 +62,14 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
         try {
           Object.defineProperty(window.navigator, 'credentials', {
             configurable: true,
-            value: mockCredentials
+            value: mockCredentials,
           });
         } catch {
           Object.defineProperty(Navigator.prototype, 'credentials', {
             configurable: true,
             get() {
               return mockCredentials;
-            }
+            },
           });
         }
       }
@@ -71,34 +83,60 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
             0x01, // flags
             ...new Uint8Array(4), // signCount
             ...crypto.getRandomValues(new Uint8Array(16)), // AAGUID
-            0x00, 0x10, // credentialIdLength
+            0x00,
+            0x10, // credentialIdLength
             ...mockCredentialId, // credentialId
             // Mock COSE key format
             0xa5, // map(5)
-            0x01, 0x02, // kty: 2 (EC2)
-            0x03, 0x26, // alg: -7 (ES256)
-            0x20, 0x01, // crv: 1 (P-256)
-            0x21, 0x58, 0x20, ...mockPublicKey.x, // x coordinate
-            0x22, 0x58, 0x20, ...mockPublicKey.y  // y coordinate
-          ])
+            0x01,
+            0x02, // kty: 2 (EC2)
+            0x03,
+            0x26, // alg: -7 (ES256)
+            0x20,
+            0x01, // crv: 1 (P-256)
+            0x21,
+            0x58,
+            0x20,
+            ...mockPublicKey.x, // x coordinate
+            0x22,
+            0x58,
+            0x20,
+            ...mockPublicKey.y, // y coordinate
+          ]),
         };
       };
     });
 
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle');
     const moduleUrl = `/@fs${process.cwd().replace(/\\/g, '/')}/src/index.js`;
-    await page.evaluate(async (url) => {
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const module = await import(url);
-        window.WebAuthnModule = module;
-        window.moduleLoaded = true;
+        await page.evaluate(async (url) => {
+          try {
+            const module = await import(url);
+            window.WebAuthnModule = module;
+            window.moduleLoaded = true;
+          } catch (error) {
+            window.moduleLoadError = String(error?.stack || error);
+            window.moduleLoaded = false;
+          }
+        }, moduleUrl);
+        break;
       } catch (error) {
-        window.moduleLoadError = String(error?.stack || error);
-        window.moduleLoaded = false;
+        const isContextReset = String(error).includes(
+          'Execution context was destroyed'
+        );
+        if (!isContextReset || attempt === 2) throw error;
+        await page.waitForLoadState('networkidle');
       }
-    }, moduleUrl);
-    await page.waitForFunction(() => window.moduleLoaded === true || !!window.moduleLoadError);
-    const moduleLoadError = await page.evaluate(() => window.moduleLoadError || null);
+    }
+    await page.waitForFunction(
+      () => window.moduleLoaded === true || !!window.moduleLoadError
+    );
+    const moduleLoadError = await page.evaluate(
+      () => window.moduleLoadError || null
+    );
     expect(moduleLoadError).toBeNull();
   });
 
@@ -118,7 +156,9 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
     expect(isAvailable).toBe(true);
   });
 
-  test('should provide comprehensive WebAuthn support information', async ({ page }) => {
+  test('should provide comprehensive WebAuthn support information', async ({
+    page,
+  }) => {
     const support = await page.evaluate(async () => {
       return await window.WebAuthnModule.checkWebAuthnSupport();
     });
@@ -129,7 +169,9 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
     expect(support.message).toContain('WebAuthn is fully supported');
   });
 
-  test('should create WebAuthn credential with default options', async ({ page }) => {
+  test('should create WebAuthn credential with default options', async ({
+    page,
+  }) => {
     const credential = await page.evaluate(async () => {
       try {
         return await window.WebAuthnModule.WebAuthnDIDProvider.createCredential();
@@ -150,12 +192,14 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
     const customOptions = {
       userId: 'test-user-123',
       displayName: 'Test User Custom',
-      domain: 'test-domain.com'
+      domain: 'test-domain.com',
     };
 
     const credential = await page.evaluate(async (options) => {
       try {
-        return await window.WebAuthnModule.WebAuthnDIDProvider.createCredential(options);
+        return await window.WebAuthnModule.WebAuthnDIDProvider.createCredential(
+          options
+        );
       } catch (error) {
         return { error: error.message };
       }
@@ -166,13 +210,18 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
     expect(credential.displayName).toBe(customOptions.displayName);
   });
 
-  test('should generate deterministic DID from credential', async ({ page }) => {
+  test('should generate deterministic DID from credential', async ({
+    page,
+  }) => {
     const result = await page.evaluate(async () => {
       try {
-        const credential = await window.WebAuthnModule.WebAuthnDIDProvider.createCredential();
+        const credential =
+          await window.WebAuthnModule.WebAuthnDIDProvider.createCredential();
 
-        const did1 = await window.WebAuthnModule.WebAuthnDIDProvider.createDID(credential);
-        const did2 = await window.WebAuthnModule.WebAuthnDIDProvider.createDID(credential);
+        const did1 =
+          await window.WebAuthnModule.WebAuthnDIDProvider.createDID(credential);
+        const did2 =
+          await window.WebAuthnModule.WebAuthnDIDProvider.createDID(credential);
 
         return {
           did1,
@@ -181,9 +230,9 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
             credentialId: credential.credentialId,
             publicKey: {
               x: Array.from(credential.publicKey.x),
-              y: Array.from(credential.publicKey.y)
-            }
-          }
+              y: Array.from(credential.publicKey.y),
+            },
+          },
         };
       } catch (error) {
         return { error: error.message };
@@ -201,18 +250,21 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
   test('should create WebAuthn provider instance', async ({ page }) => {
     const result = await page.evaluate(async () => {
       try {
-        const credential = await window.WebAuthnModule.WebAuthnDIDProvider.createCredential({
-          userId: 'test-provider',
-          displayName: 'Test Provider'
-        });
+        const credential =
+          await window.WebAuthnModule.WebAuthnDIDProvider.createCredential({
+            userId: 'test-provider',
+            displayName: 'Test Provider',
+          });
 
-        const provider = new window.WebAuthnModule.WebAuthnDIDProvider(credential);
+        const provider = new window.WebAuthnModule.WebAuthnDIDProvider(
+          credential
+        );
 
         return {
           type: provider.type,
           credentialId: provider.credentialId,
           hasPublicKey: !!provider.publicKey,
-          hasRawCredentialId: !!provider.rawCredentialId
+          hasRawCredentialId: !!provider.rawCredentialId,
         };
       } catch (error) {
         return { error: error.message };
@@ -229,23 +281,26 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
   test('should create OrbitDB identity provider', async ({ page }) => {
     const result = await page.evaluate(async () => {
       try {
-        const credential = await window.WebAuthnModule.WebAuthnDIDProvider.createCredential({
-          userId: 'orbitdb-test',
-          displayName: 'OrbitDB Test'
-        });
+        const credential =
+          await window.WebAuthnModule.WebAuthnDIDProvider.createCredential({
+            userId: 'orbitdb-test',
+            displayName: 'OrbitDB Test',
+          });
 
-        const provider = new window.WebAuthnModule.OrbitDBWebAuthnIdentityProvider({
-          webauthnCredential: credential
-        });
+        const provider =
+          new window.WebAuthnModule.OrbitDBWebAuthnIdentityProvider({
+            webauthnCredential: credential,
+          });
 
         const did = await provider.getId();
 
         return {
           type: provider.type,
-          staticType: window.WebAuthnModule.OrbitDBWebAuthnIdentityProvider.type,
+          staticType:
+            window.WebAuthnModule.OrbitDBWebAuthnIdentityProvider.type,
           did,
           hasCredential: !!provider.credential,
-          hasWebAuthnProvider: !!provider.webauthnProvider
+          hasWebAuthnProvider: !!provider.webauthnProvider,
         };
       } catch (error) {
         return { error: error.message };
@@ -263,20 +318,27 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
   test('should sign and verify data', async ({ page }) => {
     const result = await page.evaluate(async () => {
       try {
-        const credential = await window.WebAuthnModule.WebAuthnDIDProvider.createCredential();
-        const provider = new window.WebAuthnModule.WebAuthnDIDProvider(credential);
+        const credential =
+          await window.WebAuthnModule.WebAuthnDIDProvider.createCredential();
+        const provider = new window.WebAuthnModule.WebAuthnDIDProvider(
+          credential
+        );
 
         const testData = 'Hello, WebAuthn DID!';
         const signature = await provider.sign(testData);
 
-        const isValid = await provider.verify(signature, testData, credential.publicKey);
+        const isValid = await provider.verify(
+          signature,
+          testData,
+          credential.publicKey
+        );
 
         return {
           testData,
           signature: signature ? signature.substring(0, 50) + '...' : null, // Truncate for display
           signatureLength: signature ? signature.length : 0,
           isValid,
-          hasSignature: !!signature
+          hasSignature: !!signature,
         };
       } catch (error) {
         return { error: error.message };
@@ -293,14 +355,21 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
     const result = await page.evaluate(() => {
       try {
         const testData = new Uint8Array([1, 2, 3, 4, 5]);
-        const base64url = window.WebAuthnModule.WebAuthnDIDProvider.arrayBufferToBase64url(testData);
-        const recovered = new Uint8Array(window.WebAuthnModule.WebAuthnDIDProvider.base64urlToArrayBuffer(base64url));
+        const base64url =
+          window.WebAuthnModule.WebAuthnDIDProvider.arrayBufferToBase64url(
+            testData
+          );
+        const recovered = new Uint8Array(
+          window.WebAuthnModule.WebAuthnDIDProvider.base64urlToArrayBuffer(
+            base64url
+          )
+        );
 
         return {
           original: Array.from(testData),
           base64url,
           recovered: Array.from(recovered),
-          isRoundTrip: testData.every((val, i) => val === recovered[i])
+          isRoundTrip: testData.every((val, i) => val === recovered[i]),
         };
       } catch (error) {
         return { error: error.message };
@@ -309,9 +378,9 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
 
     expect(result.error).toBeUndefined();
     expect(result.base64url).toBeTruthy();
-    expect(result.base64url).not.toContain('+');  // base64url shouldn't have +
-    expect(result.base64url).not.toContain('/');  // base64url shouldn't have /
-    expect(result.base64url).not.toContain('=');  // base64url shouldn't have =
+    expect(result.base64url).not.toContain('+'); // base64url shouldn't have +
+    expect(result.base64url).not.toContain('/'); // base64url shouldn't have /
+    expect(result.base64url).not.toContain('='); // base64url shouldn't have =
     expect(result.isRoundTrip).toBe(true);
   });
 });

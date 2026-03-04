@@ -131,13 +131,13 @@ export async function setupOrbitDB(credential) {
 
   // Create WebAuthn identity
   const identity = await createWebAuthnIdentity(identities, credential);
-  
+
   console.log('🔍 Created WebAuthn identity:', {
     id: identity.id,
     type: identity.type,
-    hash: identity.hash
+    hash: identity.hash,
   });
-  
+
   // Try to verify our identity is in the identities store
   try {
     const storedIdentity = await identities.getIdentity(identity.hash);
@@ -145,7 +145,7 @@ export async function setupOrbitDB(credential) {
     if (storedIdentity) {
       console.log('📊 Stored identity details:', {
         id: storedIdentity.id,
-        type: storedIdentity.type
+        type: storedIdentity.type,
       });
     }
   } catch (error) {

@@ -7,7 +7,7 @@
   } from '@le-space/orbitdb-identity-provider-webauthn-did';
 
   import { setupOrbitDB, cleanup, resetDatabaseState } from './libp2p.js';
-import {
+  import {
     openTodoDatabase,
     loadTodos,
     addTodo,
@@ -37,14 +37,14 @@ import {
   let isAuthenticated = false;
   let loading = false;
   let status = 'Checking WebAuthn support...';
-  
+
   // Identity verification tracking (not stored in database)
   let todoVerifications = new Map(); // Map<todoId, {verified: boolean, timestamp: number, identityHash: string}>
 
   // WebAuthn support detection
   let webAuthnSupported = false;
   let webAuthnPlatformAvailable = false;
-  
+
   // NEW: Encryption options
   let useEncryption = true; // Enable encryption by default
   let encryptionMethod = 'largeBlob'; // or 'hmac-secret'
@@ -81,19 +81,19 @@ import {
         ...KeystoreEncryption,
         addPRFToCredentialOptions,
         wrapSKWithPRF,
-        unwrapSKWithPRF
+        unwrapSKWithPRF,
       };
     }
-    
+
     await initializeWebAuthn();
     await checkEncryptionSupport();
   });
-  
+
   async function checkEncryptionSupport() {
     try {
       extensionSupport = await KeystoreEncryption.checkExtensionSupport();
       console.log('Encryption extension support:', extensionSupport);
-      
+
       // Auto-select best encryption method
       if (extensionSupport.largeBlob) {
         encryptionMethod = 'largeBlob';
@@ -166,7 +166,7 @@ import {
         userId: `todo-user-${Date.now()}`,
         displayName: 'TODO App User',
         encryptKeystore: useEncryption,
-        keystoreEncryptionMethod: encryptionMethod
+        keystoreEncryptionMethod: encryptionMethod,
       });
 
       // Store credential for future use
@@ -208,7 +208,7 @@ import {
         useKeystoreDID: useKeystoreDID,
         keystoreKeyType: keystoreKeyType,
         encryptKeystore: useEncryption,
-        encryptionMethod: encryptionMethod
+        encryptionMethod: encryptionMethod,
       });
 
       status = 'Opening TODO database...';
@@ -240,8 +240,8 @@ import {
         errorCount: error.errors?.length,
       });
 
-      const hasHmacErrors = error.errors?.some(
-        (e) => e.message?.includes('hmac-secret')
+      const hasHmacErrors = error.errors?.some((e) =>
+        e.message?.includes('hmac-secret')
       );
       if (hasHmacErrors) {
         return 'hmac-secret is not available for this credential. Recreate the credential with hmac-secret enabled or use largeBlob.';
@@ -273,10 +273,12 @@ import {
 
     try {
       todos = await loadTodos(database);
-      
+
       // Refresh verification states after loading todos
       if (todos.length > 0) {
-        console.log(`📋 Loaded ${todos.length} todos, scheduling verification...`);
+        console.log(
+          `📋 Loaded ${todos.length} todos, scheduling verification...`
+        );
         setTimeout(() => refreshVerificationStates(), 100); // Small delay to let database settle
       } else {
         console.log('📋 No todos loaded, skipping verification');
@@ -301,7 +303,7 @@ import {
 
       await addTodo(database, newTodo, credential);
       await refreshTodos();
-      
+
       // Refresh verification states after a short delay to allow database events to process
       setTimeout(() => refreshVerificationStates(), 2000);
 
@@ -378,36 +380,44 @@ import {
 
   async function refreshVerificationStates() {
     console.log('🔄 Starting refreshVerificationStates...');
-    
+
     // First, get states from the global store (from database events)
     const globalVerifications = getIdentityVerifications();
-    console.log(`💾 Found ${globalVerifications.size} verifications in global store`);
-    
+    console.log(
+      `💾 Found ${globalVerifications.size} verifications in global store`
+    );
+
     // Clear and update with global state
     todoVerifications.clear();
     for (const [todoId, verification] of globalVerifications) {
       todoVerifications.set(todoId, verification);
-      console.log(`✅ Loaded verification for ${todoId}: ${verification.success ? 'PASSED' : 'FAILED'}`);
+      console.log(
+        `✅ Loaded verification for ${todoId}: ${verification.success ? 'PASSED' : 'FAILED'}`
+      );
     }
-    
+
     // For todos that don't have verification yet, use the simple verification approach
     if (database && orbitdbInstances?.identity?.id) {
       try {
         // Use the single verification approach
         const { verifyTodos } = await import('./verification.js');
-        
+
         // Find todos that need verification
-        const unverifiedTodos = todos.filter(todo => !todoVerifications.has(todo.id));
-        
+        const unverifiedTodos = todos.filter(
+          (todo) => !todoVerifications.has(todo.id)
+        );
+
         if (unverifiedTodos.length > 0) {
-          console.log(`🔍 Running verification for ${unverifiedTodos.length} todos...`);
-          
+          console.log(
+            `🔍 Running verification for ${unverifiedTodos.length} todos...`
+          );
+
           const newVerifications = await verifyTodos(
             database,
-            unverifiedTodos, 
+            unverifiedTodos,
             orbitdbInstances.identity.id
           );
-          
+
           // Add new verifications to our map
           for (const [todoId, verification] of newVerifications) {
             todoVerifications.set(todoId, verification);
@@ -417,11 +427,15 @@ import {
         console.error('Error during simple verification:', error);
       }
     }
-    
+
     // Trigger reactivity
     todoVerifications = todoVerifications;
-    
-    console.log('🔄 Refreshed verification states:', todoVerifications.size, 'todos verified');
+
+    console.log(
+      '🔄 Refreshed verification states:',
+      todoVerifications.size,
+      'todos verified'
+    );
   }
 
   async function handleLogout() {
@@ -503,41 +517,68 @@ import {
         <p style="margin-bottom: 1.5rem;">
           Use your biometric authentication to access your secure TODO list.
         </p>
-        
+
         <!-- NEW: Encryption Options -->
-        <div style="background: var(--cds-layer-accent); padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem; border: 1px solid var(--cds-border-subtle);">
-          <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 0.75rem; color: var(--cds-text-primary);">
+        <div
+          style="background: var(--cds-layer-accent); padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem; border: 1px solid var(--cds-border-subtle);"
+        >
+          <h3
+            style="font-size: 1rem; font-weight: 600; margin-bottom: 0.75rem; color: var(--cds-text-primary);"
+          >
             🔐 Security Options
           </h3>
-          
+
           <div style="display: flex; flex-direction: column; gap: 0.75rem;">
             <!-- DID Source Selection -->
-            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+            <label
+              style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;"
+            >
               <input
                 type="checkbox"
                 bind:checked={useKeystoreDID}
                 disabled={loading}
                 style="cursor: pointer;"
               />
-              <span style="color: var(--cds-text-primary);">Use persistent keystore identity</span>
-              <span style="font-size: 0.75rem; color: var(--cds-text-secondary);">🗄️ Instead of WebAuthn P-256</span>
+              <span style="color: var(--cds-text-primary);"
+                >Use persistent keystore identity</span
+              >
+              <span
+                style="font-size: 0.75rem; color: var(--cds-text-secondary);"
+                >🗄️ Instead of WebAuthn P-256</span
+              >
             </label>
-            
+
             <!-- Show info when keystore DID is NOT selected -->
             {#if !useKeystoreDID}
-              <div style="padding-left: 1.5rem; padding: 0.5rem; background: var(--cds-layer); border-radius: 0.25rem; border-left: 3px solid var(--cds-interactive);">
-                <span style="font-size: 0.75rem; color: var(--cds-text-secondary);">
-                  ℹ️ Will use <strong style="color: var(--cds-text-primary);">P-256 DID</strong> from WebAuthn credential
-                  <code style="font-size: 0.7rem; opacity: 0.8;">(did:key:zDna...)</code>
+              <div
+                style="padding-left: 1.5rem; padding: 0.5rem; background: var(--cds-layer); border-radius: 0.25rem; border-left: 3px solid var(--cds-interactive);"
+              >
+                <span
+                  style="font-size: 0.75rem; color: var(--cds-text-secondary);"
+                >
+                  ℹ️ Will use <strong style="color: var(--cds-text-primary);"
+                    >P-256 DID</strong
+                  >
+                  from WebAuthn credential
+                  <code style="font-size: 0.7rem; opacity: 0.8;"
+                    >(did:key:zDna...)</code
+                  >
                 </span>
               </div>
             {/if}
-            
+
             <!-- Keystore Key Type Selection -->
             {#if useKeystoreDID}
-              <div style="padding-left: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
-                <span style="font-size: 0.875rem; font-weight: 500; color: var(--cds-text-primary);">Keystore Key Type:</span>
-                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+              <div
+                style="padding-left: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;"
+              >
+                <span
+                  style="font-size: 0.875rem; font-weight: 500; color: var(--cds-text-primary);"
+                  >Keystore Key Type:</span
+                >
+                <label
+                  style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;"
+                >
                   <input
                     type="radio"
                     bind:group={keystoreKeyType}
@@ -546,11 +587,15 @@ import {
                     style="cursor: pointer;"
                   />
                   <span style="color: var(--cds-text-primary);">secp256k1</span>
-                  <span style="font-size: 0.75rem; color: var(--cds-text-secondary);">
+                  <span
+                    style="font-size: 0.75rem; color: var(--cds-text-secondary);"
+                  >
                     ⚡ Ethereum compatible, did:key:zQ3sh...
                   </span>
                 </label>
-                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <label
+                  style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;"
+                >
                   <input
                     type="radio"
                     bind:group={keystoreKeyType}
@@ -559,30 +604,47 @@ import {
                     style="cursor: pointer;"
                   />
                   <span style="color: var(--cds-text-primary);">Ed25519</span>
-                  <span style="font-size: 0.75rem; color: var(--cds-text-secondary);">
+                  <span
+                    style="font-size: 0.75rem; color: var(--cds-text-secondary);"
+                  >
                     🚀 Faster, smaller, did:key:z6Mk...
                   </span>
                 </label>
               </div>
             {/if}
-            
+
             <!-- Encryption Option -->
-            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+            <label
+              style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;"
+            >
               <input
                 type="checkbox"
                 bind:checked={useEncryption}
-                disabled={loading || (!extensionSupport.largeBlob && !extensionSupport.hmacSecret)}
+                disabled={loading ||
+                  (!extensionSupport.largeBlob && !extensionSupport.hmacSecret)}
                 style="cursor: pointer;"
               />
-              <span style="color: var(--cds-text-primary);">Encrypt keystore with WebAuthn</span>
-              <span style="font-size: 0.75rem; color: var(--cds-text-secondary);">🔐 Hardware protection</span>
+              <span style="color: var(--cds-text-primary);"
+                >Encrypt keystore with WebAuthn</span
+              >
+              <span
+                style="font-size: 0.75rem; color: var(--cds-text-secondary);"
+                >🔐 Hardware protection</span
+              >
             </label>
-            
+
             <!-- Encryption Method -->
             {#if useEncryption}
-              <div style="padding-left: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
-                <span style="font-size: 0.875rem; font-weight: 500; color: var(--cds-text-primary);">Encryption Method:</span>
-                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+              <div
+                style="padding-left: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;"
+              >
+                <span
+                  style="font-size: 0.875rem; font-weight: 500; color: var(--cds-text-primary);"
+                  >Encryption Method:</span
+                >
+                <label
+                  style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;"
+                >
                   <input
                     type="radio"
                     bind:group={encryptionMethod}
@@ -591,11 +653,17 @@ import {
                     style="cursor: pointer;"
                   />
                   <span style="color: var(--cds-text-primary);">largeBlob</span>
-                  <span style="font-size: 0.75rem; color: var(--cds-text-secondary);">
-                    {extensionSupport.largeBlob ? '✅ Supported' : '❌ Not supported'}
+                  <span
+                    style="font-size: 0.75rem; color: var(--cds-text-secondary);"
+                  >
+                    {extensionSupport.largeBlob
+                      ? '✅ Supported'
+                      : '❌ Not supported'}
                   </span>
                 </label>
-                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <label
+                  style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;"
+                >
                   <input
                     type="radio"
                     bind:group={encryptionMethod}
@@ -603,21 +671,36 @@ import {
                     disabled={loading || !extensionSupport.hmacSecret}
                     style="cursor: pointer;"
                   />
-                  <span style="color: var(--cds-text-primary);">hmac-secret</span>
-                  <span style="font-size: 0.75rem; color: var(--cds-text-secondary);">
-                    {extensionSupport.hmacSecret ? '✅ Supported' : '❌ Not supported'}
+                  <span style="color: var(--cds-text-primary);"
+                    >hmac-secret</span
+                  >
+                  <span
+                    style="font-size: 0.75rem; color: var(--cds-text-secondary);"
+                  >
+                    {extensionSupport.hmacSecret
+                      ? '✅ Supported'
+                      : '❌ Not supported'}
                   </span>
                 </label>
               </div>
             {/if}
-            
+
             <!-- Benefits Summary -->
             {#if useKeystoreDID || useEncryption || !useKeystoreDID}
-              <div style="margin-top: 0.5rem; padding: 0.75rem; background: var(--cds-layer); border-radius: 0.25rem;">
-                <span style="font-size: 0.75rem; font-weight: 600; color: var(--cds-text-secondary);">ENABLED FEATURES:</span>
-                <ul style="font-size: 0.75rem; color: var(--cds-text-primary); margin-top: 0.25rem; padding-left: 1.25rem;">
+              <div
+                style="margin-top: 0.5rem; padding: 0.75rem; background: var(--cds-layer); border-radius: 0.25rem;"
+              >
+                <span
+                  style="font-size: 0.75rem; font-weight: 600; color: var(--cds-text-secondary);"
+                  >ENABLED FEATURES:</span
+                >
+                <ul
+                  style="font-size: 0.75rem; color: var(--cds-text-primary); margin-top: 0.25rem; padding-left: 1.25rem;"
+                >
                   {#if useKeystoreDID}
-                    <li>Persistent {keystoreKeyType} DID from OrbitDB keystore</li>
+                    <li>
+                      Persistent {keystoreKeyType} DID from OrbitDB keystore
+                    </li>
                     {#if keystoreKeyType === 'Ed25519'}
                       <li>Ed25519: Faster signing, smaller keys (32 bytes)</li>
                     {:else}
@@ -637,7 +720,7 @@ import {
             {/if}
           </div>
         </div>
-        
+
         <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
           <Button on:click={authenticate} disabled={loading} kind="primary">
             {loading ? 'Authenticating...' : 'Authenticate with WebAuthn'}
@@ -804,7 +887,7 @@ import {
               >
                 {todo.text}
               </span>
-              
+
               <!-- Identity Verification Badge -->
               {#if todoVerifications.has(todo.id)}
                 {@const verification = todoVerifications.get(todo.id)}

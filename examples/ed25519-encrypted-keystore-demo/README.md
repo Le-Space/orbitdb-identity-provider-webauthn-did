@@ -5,11 +5,13 @@ This demo showcases the **Ed25519 Keystore DID** and **WebAuthn-Encrypted Keysto
 ## Features Demonstrated
 
 ### 🆔 Ed25519 Keystore DID
+
 - Create Ed25519 DIDs from OrbitDB keystore instead of P-256 from WebAuthn
-- Unified identity: same key for DID and database operations  
+- Unified identity: same key for DID and database operations
 - Better UCAN compatibility
 
 ### 🔐 WebAuthn-Encrypted Keystore
+
 - Encrypt OrbitDB keystore with AES-GCM 256-bit
 - Secret key protected by WebAuthn hardware (largeBlob or hmac-secret)
 - One biometric prompt per session

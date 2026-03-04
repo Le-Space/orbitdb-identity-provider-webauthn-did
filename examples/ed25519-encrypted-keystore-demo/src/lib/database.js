@@ -99,20 +99,25 @@ function setupDatabaseEventListeners(database, ipfs, identities) {
     try {
       // Use pragmatic verification to avoid network timeouts
       const { verifyDatabaseUpdate } = await import('./verification.js');
-      const verification = await verifyDatabaseUpdate(database, updateIdentityHash, webAuthnDID);
-      
+      const verification = await verifyDatabaseUpdate(
+        database,
+        updateIdentityHash,
+        webAuthnDID
+      );
+
       // Find which todo was just updated by checking the latest entries
       let updatedTodoId = null;
       try {
         const allEntries = await database.all();
         // Find the most recent entry - this should be the one that triggered the update
-        const latestEntry = allEntries
-          .sort((a, b) => new Date(b.value.createdAt) - new Date(a.value.createdAt))[0];
+        const latestEntry = allEntries.sort(
+          (a, b) => new Date(b.value.createdAt) - new Date(a.value.createdAt)
+        )[0];
         updatedTodoId = latestEntry?.key;
       } catch (error) {
         console.warn('Could not determine which todo was updated:', error);
       }
-      
+
       // Persist verification outcome in ephemeral map for UI
       if (updatedTodoId) {
         identityVerifications.set(updatedTodoId, {
@@ -120,13 +125,17 @@ function setupDatabaseEventListeners(database, ipfs, identities) {
           timestamp: Date.now(),
           identityHash: updateIdentityHash,
           error: verification.error || null,
-          method: verification.method
+          method: verification.method,
         });
-        console.log(`💾 Stored verification for todo ${updatedTodoId}: ${verification.success ? 'PASSED' : 'FAILED'}`);
+        console.log(
+          `💾 Stored verification for todo ${updatedTodoId}: ${verification.success ? 'PASSED' : 'FAILED'}`
+        );
       }
-      
     } catch (identityError) {
-      console.error('❌ Error retrieving identity from OrbitDB:', identityError);
+      console.error(
+        '❌ Error retrieving identity from OrbitDB:',
+        identityError
+      );
       // Store error result for failed verification
       const updatedTodoId = 'unknown';
       identityVerifications.set(updatedTodoId, {
@@ -134,7 +143,7 @@ function setupDatabaseEventListeners(database, ipfs, identities) {
         identityHash: updateIdentityHash,
         timestamp: Date.now(),
         error: `Identity verification failed: ${identityError.message}`,
-        method: 'error-fallback'
+        method: 'error-fallback',
       });
     }
   });
@@ -220,7 +229,9 @@ export async function addTodo(database, text, credential = null) {
     };
 
     dbLog('addTodo() called: %o', { todoId, textLength: text.trim().length });
-    dbLog('Calling database.put() - this will trigger: db.put() → identity.sign() → signIdentity() → webauthnProvider.sign()');
+    dbLog(
+      'Calling database.put() - this will trigger: db.put() → identity.sign() → signIdentity() → webauthnProvider.sign()'
+    );
 
     await database.put(todoId, todo);
 

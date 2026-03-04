@@ -11,10 +11,10 @@ import { gossipsub } from '@chainsafe/libp2p-gossipsub';
 import { all } from '@libp2p/websockets/filters';
 import { LevelBlockstore } from 'blockstore-level';
 import { LevelDatastore } from 'datastore-level';
-import { 
+import {
   OrbitDBWebAuthnIdentityProviderFunction,
   OrbitDBWebAuthnIdentityProvider,
-  KeystoreEncryption
+  KeystoreEncryption,
 } from '@le-space/orbitdb-identity-provider-webauthn-did';
 
 /**
@@ -99,14 +99,19 @@ export async function createIdentitiesInstance() {
  * @param {boolean} options.encryptKeystore - Enable keystore encryption
  * @param {string} options.encryptionMethod - Encryption method ('largeBlob' or 'hmac-secret')
  */
-export async function createWebAuthnIdentity(identities, credential, orbitdb = null, options = {}) {
+export async function createWebAuthnIdentity(
+  identities,
+  credential,
+  orbitdb = null,
+  options = {}
+) {
   const {
     useKeystoreDID = false,
     keystoreKeyType = 'secp256k1',
     encryptKeystore = false,
-    encryptionMethod = 'largeBlob'
+    encryptionMethod = 'largeBlob',
   } = options;
-  
+
   return await identities.createIdentity({
     provider: OrbitDBWebAuthnIdentityProviderFunction({
       webauthnCredential: credential,
@@ -160,16 +165,25 @@ export async function setupOrbitDB(credential, options = {}) {
   const tempOrbitdb = await createOrbitDB({ ipfs, identities });
 
   // Create WebAuthn identity with encryption options
-  const identity = await createWebAuthnIdentity(identities, credential, tempOrbitdb, options);
-  
+  const identity = await createWebAuthnIdentity(
+    identities,
+    credential,
+    tempOrbitdb,
+    options
+  );
+
   console.log('🔍 Created WebAuthn identity:', {
     id: identity.id,
     type: identity.type,
     hash: identity.hash,
-    didType: options.useKeystoreDID ? `${options.keystoreKeyType} (from keystore)` : 'P-256 (from WebAuthn)',
-    encrypted: options.encryptKeystore ? `Yes (${options.encryptionMethod})` : 'No'
+    didType: options.useKeystoreDID
+      ? `${options.keystoreKeyType} (from keystore)`
+      : 'P-256 (from WebAuthn)',
+    encrypted: options.encryptKeystore
+      ? `Yes (${options.encryptionMethod})`
+      : 'No',
   });
-  
+
   // Try to verify our identity is in the identities store
   try {
     const storedIdentity = await identities.getIdentity(identity.hash);
@@ -177,7 +191,7 @@ export async function setupOrbitDB(credential, options = {}) {
     if (storedIdentity) {
       console.log('📊 Stored identity details:', {
         id: storedIdentity.id,
-        type: storedIdentity.type
+        type: storedIdentity.type,
       });
     }
   } catch (error) {
@@ -242,4 +256,3 @@ export async function resetDatabaseState() {
     throw error;
   }
 }
-

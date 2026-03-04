@@ -17,7 +17,7 @@ import {
   keystoreVerify,
   loadWebAuthnCredentialSafe,
   resetDefaultWorkerKeystoreClient,
-  storeWebAuthnCredentialSafe
+  storeWebAuthnCredentialSafe,
 } from '../src/standalone/index.js';
 
 class MemoryStorage {
@@ -69,7 +69,9 @@ test.describe('Standalone WebAuthn Toolkit', () => {
         setTimeout(() => {
           try {
             if (msg.type === 'init') {
-              this.onmessage?.({ data: { id: msg.id, ok: true, result: { initialized: true } } });
+              this.onmessage?.({
+                data: { id: msg.id, ok: true, result: { initialized: true } },
+              });
               return;
             }
             if (msg.type === 'generateKeypair') {
@@ -78,7 +80,7 @@ test.describe('Standalone WebAuthn Toolkit', () => {
                 version: 1,
                 algorithm: 'Ed25519',
                 privateKeyPkcs8: [1, 2, 3],
-                publicKeySpki: [4, 5, 6]
+                publicKeySpki: [4, 5, 6],
               };
               this.onmessage?.({
                 data: {
@@ -86,14 +88,16 @@ test.describe('Standalone WebAuthn Toolkit', () => {
                   ok: true,
                   result: {
                     publicKey: publicKey.buffer.slice(0),
-                    archive: this.archive
-                  }
-                }
+                    archive: this.archive,
+                  },
+                },
               });
               return;
             }
             if (msg.type === 'loadKeypair') {
-              this.onmessage?.({ data: { id: msg.id, ok: true, result: { loaded: true } } });
+              this.onmessage?.({
+                data: { id: msg.id, ok: true, result: { loaded: true } },
+              });
               return;
             }
             if (msg.type === 'encrypt') {
@@ -106,9 +110,9 @@ test.describe('Standalone WebAuthn Toolkit', () => {
                   ok: true,
                   result: {
                     ciphertext: ciphertext.buffer.slice(0),
-                    iv: iv.buffer.slice(0)
-                  }
-                }
+                    iv: iv.buffer.slice(0),
+                  },
+                },
               });
               return;
             }
@@ -119,8 +123,8 @@ test.describe('Standalone WebAuthn Toolkit', () => {
                 data: {
                   id: msg.id,
                   ok: true,
-                  result: { plaintext: plaintext.buffer.slice(0) }
-                }
+                  result: { plaintext: plaintext.buffer.slice(0) },
+                },
               });
               return;
             }
@@ -131,26 +135,35 @@ test.describe('Standalone WebAuthn Toolkit', () => {
                 data: {
                   id: msg.id,
                   ok: true,
-                  result: { signature: signature.buffer.slice(0) }
-                }
+                  result: { signature: signature.buffer.slice(0) },
+                },
               });
               return;
             }
             if (msg.type === 'verify') {
               const data = new Uint8Array(msg.data);
               const sig = new Uint8Array(msg.signature);
-              const valid = sig.length === 2 && sig[0] === data.length && sig[1] === 42;
-              this.onmessage?.({ data: { id: msg.id, ok: true, result: { valid } } });
+              const valid =
+                sig.length === 2 && sig[0] === data.length && sig[1] === 42;
+              this.onmessage?.({
+                data: { id: msg.id, ok: true, result: { valid } },
+              });
               return;
             }
-            this.onmessage?.({ data: { id: msg.id, ok: false, error: `Unknown type: ${msg.type}` } });
+            this.onmessage?.({
+              data: {
+                id: msg.id,
+                ok: false,
+                error: `Unknown type: ${msg.type}`,
+              },
+            });
           } catch (error) {
             this.onmessage?.({
               data: {
                 id: msg.id,
                 ok: false,
-                error: error instanceof Error ? error.message : String(error)
-              }
+                error: error instanceof Error ? error.message : String(error),
+              },
             });
           }
         }, 0);
@@ -160,7 +173,7 @@ test.describe('Standalone WebAuthn Toolkit', () => {
     }
 
     const client = createWorkerKeystoreClient({
-      workerFactory: () => new FakeWorker()
+      workerFactory: () => new FakeWorker(),
     });
 
     await client.initWithPrfSeed(new Uint8Array([1, 2, 3]));
@@ -175,7 +188,7 @@ test.describe('Standalone WebAuthn Toolkit', () => {
 
     const archivePayload = {
       id: identity.did,
-      keys: { [identity.did]: [1, 2, 3] }
+      keys: { [identity.did]: [1, 2, 3] },
     };
     const encryptedArchive = await client.encryptArchive(archivePayload);
     const decryptedArchive = await client.decryptArchive(
@@ -202,7 +215,9 @@ test.describe('Standalone WebAuthn Toolkit', () => {
       postMessage(msg) {
         setTimeout(() => {
           if (msg.type === 'init') {
-            this.onmessage?.({ data: { id: msg.id, ok: true, result: { initialized: true } } });
+            this.onmessage?.({
+              data: { id: msg.id, ok: true, result: { initialized: true } },
+            });
             return;
           }
           if (msg.type === 'generateKeypair') {
@@ -213,9 +228,14 @@ test.describe('Standalone WebAuthn Toolkit', () => {
                 ok: true,
                 result: {
                   publicKey: publicKey.buffer.slice(0),
-                  archive: { version: 1, algorithm: 'Ed25519', privateKeyPkcs8: [7], publicKeySpki: [8] }
-                }
-              }
+                  archive: {
+                    version: 1,
+                    algorithm: 'Ed25519',
+                    privateKeyPkcs8: [7],
+                    publicKeySpki: [8],
+                  },
+                },
+              },
             });
             return;
           }
@@ -227,8 +247,11 @@ test.describe('Standalone WebAuthn Toolkit', () => {
               data: {
                 id: msg.id,
                 ok: true,
-                result: { ciphertext: ciphertext.buffer.slice(0), iv: iv.buffer.slice(0) }
-              }
+                result: {
+                  ciphertext: ciphertext.buffer.slice(0),
+                  iv: iv.buffer.slice(0),
+                },
+              },
             });
             return;
           }
@@ -239,8 +262,8 @@ test.describe('Standalone WebAuthn Toolkit', () => {
               data: {
                 id: msg.id,
                 ok: true,
-                result: { plaintext: plaintext.buffer.slice(0) }
-              }
+                result: { plaintext: plaintext.buffer.slice(0) },
+              },
             });
             return;
           }
@@ -251,19 +274,26 @@ test.describe('Standalone WebAuthn Toolkit', () => {
               data: {
                 id: msg.id,
                 ok: true,
-                result: { signature: signature.buffer.slice(0) }
-              }
+                result: { signature: signature.buffer.slice(0) },
+              },
             });
             return;
           }
           if (msg.type === 'verify') {
             const payload = new Uint8Array(msg.data);
             const signature = new Uint8Array(msg.signature);
-            const valid = signature.length === 2 && signature[0] === payload.length && signature[1] === 9;
-            this.onmessage?.({ data: { id: msg.id, ok: true, result: { valid } } });
+            const valid =
+              signature.length === 2 &&
+              signature[0] === payload.length &&
+              signature[1] === 9;
+            this.onmessage?.({
+              data: { id: msg.id, ok: true, result: { valid } },
+            });
             return;
           }
-          this.onmessage?.({ data: { id: msg.id, ok: false, error: `Unsupported ${msg.type}` } });
+          this.onmessage?.({
+            data: { id: msg.id, ok: false, error: `Unsupported ${msg.type}` },
+          });
         }, 0);
       }
 
@@ -271,7 +301,7 @@ test.describe('Standalone WebAuthn Toolkit', () => {
     }
 
     const options = {
-      workerFactory: () => new FakeWorker()
+      workerFactory: () => new FakeWorker(),
     };
 
     await initEd25519KeystoreWithPrfSeed(new Uint8Array([9, 8, 7]), options);
@@ -279,7 +309,11 @@ test.describe('Standalone WebAuthn Toolkit', () => {
 
     const data = new TextEncoder().encode('compat');
     const encrypted = await keystoreEncrypt(data, options);
-    const decrypted = await keystoreDecrypt(encrypted.ciphertext, encrypted.iv, options);
+    const decrypted = await keystoreDecrypt(
+      encrypted.ciphertext,
+      encrypted.iv,
+      options
+    );
     const signature = await keystoreSign(data, options);
     const valid = await keystoreVerify(data, signature, options);
 
@@ -303,12 +337,12 @@ test.describe('Standalone WebAuthn Toolkit', () => {
       publicKey: new Uint8Array(32).fill(8),
       did: 'did:key:z6MkrmFAKE123',
       algorithm: 'Ed25519',
-      cose: { kty: 1, alg: -8, crv: 6 }
+      cose: { kty: 1, alg: -8, crv: 6 },
     };
 
     const signer = new StandaloneWebAuthnVarsigSigner(credential);
     const service = new WebAuthnHardwareSignerService({
-      storageKey: 'test-hw-signer'
+      storageKey: 'test-hw-signer',
     });
 
     service.store(signer);
@@ -330,7 +364,7 @@ test.describe('Standalone WebAuthn Toolkit', () => {
       publicKey: new Uint8Array(32).fill(9),
       did: 'did:key:z6Mked25519',
       algorithm: 'Ed25519',
-      cose: null
+      cose: null,
     });
     edSigner.sign = async () => new Uint8Array([11, 12, 13]);
     const edUcantoSigner = edSigner.toUcantoSigner();
@@ -345,7 +379,7 @@ test.describe('Standalone WebAuthn Toolkit', () => {
       publicKey: new Uint8Array(33).fill(7),
       did: 'did:key:z6Mkp256',
       algorithm: 'P-256',
-      cose: null
+      cose: null,
     });
     p256Signer.sign = async () => new Uint8Array([21, 22, 23]);
     const p256UcantoSigner = p256Signer.toUcantoSigner();
@@ -362,7 +396,7 @@ test.describe('Standalone WebAuthn Toolkit', () => {
       publicKey: new Uint8Array(32).fill(1),
       did: 'did:key:z6MkDomainOverride',
       algorithm: 'Ed25519',
-      cose: null
+      cose: null,
     });
     let seenPayload = null;
     let seenDomainLabel = null;
@@ -372,7 +406,9 @@ test.describe('Standalone WebAuthn Toolkit', () => {
       return new Uint8Array([31, 32, 33]);
     };
 
-    const ucantoSigner = signer.toUcantoSigner({ domainLabel: 'ucan-webauthn-v1:' });
+    const ucantoSigner = signer.toUcantoSigner({
+      domainLabel: 'ucan-webauthn-v1:',
+    });
     await ucantoSigner.sign(new Uint8Array([9, 9, 9]));
 
     expect(seenPayload).toBeInstanceOf(Uint8Array);
@@ -385,7 +421,7 @@ test.describe('Standalone WebAuthn Toolkit', () => {
       publicKey: new Uint8Array(32).fill(4),
       did: 'did:key:z6MkDomainDefault',
       algorithm: 'Ed25519',
-      cose: null
+      cose: null,
     });
     let seenDomainLabel = 'unset';
     signer.sign = async (_payload, domainLabel) => {
@@ -405,7 +441,7 @@ test.describe('Standalone WebAuthn Toolkit', () => {
       publicKey: new Uint8Array(33).fill(5),
       did: 'did:key:z6MkDomainEntryP256',
       algorithm: 'P-256',
-      cose: null
+      cose: null,
     });
     let seenDomainLabel = null;
     signer.sign = async (_payload, domainLabel) => {
@@ -413,7 +449,9 @@ test.describe('Standalone WebAuthn Toolkit', () => {
       return new Uint8Array([2, 2, 2]);
     };
 
-    const ucantoSigner = signer.toUcantoSigner({ domainLabel: 'orbitdb-entry:' });
+    const ucantoSigner = signer.toUcantoSigner({
+      domainLabel: 'orbitdb-entry:',
+    });
     await ucantoSigner.sign(new Uint8Array([7, 7, 7]));
 
     expect(ucantoSigner.signatureAlgorithm).toBe('ES256');
@@ -424,7 +462,9 @@ test.describe('Standalone WebAuthn Toolkit', () => {
     const DagUcan = await import('@ipld/dag-ucan');
 
     const issuerDid = createEd25519DidFromPublicKey(new Uint8Array(32).fill(5));
-    const audienceDid = createEd25519DidFromPublicKey(new Uint8Array(32).fill(6));
+    const audienceDid = createEd25519DidFromPublicKey(
+      new Uint8Array(32).fill(6)
+    );
     const spaceDid = createEd25519DidFromPublicKey(new Uint8Array(32).fill(7));
 
     const signer = new StandaloneWebAuthnVarsigSigner({
@@ -432,7 +472,7 @@ test.describe('Standalone WebAuthn Toolkit', () => {
       publicKey: new Uint8Array(32).fill(1),
       did: issuerDid,
       algorithm: 'Ed25519',
-      cose: null
+      cose: null,
     });
     signer.sign = async () => new Uint8Array([31, 32, 33]);
 
@@ -440,17 +480,17 @@ test.describe('Standalone WebAuthn Toolkit', () => {
     const delegation = await DagUcan.issue({
       issuer: ucantoSigner,
       audience: {
-        did: () => audienceDid
+        did: () => audienceDid,
       },
       capabilities: [
         {
           with: spaceDid,
-          can: 'upload/add'
-        }
+          can: 'upload/add',
+        },
       ],
       expiration: Math.floor(Date.now() / 1000) + 600,
       facts: [],
-      proofs: []
+      proofs: [],
     });
 
     expect(delegation).toBeTruthy();
@@ -463,10 +503,10 @@ test.describe('Standalone WebAuthn Toolkit', () => {
       rawCredentialId: new Uint8Array([1, 2, 3]),
       publicKey: {
         x: new Uint8Array([4, 5]),
-        y: new Uint8Array([6, 7])
+        y: new Uint8Array([6, 7]),
       },
       prfInput: new Uint8Array([8, 9]),
-      prfSeed: new Uint8Array([10, 11])
+      prfSeed: new Uint8Array([10, 11]),
     };
 
     storeWebAuthnCredentialSafe(input, 'credential-safe-test');
@@ -486,7 +526,7 @@ test.describe('Standalone WebAuthn Toolkit', () => {
   test('extractPrfSeedFromCredential uses PRF output then falls back', async () => {
     const credential = {
       rawCredentialId: new Uint8Array([91, 92, 93]),
-      prfInput: new Uint8Array([1, 1, 1])
+      prfInput: new Uint8Array([1, 1, 1]),
     };
 
     const navigatorObject = globalThis.navigator || {};
@@ -499,15 +539,17 @@ test.describe('Standalone WebAuthn Toolkit', () => {
           getClientExtensionResults: () => ({
             prf: {
               results: {
-                first: new Uint8Array([7, 7, 7])
-              }
-            }
-          })
-        })
-      }
+                first: new Uint8Array([7, 7, 7]),
+              },
+            },
+          }),
+        }),
+      },
     });
 
-    const prfResult = await extractPrfSeedFromCredential(credential, { rpId: 'example.test' });
+    const prfResult = await extractPrfSeedFromCredential(credential, {
+      rpId: 'example.test',
+    });
     expect(prfResult.source).toBe('prf');
     expect(Array.from(prfResult.seed)).toEqual([7, 7, 7]);
 
@@ -515,18 +557,20 @@ test.describe('Standalone WebAuthn Toolkit', () => {
       configurable: true,
       value: {
         get: async () => ({
-          getClientExtensionResults: () => ({})
-        })
-      }
+          getClientExtensionResults: () => ({}),
+        }),
+      },
     });
 
-    const fallback = await extractPrfSeedFromCredential(credential, { rpId: 'example.test' });
+    const fallback = await extractPrfSeedFromCredential(credential, {
+      rpId: 'example.test',
+    });
     expect(fallback.source).toBe('credentialId');
     expect(Array.from(fallback.seed)).toEqual([91, 92, 93]);
 
     Object.defineProperty(navigatorObject, 'credentials', {
       configurable: true,
-      value: originalCredentials
+      value: originalCredentials,
     });
   });
 });

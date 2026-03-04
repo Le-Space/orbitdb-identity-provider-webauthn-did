@@ -1,7 +1,8 @@
 function ensureUint8Array(value, fieldName) {
   if (value instanceof Uint8Array) return value;
   if (Array.isArray(value)) return new Uint8Array(value);
-  if (value && typeof value === 'object') return new Uint8Array(Object.values(value));
+  if (value && typeof value === 'object')
+    return new Uint8Array(Object.values(value));
   throw new Error(`Invalid ${fieldName}: expected Uint8Array-compatible value`);
 }
 
@@ -10,7 +11,10 @@ function ensureUint8Array(value, fieldName) {
  * @param {Object} credential
  * @param {string} [key]
  */
-export function storeWebAuthnCredentialSafe(credential, key = 'webauthn_credential_info') {
+export function storeWebAuthnCredentialSafe(
+  credential,
+  key = 'webauthn_credential_info'
+) {
   if (!credential || typeof credential !== 'object') {
     throw new Error('storeWebAuthnCredentialSafe requires a credential object');
   }
@@ -35,7 +39,10 @@ export function loadWebAuthnCredentialSafe(key = 'webauthn_credential_info') {
   const normalized = { ...parsed };
 
   if (normalized.rawCredentialId) {
-    normalized.rawCredentialId = ensureUint8Array(normalized.rawCredentialId, 'rawCredentialId');
+    normalized.rawCredentialId = ensureUint8Array(
+      normalized.rawCredentialId,
+      'rawCredentialId'
+    );
   }
 
   if (normalized.prfInput) {
@@ -45,10 +52,16 @@ export function loadWebAuthnCredentialSafe(key = 'webauthn_credential_info') {
   if (normalized.publicKey && typeof normalized.publicKey === 'object') {
     normalized.publicKey = { ...normalized.publicKey };
     if (normalized.publicKey.x) {
-      normalized.publicKey.x = ensureUint8Array(normalized.publicKey.x, 'publicKey.x');
+      normalized.publicKey.x = ensureUint8Array(
+        normalized.publicKey.x,
+        'publicKey.x'
+      );
     }
     if (normalized.publicKey.y) {
-      normalized.publicKey.y = ensureUint8Array(normalized.publicKey.y, 'publicKey.y');
+      normalized.publicKey.y = ensureUint8Array(
+        normalized.publicKey.y,
+        'publicKey.y'
+      );
     }
   }
 
@@ -72,7 +85,9 @@ export function clearWebAuthnCredentialSafe(key = 'webauthn_credential_info') {
  */
 export async function extractPrfSeedFromCredential(credential, options = {}) {
   if (!credential || typeof credential !== 'object') {
-    throw new Error('extractPrfSeedFromCredential requires a credential object');
+    throw new Error(
+      'extractPrfSeedFromCredential requires a credential object'
+    );
   }
 
   const rawCredentialId = ensureUint8Array(
@@ -80,7 +95,10 @@ export async function extractPrfSeedFromCredential(credential, options = {}) {
     'rawCredentialId'
   );
   const rpId = options.rpId || window.location.hostname;
-  const prfInput = options.prfInput || credential.prfInput || crypto.getRandomValues(new Uint8Array(32));
+  const prfInput =
+    options.prfInput ||
+    credential.prfInput ||
+    crypto.getRandomValues(new Uint8Array(32));
 
   try {
     const assertion = await navigator.credentials.get({
@@ -91,13 +109,14 @@ export async function extractPrfSeedFromCredential(credential, options = {}) {
         userVerification: 'required',
         extensions: {
           prf: {
-            eval: { first: prfInput }
-          }
-        }
-      }
+            eval: { first: prfInput },
+          },
+        },
+      },
     });
 
-    const prfResult = assertion?.getClientExtensionResults?.()?.prf?.results?.first;
+    const prfResult =
+      assertion?.getClientExtensionResults?.()?.prf?.results?.first;
     if (prfResult) {
       return { seed: new Uint8Array(prfResult), source: 'prf' };
     }

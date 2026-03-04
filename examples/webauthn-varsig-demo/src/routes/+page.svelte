@@ -248,8 +248,8 @@
     <div
       style="margin-top:0.5rem;color:var(--cds-text-helper);font-size:0.75rem;"
     >
-      local-first peer-to-peer with WebAuthn varsig support - data in browser IndexedDB
-      via OrbitDB
+      local-first peer-to-peer with WebAuthn varsig support - data in browser
+      IndexedDB via OrbitDB
     </div>
   </div>
 </Content>

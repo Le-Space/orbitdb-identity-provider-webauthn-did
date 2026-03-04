@@ -10,7 +10,7 @@ import {
   reconstructSignedData,
   verifyEd25519Signature,
   verifyP256Signature,
-  verifyWebAuthnAssertion
+  verifyWebAuthnAssertion,
 } from 'iso-webauthn-varsig';
 import { buildChallengeBytes, toArrayBuffer, toBytes } from './utils.js';
 
@@ -22,9 +22,17 @@ const isTestMode = () =>
  * @param {Object} credential - WebAuthn credential info.
  * @param {Uint8Array} payloadBytes - Payload to sign.
  * @param {string} domainLabel - Challenge domain label.
+ * @param {'required'|'preferred'|'discouraged'} [userVerification='preferred'] - WebAuthn user verification mode.
+ * @param {'silent'|'optional'|'conditional'|'required'} [mediation] - Credential mediation behavior.
  * @returns {Promise<Object>} Assertion metadata and bytes.
  */
-async function runWebAuthnAssertionForPayload(credential, payloadBytes, domainLabel) {
+async function runWebAuthnAssertionForPayload(
+  credential,
+  payloadBytes,
+  domainLabel,
+  userVerification = 'preferred',
+  mediation
+) {
   const rpId = window.location.hostname;
   const origin = window.location.origin;
   const challengeBytes = await buildChallengeBytes(domainLabel, payloadBytes);
@@ -38,13 +46,15 @@ async function runWebAuthnAssertionForPayload(credential, payloadBytes, domainLa
       publicKey: credential.publicKey,
       assertion: {
         authenticatorData: new Uint8Array(37),
-        clientDataJSON: new TextEncoder().encode(JSON.stringify({
-          type: 'webauthn.get',
-          challenge: 'test',
-          origin
-        })),
-        signature: new Uint8Array(64)
-      }
+        clientDataJSON: new TextEncoder().encode(
+          JSON.stringify({
+            type: 'webauthn.get',
+            challenge: 'test',
+            origin,
+          })
+        ),
+        signature: new Uint8Array(64),
+      },
     };
   }
 
@@ -55,11 +65,12 @@ async function runWebAuthnAssertionForPayload(credential, payloadBytes, domainLa
       allowCredentials: [
         {
           type: 'public-key',
-          id: toArrayBuffer(credential.credentialId)
-        }
+          id: toArrayBuffer(credential.credentialId),
+        },
       ],
-      userVerification: 'preferred'
-    }
+      userVerification,
+    },
+    ...(mediation ? { mediation } : {}),
   });
 
   if (!assertion) {
@@ -77,8 +88,8 @@ async function runWebAuthnAssertionForPayload(credential, payloadBytes, domainLa
     assertion: {
       authenticatorData: new Uint8Array(response.authenticatorData),
       clientDataJSON: new Uint8Array(response.clientDataJSON),
-      signature: new Uint8Array(response.signature)
-    }
+      signature: new Uint8Array(response.signature),
+    },
   };
 }
 
@@ -93,7 +104,7 @@ async function buildVarsigOutput(assertionData) {
       varsig: new Uint8Array([1, 2, 3]),
       clientData: {},
       verification: { valid: true },
-      signatureValid: true
+      signatureValid: true,
     };
   }
 
@@ -107,7 +118,7 @@ async function buildVarsigOutput(assertionData) {
   const verification = await verifyWebAuthnAssertion(decoded, {
     expectedOrigin: origin,
     expectedRpId: rpId,
-    expectedChallenge: challengeBytes
+    expectedChallenge: challengeBytes,
   });
 
   const signedData = await reconstructSignedData(decoded);
@@ -156,14 +167,22 @@ function algorithmFromPublicKey(publicKey) {
  * @param {string} domainLabel - Challenge domain label.
  * @returns {Promise<boolean>} True if valid.
  */
-async function verifyVarsigForPayload(signature, publicKey, payloadBytes, domainLabel) {
+async function verifyVarsigForPayload(
+  signature,
+  publicKey,
+  payloadBytes,
+  domainLabel
+) {
   if (isTestMode()) {
     return true;
   }
 
   const decoded = decodeWebAuthnVarsigV1(signature);
   const clientData = parseClientDataJSON(decoded.clientDataJSON);
-  const expectedChallenge = await buildChallengeBytes(domainLabel, payloadBytes);
+  const expectedChallenge = await buildChallengeBytes(
+    domainLabel,
+    payloadBytes
+  );
   const expectedChallengeEncoded = bytesToBase64url(expectedChallenge);
 
   if (clientData.challenge !== expectedChallengeEncoded) {
@@ -173,7 +192,7 @@ async function verifyVarsigForPayload(signature, publicKey, payloadBytes, domain
   const verification = await verifyWebAuthnAssertion(decoded, {
     expectedOrigin: window.location.origin,
     expectedRpId: window.location.hostname,
-    expectedChallenge
+    expectedChallenge,
   });
 
   if (!verification.valid) {
@@ -201,5 +220,5 @@ export {
   buildVarsigOutput,
   runWebAuthnAssertionForPayload,
   verifyVarsigForPayload,
-  toBytes
+  toBytes,
 };

@@ -11,19 +11,19 @@ export {
   createWebAuthnEd25519Credential,
   createWebAuthnEd25519Signer,
   createWebAuthnP256Signer,
-  checkEd25519Support
+  checkEd25519Support,
 } from './webauthn/signers.js';
 
 export {
   WebAuthnHardwareSignerService,
-  getStoredWebAuthnHardwareSignerInfo
+  getStoredWebAuthnHardwareSignerInfo,
 } from './webauthn/hardware-service.js';
 
 export {
   storeWebAuthnCredentialSafe,
   loadWebAuthnCredentialSafe,
   clearWebAuthnCredentialSafe,
-  extractPrfSeedFromCredential
+  extractPrfSeedFromCredential,
 } from './webauthn/credential.js';
 
 export {
@@ -40,5 +40,5 @@ export {
   keystoreSign,
   keystoreVerify,
   encryptArchive,
-  decryptArchive
+  decryptArchive,
 } from './worker/client.js';

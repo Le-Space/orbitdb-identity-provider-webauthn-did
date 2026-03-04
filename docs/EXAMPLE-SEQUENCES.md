@@ -30,7 +30,7 @@ sequenceDiagram
   DB->>KS: sign entry with keystore key
   KS-->>DB: Entry signature
 
-  Note over App,KS: Keystore private key is stored encrypted at rest.
+  Note over App,KS: Keystore private key is not encrypted at rest unless encryptKeystore is enabled.
 ```
 
 ## `examples/encrypted-keystore-example.js` (tests: `tests/encrypted-keystore.test.js`)

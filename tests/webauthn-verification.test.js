@@ -7,10 +7,12 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
     await context.addInitScript(() => {
       // Mock WebAuthn APIs
       window.PublicKeyCredential = {
-        isUserVerifyingPlatformAuthenticatorAvailable: async () => true
+        isUserVerifyingPlatformAuthenticatorAvailable: async () => true,
       };
 
-      const mockCredentialId = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+      const mockCredentialId = new Uint8Array([
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+      ]);
       // Mock public key available for future use if needed
       // const mockPublicKey = {
       //   x: new Uint8Array([
@@ -28,35 +30,45 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
           rawId: mockCredentialId,
           response: {
             attestationObject: new Uint8Array(300),
-            clientDataJSON: new TextEncoder().encode(JSON.stringify({
-              type: 'webauthn.create',
-              challenge: 'mock-challenge',
-              origin: window.location.origin
-            }))
-          }
+            clientDataJSON: new TextEncoder().encode(
+              JSON.stringify({
+                type: 'webauthn.create',
+                challenge: 'mock-challenge',
+                origin: window.location.origin,
+              })
+            ),
+          },
         }),
         get: async (options) => ({
           rawId: options.publicKey.allowCredentials[0].id,
           response: {
             authenticatorData: new Uint8Array(37),
-            clientDataJSON: new TextEncoder().encode(JSON.stringify({
-              type: 'webauthn.get',
-              challenge: 'mock-challenge',
-              origin: window.location.origin
-            })),
-            signature: new Uint8Array(64)
-          }
-        })
+            clientDataJSON: new TextEncoder().encode(
+              JSON.stringify({
+                type: 'webauthn.get',
+                challenge: 'mock-challenge',
+                origin: window.location.origin,
+              })
+            ),
+            signature: new Uint8Array(64),
+          },
+        }),
       };
     });
 
     // Create empty page and inject verification functions directly
-    await page.setContent('<!DOCTYPE html><html><head><title>Test</title></head><body></body></html>');
+    await page.setContent(
+      '<!DOCTYPE html><html><head><title>Test</title></head><body></body></html>'
+    );
 
     // Inject verification functions directly into page context
     await page.evaluate(() => {
       // Inline the verification functions for testing to avoid import issues
-      window.verifyDatabaseUpdate = async function(database, identityHash, expectedWebAuthnDID) {
+      window.verifyDatabaseUpdate = async function (
+        database,
+        identityHash,
+        expectedWebAuthnDID
+      ) {
         console.log('🔄 Verifying database update event');
 
         const databaseIdentity = database.identity;
@@ -65,9 +77,10 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
         let hasWriteAccess = false;
         try {
           const writePermissions = database.access?.write || [];
-          hasWriteAccess = writePermissions.includes(expectedWebAuthnDID) ||
-                           writePermissions.includes('*') ||
-                           writePermissions.length === 0;
+          hasWriteAccess =
+            writePermissions.includes(expectedWebAuthnDID) ||
+            writePermissions.includes('*') ||
+            writePermissions.length === 0;
         } catch (error) {
           console.warn('Could not check write permissions:', error.message);
           hasWriteAccess = true;
@@ -84,30 +97,33 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
           method: 'database-update',
           details: {
             identityMatches,
-            hasWriteAccess
+            hasWriteAccess,
           },
-          error: verificationSuccess ? null : `Database update verification failed: identityMatches=${identityMatches}, hasWriteAccess=${hasWriteAccess}`,
-          timestamp: Date.now()
+          error: verificationSuccess
+            ? null
+            : `Database update verification failed: identityMatches=${identityMatches}, hasWriteAccess=${hasWriteAccess}`,
+          timestamp: Date.now(),
         };
       };
 
-      window.isValidWebAuthnDID = function(did) {
+      window.isValidWebAuthnDID = function (did) {
         if (!did || typeof did !== 'string') return false;
-        const webauthnDIDRegex = /^did:key:z[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{20,}$/;
+        const webauthnDIDRegex =
+          /^did:key:z[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{20,}$/;
         return webauthnDIDRegex.test(did);
       };
 
-      window.extractWebAuthnDIDSuffix = function(did) {
+      window.extractWebAuthnDIDSuffix = function (did) {
         if (!window.isValidWebAuthnDID(did)) return null;
         return did.replace('did:key:', '');
       };
 
-      window.compareWebAuthnDIDs = function(did1, did2) {
+      window.compareWebAuthnDIDs = function (did1, did2) {
         if (!did1 || !did2) return false;
         return did1 === did2;
       };
 
-      window.createVerificationResult = function() {
+      window.createVerificationResult = function () {
         return {
           success: false,
           identityHash: null,
@@ -117,7 +133,7 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
           method: null,
           details: {},
           error: null,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         };
       };
 
@@ -128,15 +144,23 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
   test('should validate WebAuthn DID format correctly', async ({ page }) => {
     const result = await page.evaluate(() => {
       return {
-        validDID: window.isValidWebAuthnDID('did:key:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP'),
-        invalidDIDNoPrefix: window.isValidWebAuthnDID('key:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP'),
-        invalidDIDWrongPrefix: window.isValidWebAuthnDID('did:other:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP'),
+        validDID: window.isValidWebAuthnDID(
+          'did:key:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP'
+        ),
+        invalidDIDNoPrefix: window.isValidWebAuthnDID(
+          'key:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP'
+        ),
+        invalidDIDWrongPrefix: window.isValidWebAuthnDID(
+          'did:other:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP'
+        ),
         invalidDIDShortSuffix: window.isValidWebAuthnDID('did:key:z123'),
-        invalidDIDLongSuffix: window.isValidWebAuthnDID('did:key:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMPExtra0'),
+        invalidDIDLongSuffix: window.isValidWebAuthnDID(
+          'did:key:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMPExtra0'
+        ),
         invalidDIDNonHex: window.isValidWebAuthnDID('did:key:invalid-format'),
         emptyString: window.isValidWebAuthnDID(''),
         nullValue: window.isValidWebAuthnDID(null),
-        undefinedValue: window.isValidWebAuthnDID(undefined)
+        undefinedValue: window.isValidWebAuthnDID(undefined),
       };
     });
 
@@ -154,13 +178,17 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
   test('should extract WebAuthn DID suffix correctly', async ({ page }) => {
     const result = await page.evaluate(() => {
       return {
-        validSuffix: window.extractWebAuthnDIDSuffix('did:key:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP'),
+        validSuffix: window.extractWebAuthnDIDSuffix(
+          'did:key:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP'
+        ),
         invalidDID: window.extractWebAuthnDIDSuffix('invalid:did:format'),
-        nullValue: window.extractWebAuthnDIDSuffix(null)
+        nullValue: window.extractWebAuthnDIDSuffix(null),
       };
     });
 
-    expect(result.validSuffix).toBe('zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP');
+    expect(result.validSuffix).toBe(
+      'zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP'
+    );
     expect(result.invalidDID).toBe(null);
     expect(result.nullValue).toBe(null);
   });
@@ -175,7 +203,7 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
         identicalDIDs: window.compareWebAuthnDIDs(did1, did2),
         differentDIDs: window.compareWebAuthnDIDs(did1, did3),
         nullComparison: window.compareWebAuthnDIDs(did1, null),
-        bothNull: window.compareWebAuthnDIDs(null, null)
+        bothNull: window.compareWebAuthnDIDs(null, null),
       };
     });
 
@@ -208,10 +236,12 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
           actualDID: template.actualDID,
           identityType: template.identityType,
           method: template.method,
-          error: template.error
+          error: template.error,
         },
-        hasTimestamp: typeof template.timestamp === 'number' && template.timestamp > 0,
-        detailsIsObject: typeof template.details === 'object' && template.details !== null
+        hasTimestamp:
+          typeof template.timestamp === 'number' && template.timestamp > 0,
+        detailsIsObject:
+          typeof template.details === 'object' && template.details !== null,
       };
     });
 
@@ -227,20 +257,23 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
     expect(result.detailsIsObject).toBe(true);
   });
 
-  test('should verify database update with matching identity', async ({ page }) => {
+  test('should verify database update with matching identity', async ({
+    page,
+  }) => {
     const result = await page.evaluate(async () => {
       try {
-        const webauthnDID = 'did:key:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP';
+        const webauthnDID =
+          'did:key:zDnaeReWND2i3xwN5GxPdBFLWHWv1wfCQNw25yJCuLWFErgMP';
 
         // Create mock database with matching identity
         const mockDatabase = {
           identity: {
             id: webauthnDID,
-            type: 'webauthn'
+            type: 'webauthn',
           },
           access: {
-            write: [webauthnDID]
-          }
+            write: [webauthnDID],
+          },
         };
 
         const verification = await window.verifyDatabaseUpdate(
@@ -256,7 +289,7 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
           hasWriteAccess: verification.details?.hasWriteAccess,
           expectedDID: verification.expectedWebAuthnDID,
           actualDID: verification.actualDID,
-          error: verification.error
+          error: verification.error,
         };
       } catch (error) {
         return { error: error.message };
@@ -271,5 +304,5 @@ test.describe('WebAuthn DID Verification Utilities Tests', () => {
     expect(result.expectedDID).toBe(result.actualDID);
   });
 
-// Test completed successfully
+  // Test completed successfully
 });

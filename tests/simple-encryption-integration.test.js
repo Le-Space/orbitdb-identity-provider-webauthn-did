@@ -2,11 +2,13 @@ import { test, expect } from '@playwright/test';
 
 async function waitForKeystoreEncryption(page) {
   try {
-    await page.waitForFunction(() =>
-      window.KeystoreEncryption &&
-      typeof window.KeystoreEncryption.generateSecretKey === 'function' &&
-      typeof window.KeystoreEncryption.encryptWithAESGCM === 'function'
-    , { timeout: 20000 });
+    await page.waitForFunction(
+      () =>
+        window.KeystoreEncryption &&
+        typeof window.KeystoreEncryption.generateSecretKey === 'function' &&
+        typeof window.KeystoreEncryption.encryptWithAESGCM === 'function',
+      { timeout: 20000 }
+    );
   } catch {
     throw new Error(
       'KeystoreEncryption not available. Run with USE_ENCRYPTED_DEMO=true (ed25519-encrypted-keystore-demo).'
@@ -22,7 +24,6 @@ async function waitForKeystoreEncryption(page) {
  */
 
 test.describe('Simple Encryption Integration', () => {
-
   test.beforeEach(async ({ page, context }) => {
     // Clear storage
     await context.clearCookies();
@@ -35,10 +36,14 @@ test.describe('Simple Encryption Integration', () => {
         window.PublicKeyCredential = {};
       }
 
-      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = async () => true;
-      window.PublicKeyCredential.isConditionalMediationAvailable = async () => true;
+      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable =
+        async () => true;
+      window.PublicKeyCredential.isConditionalMediationAvailable = async () =>
+        true;
 
-      const mockCredentialId = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+      const mockCredentialId = new Uint8Array([
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+      ]);
 
       if (!window.navigator.credentials) {
         window.navigator.credentials = {};
@@ -46,13 +51,13 @@ test.describe('Simple Encryption Integration', () => {
 
       window.navigator.credentials.create = async (options) => {
         console.log('🔐 MOCK: Creating credential...');
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         const mockAttestation = new Uint8Array(300);
         mockAttestation.set([
-          0xa3, 0x63, 0x66, 0x6d, 0x74, 0x66, 0x70, 0x61, 0x63, 0x6b, 0x65, 0x64,
-          0x67, 0x61, 0x74, 0x74, 0x53, 0x74, 0x6d, 0x74, 0xa0, 0x68, 0x61, 0x75,
-          0x74, 0x68, 0x44, 0x61, 0x74, 0x61
+          0xa3, 0x63, 0x66, 0x6d, 0x74, 0x66, 0x70, 0x61, 0x63, 0x6b, 0x65,
+          0x64, 0x67, 0x61, 0x74, 0x74, 0x53, 0x74, 0x6d, 0x74, 0xa0, 0x68,
+          0x61, 0x75, 0x74, 0x68, 0x44, 0x61, 0x74, 0x61,
         ]);
 
         const extensionResults = {};
@@ -66,27 +71,29 @@ test.describe('Simple Encryption Integration', () => {
           type: 'public-key',
           response: {
             attestationObject: mockAttestation,
-            clientDataJSON: new TextEncoder().encode(JSON.stringify({
-              type: 'webauthn.create',
-              challenge: 'mock-challenge',
-              origin: window.location.origin,
-              crossOrigin: false
-            })),
+            clientDataJSON: new TextEncoder().encode(
+              JSON.stringify({
+                type: 'webauthn.create',
+                challenge: 'mock-challenge',
+                origin: window.location.origin,
+                crossOrigin: false,
+              })
+            ),
             getPublicKey: () => new Uint8Array(65),
-            getPublicKeyAlgorithm: () => -7
+            getPublicKeyAlgorithm: () => -7,
           },
-          getClientExtensionResults: () => extensionResults
+          getClientExtensionResults: () => extensionResults,
         };
       };
 
       window.navigator.credentials.get = async (options) => {
         console.log('🔐 MOCK: Getting credential...');
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         const extensionResults = {};
         if (options?.publicKey?.extensions?.hmacGetSecret) {
           extensionResults.hmacGetSecret = {
-            output1: new Uint8Array(32).fill(42)
+            output1: new Uint8Array(32).fill(42),
           };
         }
 
@@ -96,16 +103,18 @@ test.describe('Simple Encryption Integration', () => {
           type: 'public-key',
           response: {
             authenticatorData: new Uint8Array(37),
-            clientDataJSON: new TextEncoder().encode(JSON.stringify({
-              type: 'webauthn.get',
-              challenge: 'mock-challenge',
-              origin: window.location.origin,
-              crossOrigin: false
-            })),
+            clientDataJSON: new TextEncoder().encode(
+              JSON.stringify({
+                type: 'webauthn.get',
+                challenge: 'mock-challenge',
+                origin: window.location.origin,
+                crossOrigin: false,
+              })
+            ),
             signature: new Uint8Array(64),
-            userHandle: null
+            userHandle: null,
           },
-          getClientExtensionResults: () => extensionResults
+          getClientExtensionResults: () => extensionResults,
         };
       };
 
@@ -118,12 +127,15 @@ test.describe('Simple Encryption Integration', () => {
     await page.waitForFunction(() => document.readyState === 'complete');
   });
 
-  test('should use WebAuthn-protected SK with simple-encryption pattern', async ({ page }) => {
+  test('should use WebAuthn-protected SK with simple-encryption pattern', async ({
+    page,
+  }) => {
     console.log('\n🧪 Testing simple-encryption integration pattern...');
     await waitForKeystoreEncryption(page);
 
     const result = await page.evaluate(async () => {
-      const { generateSecretKey, encryptWithAESGCM, decryptWithAESGCM } = window.KeystoreEncryption;
+      const { generateSecretKey, encryptWithAESGCM, decryptWithAESGCM } =
+        window.KeystoreEncryption;
 
       try {
         // Step 1: Generate secret key (would be protected by WebAuthn in real usage)
@@ -138,7 +150,11 @@ test.describe('Simple Encryption Integration', () => {
         const encrypted = await encryptWithAESGCM(testData, sk);
 
         // Step 4: Decrypt the data
-        const decrypted = await decryptWithAESGCM(encrypted.ciphertext, sk, encrypted.iv);
+        const decrypted = await decryptWithAESGCM(
+          encrypted.ciphertext,
+          sk,
+          encrypted.iv
+        );
         const decryptedText = new TextDecoder().decode(decrypted);
 
         return {
@@ -147,12 +163,12 @@ test.describe('Simple Encryption Integration', () => {
           passwordLength: password.length,
           originalText: 'Secret database content',
           decryptedText,
-          matched: decryptedText === 'Secret database content'
+          matched: decryptedText === 'Secret database content',
         };
       } catch (error) {
         return {
           success: false,
-          error: error.message
+          error: error.message,
         };
       }
     });
@@ -165,25 +181,37 @@ test.describe('Simple Encryption Integration', () => {
     expect(result.decryptedText).toBe('Secret database content');
   });
 
-  test('should demonstrate dual-layer encryption (keystore + content)', async ({ page }) => {
+  test('should demonstrate dual-layer encryption (keystore + content)', async ({
+    page,
+  }) => {
     console.log('\n🧪 Testing dual-layer encryption pattern...');
 
-    await page.waitForSelector('text=WebAuthn is fully supported', { timeout: 30000 });
+    await page.waitForSelector('text=WebAuthn is fully supported', {
+      timeout: 30000,
+    });
     await waitForKeystoreEncryption(page);
 
     const result = await page.evaluate(async () => {
-      const { generateSecretKey, encryptWithAESGCM, decryptWithAESGCM } = window.KeystoreEncryption;
+      const { generateSecretKey, encryptWithAESGCM, decryptWithAESGCM } =
+        window.KeystoreEncryption;
 
       try {
         // Generate a single secret key
         const sk = generateSecretKey();
 
         // Layer 1: Encrypt keystore private key
-        const keystorePrivateKey = new TextEncoder().encode('mock-private-key-from-keystore');
-        const encryptedKeystore = await encryptWithAESGCM(keystorePrivateKey, sk);
+        const keystorePrivateKey = new TextEncoder().encode(
+          'mock-private-key-from-keystore'
+        );
+        const encryptedKeystore = await encryptWithAESGCM(
+          keystorePrivateKey,
+          sk
+        );
 
         // Layer 2: Encrypt database content (using same SK)
-        const dbContent = new TextEncoder().encode('{"task":"Secret TODO","done":false}');
+        const dbContent = new TextEncoder().encode(
+          '{"task":"Secret TODO","done":false}'
+        );
         const encryptedContent = await encryptWithAESGCM(dbContent, sk);
 
         // Simulate session end - clear memory
@@ -210,12 +238,12 @@ test.describe('Simple Encryption Integration', () => {
           singleBiometricPrompt: true, // One SK protects both layers
           keystoreDecrypted: keystoreKey === 'mock-private-key-from-keystore',
           contentDecrypted: content === '{"task":"Secret TODO","done":false}',
-          parsedContent: JSON.parse(content)
+          parsedContent: JSON.parse(content),
         };
       } catch (error) {
         return {
           success: false,
-          error: error.message
+          error: error.message,
         };
       }
     });
@@ -244,14 +272,16 @@ test.describe('Simple Encryption Integration', () => {
       const password2 = btoa(String.fromCharCode(...sk));
 
       // Convert back to verify
-      const decoded = Uint8Array.from(atob(password1), c => c.charCodeAt(0));
+      const decoded = Uint8Array.from(atob(password1), (c) => c.charCodeAt(0));
 
       return {
         skLength: sk.length,
         password1Length: password1.length,
         password2Length: password2.length,
         passwordsMatch: password1 === password2,
-        roundTripMatches: Array.from(sk).every((byte, i) => byte === decoded[i])
+        roundTripMatches: Array.from(sk).every(
+          (byte, i) => byte === decoded[i]
+        ),
       };
     });
 
@@ -262,12 +292,15 @@ test.describe('Simple Encryption Integration', () => {
     expect(result.roundTripMatches).toBe(true);
   });
 
-  test('should handle encryption with different secret keys', async ({ page }) => {
+  test('should handle encryption with different secret keys', async ({
+    page,
+  }) => {
     console.log('\n🧪 Testing encryption isolation with different keys...');
     await waitForKeystoreEncryption(page);
 
     const result = await page.evaluate(async () => {
-      const { generateSecretKey, encryptWithAESGCM, decryptWithAESGCM } = window.KeystoreEncryption;
+      const { generateSecretKey, encryptWithAESGCM, decryptWithAESGCM } =
+        window.KeystoreEncryption;
 
       try {
         // User 1's key
@@ -281,14 +314,22 @@ test.describe('Simple Encryption Integration', () => {
         const encrypted2 = await encryptWithAESGCM(data2, sk2);
 
         // Decrypt with correct keys
-        const decrypted1 = await decryptWithAESGCM(encrypted1.ciphertext, sk1, encrypted1.iv);
-        const decrypted2 = await decryptWithAESGCM(encrypted2.ciphertext, sk2, encrypted2.iv);
+        const decrypted1 = await decryptWithAESGCM(
+          encrypted1.ciphertext,
+          sk1,
+          encrypted1.iv
+        );
+        const decrypted2 = await decryptWithAESGCM(
+          encrypted2.ciphertext,
+          sk2,
+          encrypted2.iv
+        );
 
         // Try to decrypt User 1's data with User 2's key (should fail)
         let wrongKeyFailed = false;
         try {
           await decryptWithAESGCM(encrypted1.ciphertext, sk2, encrypted1.iv);
-        } catch  {
+        } catch {
           console.log('🔐 MOCK: Wrong key failed');
           wrongKeyFailed = true;
         }
@@ -297,12 +338,12 @@ test.describe('Simple Encryption Integration', () => {
           success: true,
           decrypted1: new TextDecoder().decode(decrypted1),
           decrypted2: new TextDecoder().decode(decrypted2),
-          wrongKeyFailed
+          wrongKeyFailed,
         };
       } catch (error) {
         return {
           success: false,
-          error: error.message
+          error: error.message,
         };
       }
     });

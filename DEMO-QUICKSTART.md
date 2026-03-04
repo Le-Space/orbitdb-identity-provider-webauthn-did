@@ -24,6 +24,7 @@ Open **Chrome 106+** or **Edge 106+** for full largeBlob support.
 ### Step 4: Test the Features
 
 #### A. Basic Test (No Encryption)
+
 1. Click **"Create Credential"** → biometric prompt
 2. Uncheck both security options
 3. Click **"Authenticate with WebAuthn"**
@@ -32,6 +33,7 @@ Open **Chrome 106+** or **Edge 106+** for full largeBlob support.
 **Result**: P-256 DID, unencrypted keystore (old behavior)
 
 #### B. Test Ed25519 DID Only
+
 1. Reset database or reload
 2. Create credential if needed
 3. ✅ Check **"Use Ed25519 DID from keystore"**
@@ -42,6 +44,7 @@ Open **Chrome 106+** or **Edge 106+** for full largeBlob support.
 **Result**: Ed25519 DID, but keystore still unencrypted
 
 #### C. Test Full Encryption (Recommended)
+
 1. Reset database or reload
 2. Create credential if needed
 3. ✅ Check **"Use Ed25519 DID from keystore"**
@@ -50,7 +53,8 @@ Open **Chrome 106+** or **Edge 106+** for full largeBlob support.
 6. Authenticate → biometric prompt
 7. Add TODOs (no additional prompts!)
 
-**Result**: 
+**Result**:
+
 - Ed25519 DID from keystore
 - Keystore encrypted with AES-GCM
 - Secret key in WebAuthn hardware
@@ -59,6 +63,7 @@ Open **Chrome 106+** or **Edge 106+** for full largeBlob support.
 ### Step 5: Verify Encryption
 
 Open Chrome DevTools → Application → Local Storage:
+
 - Look for `encrypted-keystore-*` entries
 - You'll see ciphertext (encrypted data)
 - Without WebAuthn auth, this data is useless!
@@ -73,6 +78,7 @@ Open Chrome DevTools → Application → Local Storage:
 ### What to Look For
 
 #### Console Output
+
 ```javascript
 🔍 Created WebAuthn identity: {
   id: "did:key:z6Mk...",
@@ -84,34 +90,39 @@ Open Chrome DevTools → Application → Local Storage:
 ```
 
 #### DID Format
+
 - **P-256**: `did:key:zDna...` (starts with zDna)
 - **Ed25519**: `did:key:z6Mk...` (starts with z6Mk)
 
 #### LocalStorage
+
 - **Unencrypted**: Keys in plaintext
 - **Encrypted**: Only ciphertext visible
 
 ### Browser Support Matrix
 
-| Feature | Chrome 106+ | Edge 106+ | Firefox | Safari |
-|---------|-------------|-----------|---------|--------|
-| Ed25519 DID | ✅ | ✅ | ✅ | ✅ |
-| largeBlob | ✅ | ✅ | ❌ | ❌ |
-| hmac-secret | ✅ | ✅ | ✅ | ⚠️ Limited |
+| Feature     | Chrome 106+ | Edge 106+ | Firefox | Safari     |
+| ----------- | ----------- | --------- | ------- | ---------- |
+| Ed25519 DID | ✅          | ✅        | ✅      | ✅         |
+| largeBlob   | ✅          | ✅        | ❌      | ❌         |
+| hmac-secret | ✅          | ✅        | ✅      | ⚠️ Limited |
 
 ### Troubleshooting
 
 #### "No encryption extensions supported"
+
 - You're not on Chrome/Edge 106+
 - Try hmac-secret instead
 - Or test without encryption first
 
 #### "Failed to create encrypted keystore"
+
 - Check browser console for details
 - Try resetting database
 - Make sure WebAuthn is working
 
 #### "Database loading failed"
+
 - Click "Reset Database"
 - Clear IndexedDB manually
 - Restart the dev server
@@ -135,11 +146,12 @@ Open Chrome DevTools → Application → Local Storage:
 ✅ Keystore encrypted in localStorage  
 ✅ One biometric prompt per session  
 ✅ TODOs persist across reload  
-✅ Console shows encryption status  
+✅ Console shows encryption status
 
 ## Need Help?
 
 Check the logs in:
+
 1. Browser console (F12)
 2. Terminal where `npm run dev` is running
 3. Network tab for any API errors
@@ -147,6 +159,7 @@ Check the logs in:
 ## Clean Up
 
 To reset everything:
+
 ```bash
 # In browser
 Click "Reset Database"
