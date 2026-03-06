@@ -30,7 +30,7 @@ import {
 // These nodes also support circuit relay v2 hop, enabling browser-to-browser
 // connections via relay circuit addresses.
 const BOOTSTRAP_LIST = [
-  '/dns4/cc37-2405-201-8012-40d2-4c6-6344-379d-d7e1.ngrok-free.app/tcp/443/wss/p2p/12D3KooWJUhUoC35Mf7PAuBy1c8S92QgfVpSMFMp3hh7cvQHedCv'
+  '/dns4/cc37-2405-201-8012-40d2-4c6-6344-379d-d7e1.ngrok-free.app/tcp/443/wss/p2p/12D3KooWDUypFDmsbdfLYW4iETFExEXQfiDkU2SDqkoNjvfUebwR'
 ];
 
 const PUBSUB_PEER_DISCOVERY = 'browser-peer-discovery'

@@ -32,6 +32,9 @@
   let pendingRequest = null;
   let pendingResolve = null;
 
+  // Sync polling backstop
+  let syncPollInterval = null;
+
   // ── QR payload watcher — show QR immediately, update when relay addresses arrive ─
   function startWatchingQR() {
     if (!manager) return;
@@ -61,6 +64,22 @@
   async function refreshDevices() {
     if (manager) {
       devices = await manager.listDevices();
+    }
+  }
+
+  function startSyncPolling() {
+    stopSyncPolling();
+    syncPollInterval = setInterval(async () => {
+      if (manager && appMode === 'ready') {
+        await refreshDevices();
+      }
+    }, 5000);
+  }
+
+  function stopSyncPolling() {
+    if (syncPollInterval) {
+      clearInterval(syncPollInterval);
+      syncPollInterval = null;
     }
   }
 
@@ -110,8 +129,9 @@
           
           startWatchingQR();
           await refreshDevices();
-          
+
           appMode = 'ready';
+          startSyncPolling();
           status = 'Logged in! Show QR code to link a new device.';
         } else {
           // User has passkey but no local DB - ask: link to existing or create new
@@ -250,8 +270,9 @@
       saveDbAddress(dbAddress);
       startWatchingQR();
       await refreshDevices();
-      
+
       appMode = 'ready';
+      startSyncPolling();
       status = 'Ready! Show QR code to link a new device.';
     } catch (err) {
       error = err.message;
@@ -277,10 +298,11 @@
         
         saveDbAddress(dbAddress);
         await refreshDevices();
-        
+
         startWatchingQR();
-        
+
         appMode = 'ready';
+        startSyncPolling();
         status = 'Linked successfully! You can now access the shared database.';
       } else {
         error = `Pairing rejected: ${result.reason || 'Unknown reason'}`;
@@ -373,6 +395,7 @@
   });
 
   onDestroy(async () => {
+    stopSyncPolling();
     if (manager) {
       await manager.close();
     }

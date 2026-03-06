@@ -221,6 +221,10 @@ export class WebAuthnDIDProvider {
         hasY: !!publicKey.y,
       });
 
+      const prfResult = typeof credential.getClientExtensionResults === 'function'
+        ? credential.getClientExtensionResults()?.prf?.results?.first
+        : undefined;
+
       const result = {
         credentialId: WebAuthnDIDProvider.arrayBufferToBase64url(
           credential.rawId
@@ -229,10 +233,9 @@ export class WebAuthnDIDProvider {
         publicKey,
         userId,
         displayName,
-        attestationObject: new Uint8Array(
-          credential.response.attestationObject
-        ),
+        attestationObject: new Uint8Array(credential.response.attestationObject),
         prfInput: prfInput || undefined,
+        prfResult: prfResult ? new Uint8Array(prfResult) : undefined
       };
 
       webauthnLog('Credential creation completed successfully');

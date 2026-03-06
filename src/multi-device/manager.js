@@ -30,6 +30,7 @@ export class MultiDeviceManager {
     this._onPairingRequest = null;
     this._onDeviceLinked = null;
     this._onDeviceJoined = null;
+    this._listenersSetup = false;
   }
 
   static async create(config) {
@@ -114,10 +115,11 @@ export class MultiDeviceManager {
   }
 
   async _setupSyncListeners() {
-    if (!this._devicesDb) {
-      console.log('[manager] _setupSyncListeners: no devicesDb, skipping');
+    if (this._listenersSetup || !this._devicesDb) {
+      console.log('[manager] _setupSyncListeners: skipping (already set up or no db)');
       return;
     }
+    this._listenersSetup = true;
 
     console.log('[manager] Setting up sync listeners for DB:', this._devicesDb.address?.toString());
 
@@ -152,6 +154,20 @@ export class MultiDeviceManager {
       }
     });
     console.log('[manager] Sync listeners setup complete');
+  }
+
+  /** Poll db.all() until at least one entry appears, or timeout. */
+  async _waitForEntries(timeoutMs = 15000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const entries = await listDevices(this._devicesDb);
+      if (entries.length > 0) {
+        console.log('[manager] _waitForEntries: found', entries.length, 'entries after', Date.now() - start, 'ms');
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    console.warn('[manager] _waitForEntries: timed out after', timeoutMs, 'ms with 0 entries');
   }
 
   async restore() {
@@ -201,39 +217,17 @@ export class MultiDeviceManager {
     console.log('[linkToDevice] Got granted, opening database...');
     this._devicesDb = await openDeviceRegistry(this._orbitdb, this._identity.id, result.orbitdbAddress);
     this._dbAddress = this._devicesDb.address;
-    console.log('[linkToDevice] Database opened, attempting to register device...');
+    console.log('[linkToDevice] Database opened, waiting for Device A entries to sync...');
 
-    // Wait for access grant to propagate before registering
-    // The access controller needs time to sync permissions from Device A
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Register listeners immediately so we catch update events during the delay below
+    this._listenersSetup = false;
+    await this._setupSyncListeners();
 
-    try {
-      await registerDevice(this._devicesDb, {
-        credential_id: this._credential.credentialId,
-        public_key: this._getPublicKey(),
-        device_label: detectDeviceLabel(),
-        created_at: Date.now(),
-        status: 'active',
-        ed25519_did: this._identity.id,
-      });
-      console.log('[linkToDevice] Device registered successfully');
-    } catch (registerErr) {
-      console.error('[linkToDevice] Failed to register device:', registerErr.message);
-      // Wait and retry
-      console.log('[linkToDevice] Retrying after delay...');
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      await registerDevice(this._devicesDb, {
-        credential_id: this._credential.credentialId,
-        public_key: this._getPublicKey(),
-        device_label: detectDeviceLabel(),
-        created_at: Date.now(),
-        status: 'active',
-        ed25519_did: this._identity.id,
-      });
-      console.log('[linkToDevice] Device registered successfully on retry');
-    }
+    // Wait for Device A's entries to sync. Device A already granted write access AND
+    // registered Device B during the pairing handshake, so Device B does not write
+    // anything — it just needs to wait until Device A's entries appear locally.
+    await this._waitForEntries(15000);
 
-    await this.syncDevices();
     await this._finalizeDb();
 
     return { type: 'granted', dbAddress: this._dbAddress };
