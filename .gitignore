@@ -123,3 +123,7 @@ examples/**/node_modules/
 # Keep demo lockfiles for CI reproducibility
 # examples/**/package-lock.json
 examples/**/yarn.lock
+
+# Git worktrees
+.worktrees/
+worktrees/

@@ -54,6 +54,7 @@ export class OrbitDBWebAuthnIdentityProvider {
 
     // If useKeystoreDID flag is set, create Ed25519 DID from keystore
     if (this.useKeystoreDID && this.keystore) {
+      identityLog('Using Ed25519 keystore DID path');
       if (this.encryptKeystore) {
         await this.ensureEncryptedKeystore();
       }
@@ -92,7 +93,9 @@ export class OrbitDBWebAuthnIdentityProvider {
       await this.createEncryptedKeystore();
     }
 
-    await this.unlockEncryptedKeystore();
+    if (!this.unlockedKeypair) {
+      await this.unlockEncryptedKeystore();
+    }
   }
 
   /**
@@ -336,11 +339,22 @@ export class OrbitDBWebAuthnIdentityProvider {
 
       if (this.keystoreEncryptionMethod === 'prf') {
         // Wrap SK with PRF (WebAuthn Level 3 - preferred method)
-        const wrapped = await KeystoreEncryption.wrapSKWithPRF(
-          this.credential.rawCredentialId,
-          sk,
-          window.location.hostname
-        );
+        // Reuse PRF seed from credential creation if available (saves one navigator.credentials.get() call)
+        let wrapped;
+        if (this.credential.prfResult) {
+          identityLog('Reusing PRF seed from credential creation — skipping extra credentials.get()');
+          wrapped = await KeystoreEncryption.wrapSKWithKnownPRFSeed(
+            sk,
+            this.credential.prfResult,
+            this.credential.prfInput
+          );
+        } else {
+          wrapped = await KeystoreEncryption.wrapSKWithPRF(
+            this.credential.rawCredentialId,
+            sk,
+            window.location.hostname
+          );
+        }
 
         encryptedData = {
           ciphertext,
@@ -495,7 +509,7 @@ export class OrbitDBWebAuthnIdentityProvider {
    * @param {string|Uint8Array} data - Payload to sign.
    * @returns {Promise<string>} Signature envelope.
    */
-  signIdentity(data) {
+  async signIdentity(data) {
     const dataLength = typeof data === 'string' ? data.length : data.byteLength;
     identityLog('signIdentity() called with data length: %d', dataLength);
     identityLog('Signer context: %o', {
@@ -506,10 +520,16 @@ export class OrbitDBWebAuthnIdentityProvider {
       hasUnlockedKeypair: Boolean(this.unlockedKeypair),
     });
 
-    if (this.encryptKeystore && this.unlockedKeypair) {
-      identityLog(
-        'Encrypted keystore is unlocked, but signing currently remains WebAuthn-based'
-      );
+    const signerSelection =
+      this.encryptKeystore && this.unlockedKeypair ? 'encrypted-keystore' : 'webauthn';
+    identityLog('Signer selection: %s', signerSelection);
+
+    // If using encrypted keystore and it's unlocked, sign with the keystore key
+    if (this.encryptKeystore && this.unlockedPrivateKey) {
+      identityLog('Using unlocked encrypted keystore for signing');
+      const dataBytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
+      const sig = await this.unlockedPrivateKey.sign(dataBytes);
+      return WebAuthnDIDProvider.arrayBufferToBase64url(sig);
     }
 
     return this.webauthnProvider.sign(data);
@@ -524,11 +544,18 @@ export class OrbitDBWebAuthnIdentityProvider {
    */
   verifyIdentity(signature, data, publicKey) {
     identityLog('verifyIdentity() called');
-    return this.webauthnProvider.verify(
-      signature,
-      data,
-      publicKey || this.credential.publicKey
-    );
+
+    if (this.encryptKeystore && this.unlockedPrivateKey) {
+      try {
+        const sig = new Uint8Array(WebAuthnDIDProvider.base64urlToArrayBuffer(signature));
+        const dataBytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
+        return this.unlockedPrivateKey.publicKey.verify(dataBytes, sig);
+      } catch {
+        // fall through to WebAuthn verify
+      }
+    }
+
+    return this.webauthnProvider.verify(signature, data, publicKey || this.credential.publicKey);
   }
 
   /**
@@ -571,8 +598,10 @@ export class OrbitDBWebAuthnIdentityProvider {
           '...'
         );
         await provider.createEncryptedKeystore();
-        console.log('🔓 Unlocking encrypted keystore...');
-        await provider.unlockEncryptedKeystore();
+        if (!provider.unlockedKeypair) {
+          console.log('🔓 Unlocking encrypted keystore...');
+          await provider.unlockEncryptedKeystore();
+        }
         console.log('✅ Encrypted keystore created and unlocked successfully');
         identityLog('Encrypted keystore created and unlocked');
       } catch (error) {

@@ -469,6 +469,31 @@ export async function unwrapSKWithPRF(
 }
 
 /**
+ * Wrap secret key using a PRF seed already obtained from credential creation.
+ * Skips navigator.credentials.get() since the seed is already available.
+ * @param {Uint8Array} sk - Secret key to wrap
+ * @param {Uint8Array} prfSeed - PRF seed from credential.getClientExtensionResults().prf.results.first
+ * @param {Uint8Array} [prfInput] - PRF input (salt) used during credential creation
+ * @returns {Promise<{wrappedSK: Uint8Array, wrappingIV: Uint8Array, salt: Uint8Array, prfSource: string}>}
+ */
+export async function wrapSKWithKnownPRFSeed(sk, prfSeed, prfInput) {
+  log('Wrapping secret key with known PRF seed (no credentials.get() needed)');
+
+  const saltForStorage = prfInput || crypto.getRandomValues(new Uint8Array(32));
+  const prfKey = await deriveKeyFromPrfSeed(prfSeed);
+  const wrapped = await encryptWithAESGCM(sk, prfKey);
+
+  log('Secret key wrapped with known PRF seed');
+
+  return {
+    wrappedSK: wrapped.ciphertext,
+    wrappingIV: wrapped.iv,
+    salt: saltForStorage,
+    prfSource: 'prf'
+  };
+}
+
+/**
  * Store encrypted keystore data in IndexedDB
  * @param {Object} data - Encrypted keystore data
  * @param {string} credentialId - WebAuthn credential ID (used as key)
@@ -614,6 +639,7 @@ export default {
   retrieveSKFromLargeBlob,
   addHmacSecretToCredentialOptions,
   wrapSKWithHmacSecret,
+  wrapSKWithKnownPRFSeed,
   unwrapSKWithHmacSecret,
   storeEncryptedKeystore,
   loadEncryptedKeystore,
