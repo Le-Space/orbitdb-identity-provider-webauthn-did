@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 
+test.describe.configure({ mode: 'serial' });
+
 /**
  * E2E Tests for WebAuthn Multi-Device Linking & Recovery
  *
@@ -19,8 +21,11 @@ import { test, expect } from '@playwright/test';
  * The browser-side mock installer. Receives { seed } as the arg object.
  * addInitScript supports (fn, arg) where arg is JSON-serializable.
  */
-function webAuthnMockScript({ seed }) {
+function webAuthnMockScript({ seed, forceP256Hardware = false }) {
   window.__testMode = true;
+  window.__PLAYWRIGHT__ = true;
+  window.__FORCE_P256_HARDWARE__ = forceP256Hardware;
+  window.__WEBAUTHN_VARSIG_SEED__ = seed;
 
   const mockCredentialId = new Uint8Array(seed);
 
@@ -122,14 +127,25 @@ async function waitForMultiDeviceApi(page, timeout = 60000) {
   );
 }
 
+async function setIdentityMode(page, mode) {
+  await page.evaluate((value) => window.__multiDevice.setIdentityMode(value), mode);
+  await page.waitForFunction(
+    (expectedMode) => window.__multiDevice?.getState?.()?.identityMode === expectedMode,
+    mode
+  );
+}
+
 /**
  * Trigger first-device setup via the Start button + test API.
  * Clicks "🚀 Start" → handleStart() detects mock credential, creates OrbitDB manager
  * → calls setupAsDeviceA() which creates the device registry → waits for DB address.
  */
-async function doFirstDeviceSetup(page) {
+async function doFirstDeviceSetup(page, mode = 'keystore-ed25519') {
+  await setIdentityMode(page, mode);
   await page.click('button:has-text("Start")');
   await page.waitForTimeout(1000); // handleStart completes (credential + OrbitDB setup)
+  await page.waitForLoadState('domcontentloaded');
+  await waitForMultiDeviceApi(page);
   await page.evaluate(() => window.__multiDevice.setupAsDeviceA());
   await page.waitForSelector('[data-testid="db-address"]', { timeout: 120000 });
 }
@@ -139,12 +155,28 @@ async function doFirstDeviceSetup(page) {
  * Clicks "🚀 Start" → handleStart() detects mock credential, creates OrbitDB identity
  * → waits for identity to be available in state.
  */
-async function doDeviceBCredentialSetup(page) {
+async function doDeviceBCredentialSetup(page, mode = 'keystore-ed25519') {
+  await setIdentityMode(page, mode);
   await page.click('button:has-text("Start")');
-  await page.waitForFunction(
-    () => window.__multiDevice?.getState()?.identity !== null,
-    { timeout: 120000 }
+  await page.waitForTimeout(1000);
+  await page.waitForLoadState('domcontentloaded');
+  await waitForMultiDeviceApi(page);
+
+  const hasIdentity = await page.evaluate(
+    () => window.__multiDevice?.getState()?.identity !== null
   );
+
+  if (!hasIdentity) {
+    const linkButton = page.locator('button:has-text("Link to Existing Device")');
+    if (await linkButton.count()) {
+      await linkButton.click();
+    }
+  }
+
+  await page.waitForFunction(() => {
+    const state = window.__multiDevice?.getState?.();
+    return state?.identity !== null;
+  }, { timeout: 120000 });
 }
 
 // ── Scenario A ────────────────────────────────────────────────────────────────
@@ -595,4 +627,132 @@ test.describe('Scenario H — Three-device registry', () => {
       await contextC.close();
     }
   });
+});
+
+// ── Scenario I ────────────────────────────────────────────────────────────────
+
+const MODE_CASES = [
+  {
+    mode: 'worker-ed25519',
+    expectedBackend: 'worker-keystore',
+    expectedType: 'worker-ed25519',
+    expectedAlgorithm: 'Ed25519',
+    didPattern: /^did:key:z6Mk/,
+  },
+  {
+    mode: 'varsig-ed25519',
+    expectedBackend: 'webauthn-varsig',
+    expectedType: 'webauthn-varsig',
+    expectedAlgorithm: 'Ed25519',
+    didPattern: /^did:key:/,
+  },
+  {
+    mode: 'varsig-p256',
+    expectedBackend: 'webauthn-varsig',
+    expectedType: 'webauthn-varsig',
+    expectedAlgorithm: 'P-256',
+    didPattern: /^did:key:/,
+  },
+];
+
+test.describe('Scenario I — Alternate identity modes', () => {
+  for (const modeCase of MODE_CASES) {
+    test(`${modeCase.mode} exposes expected backend metadata on first-device setup`, async ({
+      browser,
+    }) => {
+      const context = await browser.newContext();
+      await context.addInitScript(webAuthnMockScript, {
+        seed: SEED_A,
+        forceP256Hardware: modeCase.mode === 'varsig-p256',
+      });
+      const page = await context.newPage();
+
+      try {
+        await page.goto('http://localhost:5173');
+        await page.waitForLoadState('networkidle');
+        await waitForMultiDeviceApi(page);
+
+        await doFirstDeviceSetup(page, modeCase.mode);
+        await page.waitForTimeout(2000);
+
+        const state = await page.evaluate(() => window.__multiDevice.getState());
+        expect(state.identityMode).toBe(modeCase.mode);
+        expect(state.signingBackend).toBe(modeCase.expectedBackend);
+        expect(state.identityType).toBe(modeCase.expectedType);
+        expect(state.didAlgorithm).toBe(modeCase.expectedAlgorithm);
+        expect(state.identity.id).toMatch(modeCase.didPattern);
+
+        if (modeCase.mode === 'worker-ed25519') {
+          expect(state.worker?.did).toBe(state.identity.id);
+          expect(['prf', 'credentialId']).toContain(state.worker?.seedSource);
+        }
+      } finally {
+        await context.close();
+      }
+    });
+
+    test(`${modeCase.mode} links a second device and preserves mode metadata`, async ({
+      browser,
+    }) => {
+      const contextA = await browser.newContext();
+      const contextB = await browser.newContext();
+      const forceP256 = modeCase.mode === 'varsig-p256';
+
+      await contextA.addInitScript(webAuthnMockScript, {
+        seed: SEED_A,
+        forceP256Hardware: forceP256,
+      });
+      await contextB.addInitScript(webAuthnMockScript, {
+        seed: SEED_B,
+        forceP256Hardware: forceP256,
+      });
+
+      const pageA = await contextA.newPage();
+      const pageB = await contextB.newPage();
+
+      try {
+        await Promise.all([
+          pageA.goto('http://localhost:5173').then(() => pageA.waitForLoadState('networkidle')),
+          pageB.goto('http://localhost:5173').then(() => pageB.waitForLoadState('networkidle')),
+        ]);
+
+        await Promise.all([
+          waitForMultiDeviceApi(pageA),
+          waitForMultiDeviceApi(pageB),
+        ]);
+
+        await doFirstDeviceSetup(pageA, modeCase.mode);
+        await doDeviceBCredentialSetup(pageB, modeCase.mode);
+        await pageA.waitForTimeout(1500);
+
+        const stateB = await pageB.evaluate(() => window.__multiDevice.getState());
+        expect(stateB.identityMode).toBe(modeCase.mode);
+        expect(stateB.signingBackend).toBe(modeCase.expectedBackend);
+        expect(stateB.didAlgorithm).toBe(modeCase.expectedAlgorithm);
+        expect(stateB.identity.id).toMatch(modeCase.didPattern);
+
+        await pageA.evaluate(
+          ({ did }) =>
+            window.__multiDevice.simulateIncomingRequest({
+              type: 'request',
+              identity: {
+                id: did,
+                credentialId: 'alt-mode-device-b',
+                deviceLabel: 'Device B',
+                publicKey: null,
+              },
+            }),
+          { did: stateB.identity.id }
+        );
+
+        await pageA.waitForTimeout(1000);
+        const devicesA = await pageA.evaluate(() => window.__multiDevice.listDevices());
+        expect(devicesA).toHaveLength(2);
+        expect(devicesA.some((device) => device.ed25519_did === stateB.identity.id)).toBe(true);
+      } finally {
+        await contextA.close();
+        await contextB.close();
+      }
+    });
+  }
 });

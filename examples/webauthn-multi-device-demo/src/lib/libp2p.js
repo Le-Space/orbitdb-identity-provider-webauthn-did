@@ -16,11 +16,25 @@ import { LevelBlockstore } from 'blockstore-level';
 import { LevelDatastore } from 'datastore-level';
 import {
   OrbitDBWebAuthnIdentityProviderFunction,
+  createWebAuthnVarsigIdentity,
+  createWebAuthnVarsigIdentities,
+  createIpfsIdentityStorage,
 } from '@le-space/orbitdb-identity-provider-webauthn-did';
 import {
   registerLinkDeviceHandler,
   unregisterLinkDeviceHandler,
 } from '@le-space/orbitdb-identity-provider-webauthn-did';
+import {
+  extractPrfSeedFromCredential,
+  initEd25519KeystoreWithPrfSeed,
+  generateWorkerEd25519DID,
+  loadWorkerEd25519Archive,
+  encryptArchive,
+  decryptArchive,
+  keystoreSign,
+  resetDefaultWorkerKeystoreClient,
+} from '@le-space/orbitdb-identity-provider-webauthn-did/standalone';
+import { createWorkerEd25519Identity, createWorkerEd25519Identities } from './worker-identity.js';
 
 /**
  * Creates a browser-compatible libp2p instance
@@ -34,6 +48,98 @@ const BOOTSTRAP_LIST = [
 ];
 
 const PUBSUB_PEER_DISCOVERY = 'browser-peer-discovery'
+const WORKER_ARCHIVE_STORAGE_KEY = 'multi-device-worker-archive'
+
+export const IDENTITY_MODES = {
+  KEYSTORE_ED25519: 'keystore-ed25519',
+  WORKER_ED25519: 'worker-ed25519',
+  VARSIG_ED25519: 'varsig-ed25519',
+  VARSIG_P256: 'varsig-p256',
+}
+
+function saveWorkerArchive(encryptedArchive) {
+  if (typeof localStorage === 'undefined' || !encryptedArchive) return;
+
+  localStorage.setItem(
+    WORKER_ARCHIVE_STORAGE_KEY,
+    JSON.stringify({
+      ciphertext: Array.from(encryptedArchive.ciphertext),
+      iv: Array.from(encryptedArchive.iv),
+    })
+  );
+}
+
+function loadWorkerArchive() {
+  if (typeof localStorage === 'undefined') return null;
+
+  const raw = localStorage.getItem(WORKER_ARCHIVE_STORAGE_KEY);
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw);
+    return {
+      ciphertext: new Uint8Array(parsed.ciphertext),
+      iv: new Uint8Array(parsed.iv),
+    };
+  } catch (error) {
+    console.warn('Failed to parse worker archive:', error);
+    localStorage.removeItem(WORKER_ARCHIVE_STORAGE_KEY);
+    return null;
+  }
+}
+
+async function setupWorkerOrbitIdentity(credential, ipfs) {
+  const identityStorage = createIpfsIdentityStorage(ipfs);
+  const { seed, source } = await extractPrfSeedFromCredential(credential);
+
+  resetDefaultWorkerKeystoreClient();
+  await initEd25519KeystoreWithPrfSeed(seed);
+
+  let archiveRestored = false;
+  let archive = null;
+  let did = null;
+  let publicKey = null;
+
+  const encryptedArchive = loadWorkerArchive();
+  if (encryptedArchive) {
+    try {
+      archive = await decryptArchive(encryptedArchive.ciphertext, encryptedArchive.iv);
+      await loadWorkerEd25519Archive(archive);
+      did = archive.id;
+      publicKey = archive.keys?.[did] || null;
+      archiveRestored = Boolean(did && publicKey);
+    } catch (error) {
+      console.warn('Failed to restore worker archive, generating fresh identity:', error);
+    }
+  }
+
+  if (!archiveRestored) {
+    const generated = await generateWorkerEd25519DID();
+    did = generated.did;
+    publicKey = generated.publicKey;
+    archive = generated.archive;
+    const encrypted = await encryptArchive(archive);
+    saveWorkerArchive(encrypted);
+  }
+
+  const identity = await createWorkerEd25519Identity({
+    did,
+    publicKey,
+    sign: (data) => keystoreSign(data),
+  });
+
+  const identities = createWorkerEd25519Identities(identity, identityStorage);
+
+  return {
+    identity,
+    identities,
+    worker: {
+      did,
+      seedSource: source,
+      archiveRestored,
+    },
+  };
+}
 
 export async function createLibp2pInstance() {
   let libp2p = await createLibp2p({
@@ -99,20 +205,56 @@ export async function setupOrbitDB(credential, options = {}) {
   const libp2p = await createLibp2pInstance();
   const ipfs = await createHeliaInstance(libp2p);
 
-  useIdentityProvider(OrbitDBWebAuthnIdentityProviderFunction);
+  const identityMode = options.identityMode || IDENTITY_MODES.KEYSTORE_ED25519;
+  let identities;
+  let identity;
+  let runtimeInfo = {
+    identityMode,
+    signingBackend: 'main-thread-provider',
+    algorithm: 'Ed25519',
+    identityType: 'webauthn',
+    worker: null,
+  };
 
-  const identities = await Identities({ ipfs });
+  if (identityMode === IDENTITY_MODES.KEYSTORE_ED25519) {
+    useIdentityProvider(OrbitDBWebAuthnIdentityProviderFunction);
 
-  const identity = await identities.createIdentity({
-    provider: OrbitDBWebAuthnIdentityProviderFunction({
-      webauthnCredential: credential,
-      useKeystoreDID: true,
-      keystore: identities.keystore,
-      keystoreKeyType: 'Ed25519',
-      encryptKeystore: options.encryptKeystore !== false,
-      keystoreEncryptionMethod: options.keystoreEncryptionMethod || 'prf',
-    }),
-  });
+    identities = await Identities({ ipfs });
+
+    identity = await identities.createIdentity({
+      provider: OrbitDBWebAuthnIdentityProviderFunction({
+        webauthnCredential: credential,
+        useKeystoreDID: true,
+        keystore: identities.keystore,
+        keystoreKeyType: 'Ed25519',
+        encryptKeystore: options.encryptKeystore !== false,
+        keystoreEncryptionMethod: options.keystoreEncryptionMethod || 'prf',
+      }),
+    });
+  } else if (identityMode === IDENTITY_MODES.WORKER_ED25519) {
+    const workerState = await setupWorkerOrbitIdentity(credential, ipfs);
+    identity = workerState.identity;
+    identities = workerState.identities;
+    runtimeInfo = {
+      ...runtimeInfo,
+      signingBackend: 'worker-keystore',
+      identityType: 'worker-ed25519',
+      worker: workerState.worker,
+    };
+  } else {
+    identity = await createWebAuthnVarsigIdentity({ credential });
+    identities = createWebAuthnVarsigIdentities(
+      identity,
+      {},
+      createIpfsIdentityStorage(ipfs)
+    );
+    runtimeInfo = {
+      ...runtimeInfo,
+      signingBackend: 'webauthn-varsig',
+      algorithm: credential.algorithm,
+      identityType: 'webauthn-varsig',
+    };
+  }
 
   console.log('Multi-device identity created:', {
     id: identity.id,
@@ -121,7 +263,7 @@ export async function setupOrbitDB(credential, options = {}) {
 
   const orbitdb = await createOrbitDB({ ipfs, identities, identity });
 
-  return { orbitdb, ipfs, identity, identities };
+  return { orbitdb, ipfs, identity, identities, runtimeInfo };
 }
 
 /**

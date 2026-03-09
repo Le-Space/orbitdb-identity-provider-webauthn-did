@@ -8,6 +8,7 @@ import { readFileSync } from "fs";
 const file = fileURLToPath(new URL("package.json", import.meta.url));
 const json = readFileSync(file, "utf8");
 const pkg = JSON.parse(json);
+const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 
 // Create build date
 const buildDate =
@@ -41,6 +42,12 @@ export default defineConfig({
   server: {
     host: true,
     allowedHosts: true,
+    fs: {
+      allow: [repoRoot],
+    },
+  },
+  worker: {
+    format: "es",
   },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),

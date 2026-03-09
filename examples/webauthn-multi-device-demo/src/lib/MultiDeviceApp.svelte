@@ -3,9 +3,21 @@
   import {
     checkWebAuthnSupport,
     WebAuthnDIDProvider,
+    WebAuthnVarsigProvider,
+    storeWebAuthnCredential,
+    loadWebAuthnCredential,
+    clearWebAuthnCredential,
+    storeWebAuthnVarsigCredential,
+    loadWebAuthnVarsigCredential,
+    clearWebAuthnVarsigCredential,
   } from '@le-space/orbitdb-identity-provider-webauthn-did';
+  import {
+    storeWebAuthnCredentialSafe,
+    loadWebAuthnCredentialSafe,
+    clearWebAuthnCredentialSafe,
+  } from '@le-space/orbitdb-identity-provider-webauthn-did/standalone';
   import { MultiDeviceManager } from '@le-space/orbitdb-identity-provider-webauthn-did/multi-device/manager';
-  import { setupOrbitDB, registerPairingHandler, getQRPayload, cleanup } from '$lib/libp2p.js';
+  import { setupOrbitDB, registerPairingHandler, getQRPayload, cleanup, IDENTITY_MODES } from '$lib/libp2p.js';
   import { saveDbAddress, getDbAddress } from '$lib/database.js';
 
   import SetupView from '$lib/components/SetupView.svelte';
@@ -20,6 +32,7 @@
   let error = '';
   let webAuthnSupported = true;
   let webAuthnMessage = '';
+  let identityMode = IDENTITY_MODES.KEYSTORE_ED25519;
 
   // OrbitDB state
   let manager = null; // MultiDeviceManager instance
@@ -27,6 +40,12 @@
   let dbAddress = null;
   let devices = [];
   let qrPayload = null;
+  let runtimeInfo = {
+    signingBackend: 'main-thread-provider',
+    algorithm: 'Ed25519',
+    identityType: 'webauthn',
+    worker: null,
+  };
 
   // Pairing confirm dialog
   let pendingRequest = null;
@@ -34,6 +53,14 @@
 
   // Sync polling backstop
   let syncPollInterval = null;
+  const IDENTITY_MODE_STORAGE_KEY = 'multi-device-identity-mode';
+
+  const IDENTITY_MODE_LABELS = {
+    [IDENTITY_MODES.KEYSTORE_ED25519]: 'Ed25519 Keystore',
+    [IDENTITY_MODES.WORKER_ED25519]: 'Worker Ed25519',
+    [IDENTITY_MODES.VARSIG_ED25519]: 'Varsig Ed25519',
+    [IDENTITY_MODES.VARSIG_P256]: 'Varsig P-256',
+  };
 
   // ── QR payload watcher — show QR immediately, update when relay addresses arrive ─
   function startWatchingQR() {
@@ -67,6 +94,128 @@
     }
   }
 
+  function isVarsigMode(mode = identityMode) {
+    return (
+      mode === IDENTITY_MODES.VARSIG_ED25519 ||
+      mode === IDENTITY_MODES.VARSIG_P256
+    );
+  }
+
+  function isWorkerMode(mode = identityMode) {
+    return mode === IDENTITY_MODES.WORKER_ED25519;
+  }
+
+  function persistIdentityMode() {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(IDENTITY_MODE_STORAGE_KEY, identityMode);
+    }
+  }
+
+  function setIdentityMode(mode) {
+    identityMode = mode;
+    persistIdentityMode();
+  }
+
+  function loadStoredCredentialForMode(mode = identityMode) {
+    try {
+      if (mode === IDENTITY_MODES.KEYSTORE_ED25519) {
+        return loadWebAuthnCredential();
+      }
+      if (mode === IDENTITY_MODES.WORKER_ED25519) {
+        return loadWebAuthnCredentialSafe('multi-device-worker-credential');
+      }
+      return loadWebAuthnVarsigCredential(`multi-device-${mode}-credential`);
+    } catch (error) {
+      console.warn('Failed to load stored credential for mode:', mode, error);
+      clearStoredCredentialForMode(mode);
+      return null;
+    }
+  }
+
+  function storeCredentialForMode(mode, value) {
+    if (mode === IDENTITY_MODES.KEYSTORE_ED25519) {
+      storeWebAuthnCredential(value);
+      return;
+    }
+    if (mode === IDENTITY_MODES.WORKER_ED25519) {
+      storeWebAuthnCredentialSafe(value, 'multi-device-worker-credential');
+      return;
+    }
+    storeWebAuthnVarsigCredential(value, `multi-device-${mode}-credential`);
+  }
+
+  function clearStoredCredentialForMode(mode = identityMode) {
+    if (mode === IDENTITY_MODES.KEYSTORE_ED25519) {
+      clearWebAuthnCredential();
+      return;
+    }
+    if (mode === IDENTITY_MODES.WORKER_ED25519) {
+      clearWebAuthnCredentialSafe('multi-device-worker-credential');
+      return;
+    }
+    clearWebAuthnVarsigCredential(`multi-device-${mode}-credential`);
+  }
+
+  async function detectExistingCredentialForMode(mode = identityMode) {
+    if (isVarsigMode(mode)) {
+      const stored = loadStoredCredentialForMode(mode);
+      return { hasCredentials: Boolean(stored), credential: stored };
+    }
+
+    const result = await WebAuthnDIDProvider.detectExistingCredential();
+    if (!result.hasCredentials || !result.credential) {
+      return result;
+    }
+
+    return {
+      hasCredentials: true,
+      credential: {
+        credentialId: WebAuthnDIDProvider.arrayBufferToBase64url(result.credential.rawId),
+        rawCredentialId: new Uint8Array(result.credential.rawId),
+      },
+    };
+  }
+
+  async function createCredentialForMode(mode = identityMode) {
+    if (isVarsigMode(mode)) {
+      return WebAuthnVarsigProvider.createCredential({
+        userId: `device-${Date.now()}`,
+        displayName: 'Multi-Device User',
+        forceP256: mode === IDENTITY_MODES.VARSIG_P256,
+      });
+    }
+
+    return WebAuthnDIDProvider.createCredential({
+      userId: `device-${Date.now()}`,
+      displayName: 'Multi-Device User',
+      encryptKeystore: true,
+      keystoreEncryptionMethod: 'prf',
+    });
+  }
+
+  async function setupOrbitDbForCurrentMode() {
+    const orbitdbState = await setupOrbitDB(credential, {
+      identityMode,
+      encryptKeystore: true,
+      keystoreEncryptionMethod: 'prf',
+    });
+
+    runtimeInfo = orbitdbState.runtimeInfo || runtimeInfo;
+
+    manager = await MultiDeviceManager.createFromExisting({
+      credential,
+      orbitdb: orbitdbState.orbitdb,
+      ipfs: orbitdbState.ipfs,
+      libp2p: orbitdbState.ipfs.libp2p,
+      identity: orbitdbState.identity,
+      onPairingRequest: handleIncomingPairRequest,
+      onDeviceJoined: refreshDevices,
+      onDeviceLinked: refreshDevices,
+    });
+
+    return orbitdbState;
+  }
+
   function startSyncPolling() {
     stopSyncPolling();
     syncPollInterval = setInterval(async () => {
@@ -90,14 +239,10 @@
 
     try {
       status = 'Checking for existing passkey…';
-      const result = await WebAuthnDIDProvider.detectExistingCredential();
+      const result = await detectExistingCredentialForMode(identityMode);
 
-      credential;
       if (result.hasCredentials && result.credential) {
-        credential = {
-          credentialId: WebAuthnDIDProvider.arrayBufferToBase64url(result.credential.rawId),
-          rawCredentialId: new Uint8Array(result.credential.rawId),
-        };
+        credential = result.credential;
         
         const existingDbAddress = getDbAddress();
         
@@ -107,22 +252,7 @@
           isLogin = true;
           
           // Setup OrbitDB with existing credential
-          const orbitdbState = await setupOrbitDB(credential, {
-            encryptKeystore: true,
-            keystoreEncryptionMethod: 'prf',
-          });
-          
-          // Create manager from existing setup
-          manager = await MultiDeviceManager.createFromExisting({
-            credential,
-            orbitdb: orbitdbState.orbitdb,
-            ipfs: orbitdbState.ipfs,
-            libp2p: orbitdbState.ipfs.libp2p,
-            identity: orbitdbState.identity,
-            onPairingRequest: handleIncomingPairRequest,
-            onDeviceJoined: refreshDevices,
-            onDeviceLinked: refreshDevices,
-          });
+          await setupOrbitDbForCurrentMode();
           
           await manager.openExistingDb(existingDbAddress);
           dbAddress = manager._dbAddress;
@@ -137,21 +267,7 @@
           // User has passkey but no local DB - ask: link to existing or create new
           // Setup OrbitDB first so manager can work
           status = 'Setting up…';
-          const orbitdbState = await setupOrbitDB(credential, {
-            encryptKeystore: true,
-            keystoreEncryptionMethod: 'prf',
-          });
-          
-          manager = await MultiDeviceManager.createFromExisting({
-            credential,
-            orbitdb: orbitdbState.orbitdb,
-            ipfs: orbitdbState.ipfs,
-            libp2p: orbitdbState.ipfs.libp2p,
-            identity: orbitdbState.identity,
-            onPairingRequest: handleIncomingPairRequest,
-            onDeviceJoined: refreshDevices,
-            onDeviceLinked: refreshDevices,
-          });
+          await setupOrbitDbForCurrentMode();
           
           appMode = 'link-or-create';
           status = 'Existing passkey found. Would you like to link to an existing device or create a new setup?';
@@ -162,12 +278,8 @@
         status = 'Creating new credential…';
         isLogin = false;
         
-        credential = await WebAuthnDIDProvider.createCredential({
-          userId: `device-${Date.now()}`,
-          displayName: 'Multi-Device User',
-          encryptKeystore: true,
-          keystoreEncryptionMethod: 'prf',
-        });
+        credential = await createCredentialForMode(identityMode);
+        storeCredentialForMode(identityMode, credential);
 
         // Don't setup OrbitDB yet - let user choose first
         appMode = 'link-or-create';
@@ -212,21 +324,7 @@
     try {
       // If manager doesn't exist yet (new credential case), create it first
       if (!manager) {
-        const orbitdbState = await setupOrbitDB(credential, {
-          encryptKeystore: true,
-          keystoreEncryptionMethod: 'prf',
-        });
-        
-        manager = await MultiDeviceManager.createFromExisting({
-          credential,
-          orbitdb: orbitdbState.orbitdb,
-          ipfs: orbitdbState.ipfs,
-          libp2p: orbitdbState.ipfs.libp2p,
-          identity: orbitdbState.identity,
-          onPairingRequest: handleIncomingPairRequest,
-          onDeviceJoined: refreshDevices,
-          onDeviceLinked: refreshDevices,
-        });
+        await setupOrbitDbForCurrentMode();
       }
       
       // Show PairView for scanning QR / pasting JSON
@@ -247,21 +345,7 @@
     try {
       // If manager doesn't exist yet (new credential case), create it first
       if (!manager) {
-        const orbitdbState = await setupOrbitDB(credential, {
-          encryptKeystore: true,
-          keystoreEncryptionMethod: 'prf',
-        });
-        
-        manager = await MultiDeviceManager.createFromExisting({
-          credential,
-          orbitdb: orbitdbState.orbitdb,
-          ipfs: orbitdbState.ipfs,
-          libp2p: orbitdbState.ipfs.libp2p,
-          identity: orbitdbState.identity,
-          onPairingRequest: handleIncomingPairRequest,
-          onDeviceJoined: refreshDevices,
-          onDeviceLinked: refreshDevices,
-        });
+        await setupOrbitDbForCurrentMode();
       }
       
       const created = await manager.createNew();
@@ -287,9 +371,12 @@
     if (!credential) throw new Error('Credential not initialized');
 
     const orbitdbState = await setupOrbitDB(credential, {
+      identityMode,
       encryptKeystore: true,
       keystoreEncryptionMethod: 'prf',
     });
+
+    runtimeInfo = orbitdbState.runtimeInfo || runtimeInfo;
 
     manager = await MultiDeviceManager.createFromExisting({
       credential,
@@ -340,6 +427,11 @@
 
   // ── WebAuthn support check ───────────────────────────────────────────────────
   onMount(async () => {
+    if (typeof localStorage !== 'undefined') {
+      identityMode =
+        localStorage.getItem(IDENTITY_MODE_STORAGE_KEY) ||
+        IDENTITY_MODES.KEYSTORE_ED25519;
+    }
     const support = await checkWebAuthnSupport();
     webAuthnSupported = support.supported;
     if (!support.supported) {
@@ -358,10 +450,16 @@
       window.__multiDevice = {
         getState: () => ({
           appMode,
+          identityMode,
+          identityModeLabel: IDENTITY_MODE_LABELS[identityMode],
           peerId: manager ? manager.getPeerInfo()?.peerId : null,
           devicesDbAddress: dbAddress,
           deviceCount: devices.length,
+          signingBackend: runtimeInfo.signingBackend,
+          didAlgorithm: runtimeInfo.algorithm,
+          identityType: runtimeInfo.identityType,
           identity: manager?._identity ? { id: manager._identity.id } : null,
+          worker: runtimeInfo.worker,
         }),
 
         getQRPayload: () => manager ? manager.getPeerInfo() : null,
@@ -415,6 +513,9 @@
         getDevicesDbAddress: () => dbAddress,
         listDevices: () => devices,
         getManager: () => manager,
+        setIdentityMode: (mode) => {
+          setIdentityMode(mode);
+        },
       };
       console.log('[test] window.__multiDevice API exposed');
     }
@@ -451,6 +552,20 @@
         Link multiple devices to share a single OrbitDB identity and database
         using WebAuthn hardware credentials.
       </p>
+
+      <div class="mode-selector" data-testid="identity-mode-selector">
+        {#each Object.values(IDENTITY_MODES) as mode}
+          <button
+            type="button"
+            class:selected={identityMode === mode}
+            data-testid={`identity-mode-${mode}`}
+            on:click={() => setIdentityMode(mode)}
+            disabled={loading}
+          >
+            {IDENTITY_MODE_LABELS[mode]}
+          </button>
+        {/each}
+      </div>
       
       {#if error}
         <div class="error-banner">{error}</div>
@@ -475,6 +590,10 @@
       <h2>Link or Create?</h2>
       <p class="subtitle">
         Set up your new device. Would you like to:
+      </p>
+
+      <p class="mode-pill" data-testid="active-identity-mode">
+        Mode: {IDENTITY_MODE_LABELS[identityMode]}
       </p>
       
       {#if error}
@@ -546,6 +665,34 @@
     max-width: 600px;
     margin: 0 auto;
     padding: 1.5rem;
+  }
+
+  .mode-selector {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin: 1rem 0 1.25rem;
+  }
+
+  .mode-selector button,
+  .mode-pill {
+    border: 1px solid #cbd5e1;
+    border-radius: 999px;
+    background: #f8fafc;
+    color: #0f172a;
+    padding: 0.65rem 0.9rem;
+    font-size: 0.95rem;
+  }
+
+  .mode-selector button.selected {
+    background: #0f172a;
+    border-color: #0f172a;
+    color: #fff;
+  }
+
+  .mode-pill {
+    display: inline-block;
+    margin: 0 0 1rem;
   }
 
   .webauthn-warning {

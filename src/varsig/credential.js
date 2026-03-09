@@ -56,6 +56,30 @@ function extractCredentialInfo(attestationObject) {
   return { algorithm: null, publicKey: null, kty, alg, crv };
 }
 
+function getPlaywrightSeed() {
+  if (typeof window === 'undefined') {
+    return new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+  }
+
+  const seed = window.__WEBAUTHN_VARSIG_SEED__;
+  if (seed instanceof Uint8Array) return seed;
+  if (Array.isArray(seed)) return new Uint8Array(seed);
+  if (seed && typeof seed === 'object') return new Uint8Array(Object.values(seed));
+  return new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+}
+
+function createPlaywrightP256PublicKey(seed) {
+  const publicKey = new Uint8Array(65);
+  publicKey[0] = 0x04;
+
+  for (let i = 0; i < 32; i++) {
+    publicKey[1 + i] = (seed[i % seed.length] + i + 1) % 255;
+    publicKey[33 + i] = (seed[i % seed.length] + i + 65) % 255;
+  }
+
+  return publicKey;
+}
+
 /**
  * Create a WebAuthn credential for varsig usage.
  * @param {Object} [options] - WebAuthn creation options.
@@ -79,19 +103,29 @@ async function createWebAuthnVarsigCredential(options = {}) {
   };
 
   if (isTestMode()) {
-    const credentialId = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
-    const publicKey = new Uint8Array(32);
-    for (let i = 0; i < publicKey.length; i++) {
-      publicKey[i] = i + 1;
-    }
-    const algorithm = 'Ed25519';
+    const credentialId = getPlaywrightSeed();
+    const shouldForceP256 =
+      forceP256 ||
+      (typeof window !== 'undefined' && Boolean(window.__FORCE_P256_HARDWARE__));
+    const algorithm = shouldForceP256 ? 'P-256' : 'Ed25519';
+    const publicKey = shouldForceP256
+      ? createPlaywrightP256PublicKey(credentialId)
+      : (() => {
+          const bytes = new Uint8Array(32);
+          for (let i = 0; i < bytes.length; i++) {
+            bytes[i] = credentialId[i % credentialId.length] + i + 1;
+          }
+          return bytes;
+        })();
     const did = DIDKey.fromPublicKey(algorithm, publicKey).did;
     return {
       credentialId,
       publicKey,
       did,
       algorithm,
-      cose: { kty: 1, alg: -8, crv: 6 },
+      cose: shouldForceP256
+        ? { kty: 2, alg: -7, crv: 1 }
+        : { kty: 1, alg: -8, crv: 6 },
     };
   }
 

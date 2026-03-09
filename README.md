@@ -209,6 +209,7 @@ Svelte demos:
 
 - `examples/webauthn-todo-demo/` - WebAuthn DID (no keystore signing; identity-only).
 - `examples/ed25519-encrypted-keystore-demo/` - Ed25519 keystore DID; keystore encrypted at rest with WebAuthn (PRF when available, otherwise largeBlob/hmac-secret).
+- `examples/webauthn-multi-device-demo/` - Multi-device device-registry demo with explicit identity modes: `Ed25519 keystore`, `worker Ed25519`, `varsig Ed25519`, and `varsig P-256`.
 - `examples/webauthn-varsig-demo/` - Varsig provider with passkey signing for each entry. Live demo: https://dweb.link/ipfs/bafybeib6tpwiby7pik67ufb3lxpr3j4by2l7r3ov3zzk6hjbzjzgsvckhy
 
 Scripted examples:
@@ -229,6 +230,7 @@ Mermaid sequences for scripts:
 - `docs/STANDALONE-API-PLAN.md`
 - `docs/EXAMPLE-SEQUENCES.md`
 - `docs/E2E-TEST-SUMMARY.md`
+- `OrbitDB_WebAuthn_Multi-Device_Linking_Recovery.md`
 
 ## License
 

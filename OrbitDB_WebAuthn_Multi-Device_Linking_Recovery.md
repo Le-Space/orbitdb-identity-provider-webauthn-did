@@ -4,6 +4,15 @@
 
 The repository currently supports single-device WebAuthn-based OrbitDB identities with credentials in `localStorage`. This plan implements the full multi-device architecture described in the proposal: a `devices` KV store with `OrbitDBAccessController`, a libp2p pairing protocol (`/orbitdb/link-device/1.0.0`), QR-based device linking, WebAuthn challenge-response mutual verification via SubtleCrypto, and a recovery path via discoverable credentials.
 
+Status update: the current multi-device demo implementation has moved beyond the original single-mode plan. The demo now supports multiple explicit identity/signing modes:
+
+- `keystore-ed25519`
+- `worker-ed25519`
+- `varsig-ed25519`
+- `varsig-p256`
+
+This document should be read as the original design/architecture record plus implementation notes for the first delivered version. Where the current demo behavior differs from the original assumptions, the current demo and test files are authoritative.
+
 Three deliverables:
 1. **Library module** `src/multi-device/` — reusable, framework-agnostic
 2. **Demo app** `examples/webauthn-multi-device-demo/` — SvelteKit, same stack as existing demos
@@ -13,13 +22,19 @@ Three deliverables:
 
 ## Architecture Decisions
 
-**Identity provider:** `OrbitDBWebAuthnIdentityProvider` with `useKeystoreDID: true, keystoreKeyType: 'Ed25519', encryptKeystore: true, keystoreEncryptionMethod: 'prf'` — matches the encrypted keystore demo. Each device gets an Ed25519 DID for fast OrbitDB writes. The WebAuthn P-256 credential's public key (JWK) is stored separately in the devices DB for assertion verification during pairing.
+**Identity provider:** the initial implementation used `OrbitDBWebAuthnIdentityProvider` with `useKeystoreDID: true, keystoreKeyType: 'Ed25519', encryptKeystore: true, keystoreEncryptionMethod: 'prf'`. The current demo still supports that mode, but also includes:
+
+- `worker-ed25519`: custom worker-backed Ed25519 identity wiring for OrbitDB entry signing
+- `varsig-ed25519`: WebAuthn varsig identity flow
+- `varsig-p256`: WebAuthn varsig identity flow using `P-256`
+
+Each mode exposes its active backend in the test API so the E2E suite can assert the actual signing path rather than infer it from a successful write alone.
 
 **Access control:** `OrbitDBAccessController` (not `IPFSAccessController`) for dynamic `grant()`/`revoke()`. After pairing, Device A calls `db.access.grant('write', deviceBIdentityId)` before sending the DB address.
 
 **Pairing transport:** libp2p custom stream protocol `/orbitdb/link-device/1.0.0` using `it-length-prefixed-stream@2.0.4` (already in the lockfile as a transitive dep of libp2p). libp2p instance accessed via `helia.libp2p` — no need to change `setupOrbitDB()` return signature.
 
-**Test strategy:** Two Playwright chromium contexts on the same `localhost:5173`. The libp2p pairing transport is bypassed in tests via a `window.__multiDevice` test API exposed when `window.__testMode === true`. This exercises all protocol logic (challenge generation, assertion verification, access granting, DB sync) without requiring a relay node in CI.
+**Test strategy:** Two Playwright chromium contexts on the same `localhost:5173`. The libp2p pairing transport is bypassed in tests via a `window.__multiDevice` test API exposed when `window.__testMode === true`. This exercises all protocol logic (challenge generation, assertion verification, access granting, DB sync) without requiring a relay node in CI. The current suite also includes explicit mode coverage for worker and varsig paths.
 
 **QR code library:** `qrcode` npm package. In `window.__testMode`, QR data is also written to a `data-testid` attribute for Playwright extraction without camera access.
 
@@ -258,6 +273,18 @@ const demoDir = useEncryptedDemo
 
 **Playwright E2E (`pnpm run test:multi-device`):**
 - Scenario A assertions: `devicesDbAddress`, `deviceCount`, `public_key.kty === 'EC'`, `ed25519_did` format
+
+## Current Implementation Notes
+
+- The multi-device demo lives in `examples/webauthn-multi-device-demo/`.
+- The active identity mode is selectable in the UI before startup.
+- Worker mode stores an encrypted worker archive in browser storage and restores it with WebAuthn-derived seed material.
+- Varsig modes use `createWebAuthnVarsigIdentity` / `createWebAuthnVarsigIdentities` instead of the keystore-based OrbitDB provider path.
+- The current Playwright suite is `tests/webauthn-multi-device-e2e.test.js` and currently passes with:
+  - default keystore scenarios
+  - `worker-ed25519`
+  - `varsig-ed25519`
+  - `varsig-p256`
 - Scenario B assertions: 2 devices after pairing, Device B's DID in registry
 - Scenario C assertion: `openByAddress()` returns correct address
 
