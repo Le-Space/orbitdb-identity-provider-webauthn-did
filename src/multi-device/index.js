@@ -16,6 +16,8 @@ export {
   coseToJwk,
 } from './device-registry.js';
 
+export { default as DeferredOrbitDBAccessController } from './deferred-orbitdb-access-controller.js';
+
 export {
   LINK_DEVICE_PROTOCOL,
   registerLinkDeviceHandler,

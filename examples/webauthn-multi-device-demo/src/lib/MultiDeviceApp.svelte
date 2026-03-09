@@ -11,13 +11,17 @@
     loadWebAuthnVarsigCredential,
     clearWebAuthnVarsigCredential,
   } from '@le-space/orbitdb-identity-provider-webauthn-did';
-  import {
-    storeWebAuthnCredentialSafe,
-    loadWebAuthnCredentialSafe,
-    clearWebAuthnCredentialSafe,
-  } from '@le-space/orbitdb-identity-provider-webauthn-did/standalone';
   import { MultiDeviceManager } from '@le-space/orbitdb-identity-provider-webauthn-did/multi-device/manager';
-  import { setupOrbitDB, registerPairingHandler, getQRPayload, cleanup, IDENTITY_MODES } from '$lib/libp2p.js';
+  import {
+    setupOrbitDB,
+    registerPairingHandler,
+    getQRPayload,
+    getRelayDialHints,
+    cleanup,
+    IDENTITY_MODES,
+    classifyConnectionAddr,
+    classifyConnectionState,
+  } from '$lib/libp2p.js';
   import { saveDbAddress, getDbAddress } from '$lib/database.js';
 
   import SetupView from '$lib/components/SetupView.svelte';
@@ -46,13 +50,37 @@
     identityType: 'webauthn',
     worker: null,
   };
+  let pairingEvents = [];
+  let connectedPeers = [];
+  let accessDebug = {
+    currentDid: null,
+    currentPeerId: null,
+    registryDeviceCount: null,
+    registryDbName: null,
+    registryDbAddress: null,
+    accessControllerDbName: null,
+    accessControllerDbAddress: null,
+    recoveryDbAddress: null,
+    currentIdentityIsRootWriter: null,
+    currentIdentityCanWrite: null,
+    currentIdentityIsAdmin: null,
+    rootWritePermissions: [],
+    writePermissions: [],
+    adminPermissions: [],
+    workerArchiveRestored: null,
+    workerArchivePrincipalId: null,
+    workerRecoveryRecordFound: null,
+    workerRecoveryRecordSource: null,
+    workerRecoveryDbName: null,
+    workerMainDbAddress: null,
+  };
 
   // Pairing confirm dialog
   let pendingRequest = null;
   let pendingResolve = null;
+  let libp2pPeerListeners = null;
+  let persistWorkerRecoveryState = null;
 
-  // Sync polling backstop
-  let syncPollInterval = null;
   const IDENTITY_MODE_STORAGE_KEY = 'multi-device-identity-mode';
 
   const IDENTITY_MODE_LABELS = {
@@ -77,7 +105,14 @@
       }
       try {
         const payload = manager.getPeerInfo();
-        if (JSON.stringify(payload.multiaddrs) !== JSON.stringify(qrPayload?.multiaddrs ?? [])) {
+        const nextMultiaddrs = payload?.multiaddrs ?? [];
+        const currentMultiaddrs = qrPayload?.multiaddrs ?? [];
+        const nextSerialized = JSON.stringify(nextMultiaddrs);
+        const currentSerialized = JSON.stringify(currentMultiaddrs);
+        const shouldIgnoreEmptyRegression =
+          currentMultiaddrs.length > 0 && nextMultiaddrs.length === 0;
+
+        if (!shouldIgnoreEmptyRegression && nextSerialized !== currentSerialized) {
           console.log('[qr-watch] address change detected by poll — updating QR');
           qrPayload = payload;
         }
@@ -91,7 +126,276 @@
   async function refreshDevices() {
     if (manager) {
       devices = await manager.listDevices();
+      accessDebug = {
+        ...accessDebug,
+        registryDeviceCount: devices.length,
+      };
     }
+  }
+
+  async function retryLocalSync() {
+    error = '';
+    if (!manager) return;
+    loading = true;
+    try {
+      status = 'Rechecking local registry and ACL state…';
+      await refreshDevices();
+      syncRuntimeDebug();
+      status = dbAddress && devices.length === 0
+        ? 'Local registry is still empty on this browser session. You can re-pair from another device.'
+        : 'Local registry state refreshed.';
+    } finally {
+      loading = false;
+    }
+  }
+
+  function truncateMiddle(value, head = 12, tail = 10) {
+    if (!value || typeof value !== 'string') return value;
+    if (value.length <= head + tail + 1) return value;
+    return `${value.slice(0, head)}...${value.slice(-tail)}`;
+  }
+
+  function buildMetaSummary(event) {
+    const parts = [];
+    if (event.requesterDid) parts.push(`did=${truncateMiddle(event.requesterDid)}`);
+    if (event.identityId) parts.push(`self=${truncateMiddle(event.identityId)}`);
+    if (event.targetPeerId) parts.push(`peer=${truncateMiddle(event.targetPeerId)}`);
+    if (event.remotePeerId) parts.push(`remote=${truncateMiddle(event.remotePeerId)}`);
+    if (event.orbitdbAddress) parts.push(`db=${truncateMiddle(event.orbitdbAddress, 18, 10)}`);
+    if (event.accessAddress) parts.push(`acl=${truncateMiddle(event.accessAddress, 18, 10)}`);
+    if (typeof event.deviceCount === 'number') parts.push(`devices=${event.deviceCount}`);
+    if (typeof event.registryHeadCount === 'number') parts.push(`heads=${event.registryHeadCount}`);
+    if (typeof event.registryPeerCount === 'number') parts.push(`dbPeers=${event.registryPeerCount}`);
+    if (typeof event.aclPeerCount === 'number') parts.push(`aclPeers=${event.aclPeerCount}`);
+    if (event.replicationSummary) parts.push(event.replicationSummary);
+    if (event.remoteAddr) parts.push(`addr=${truncateMiddle(event.remoteAddr, 22, 14)}`);
+    if (event.transportKind) parts.push(`conn=${event.transportKind}`);
+    if (typeof event.connectionLimited === 'boolean') {
+      parts.push(`limited=${event.connectionLimited ? 'yes' : 'no'}`);
+    }
+    if (event.pathKind) parts.push(`path=${event.pathKind}`);
+    if (event.connectionUpgraded) parts.push('upgraded=yes');
+    if (typeof event.currentIdentityIsRootWriter === 'boolean') {
+      parts.push(`rootWriter=${event.currentIdentityIsRootWriter ? 'yes' : 'no'}`);
+    }
+    if (typeof event.currentIdentityCanWrite === 'boolean') {
+      parts.push(`canWrite=${event.currentIdentityCanWrite ? 'yes' : 'no'}`);
+    }
+    if (typeof event.currentIdentityIsAdmin === 'boolean') {
+      parts.push(`admin=${event.currentIdentityIsAdmin ? 'yes' : 'no'}`);
+    }
+    if (Array.isArray(event.writePermissions) && event.writePermissions.length > 0) {
+      parts.push(`write=${event.writePermissions.map((did) => truncateMiddle(did)).join(', ')}`);
+    }
+    if (Array.isArray(event.adminPermissions) && event.adminPermissions.length > 0) {
+      parts.push(`admins=${event.adminPermissions.map((did) => truncateMiddle(did)).join(', ')}`);
+    }
+    if (Array.isArray(event.rootWritePermissions) && event.rootWritePermissions.length > 0) {
+      parts.push(`root=${event.rootWritePermissions.map((did) => truncateMiddle(did)).join(', ')}`);
+    }
+    if (event.reason) parts.push(`reason=${event.reason}`);
+    if (event.error) parts.push(`error=${event.error}`);
+    return parts.join(' | ');
+  }
+
+  function addPairingEvent(event) {
+    const entry = {
+      id: `${event.timestamp || Date.now()}-${pairingEvents.length + 1}-${event.stage || 'event'}`,
+      level: event.level || 'info',
+      detail: event.detail || event.stage || 'Pairing event',
+      metaSummary: buildMetaSummary(event),
+      ...event,
+    };
+
+    pairingEvents = [...pairingEvents.slice(-49), entry];
+    accessDebug = {
+      ...accessDebug,
+      currentDid: event.identityId || accessDebug.currentDid,
+      currentPeerId: manager?._libp2p?.peerId?.toString?.() || accessDebug.currentPeerId,
+      registryDeviceCount:
+        typeof event.deviceCount === 'number' ? event.deviceCount : accessDebug.registryDeviceCount,
+      currentIdentityIsRootWriter:
+        typeof event.currentIdentityIsRootWriter === 'boolean'
+          ? event.currentIdentityIsRootWriter
+          : accessDebug.currentIdentityIsRootWriter,
+      currentIdentityCanWrite:
+        typeof event.currentIdentityCanWrite === 'boolean'
+          ? event.currentIdentityCanWrite
+          : accessDebug.currentIdentityCanWrite,
+      currentIdentityIsAdmin:
+        typeof event.currentIdentityIsAdmin === 'boolean'
+          ? event.currentIdentityIsAdmin
+          : accessDebug.currentIdentityIsAdmin,
+      registryDbName: manager?._devicesDb?.name || accessDebug.registryDbName,
+      registryDbAddress:
+        manager?._dbAddress?.toString?.() || manager?._dbAddress || accessDebug.registryDbAddress,
+      accessControllerDbName:
+        manager?._devicesDb?.access?.name || accessDebug.accessControllerDbName,
+      accessControllerDbAddress:
+        event.accessAddress ||
+        manager?._devicesDb?.access?.address?.toString?.() ||
+        manager?._devicesDb?.access?.address ||
+        accessDebug.accessControllerDbAddress,
+      recoveryDbAddress:
+        runtimeInfo?.worker?.recoveryDbAddress ?? accessDebug.recoveryDbAddress,
+      rootWritePermissions: event.rootWritePermissions || accessDebug.rootWritePermissions,
+      writePermissions: event.writePermissions || accessDebug.writePermissions,
+      adminPermissions: event.adminPermissions || accessDebug.adminPermissions,
+      workerArchivePrincipalId:
+        runtimeInfo?.worker?.archivePrincipalId ?? accessDebug.workerArchivePrincipalId,
+      workerRecoveryRecordFound:
+        runtimeInfo?.worker?.recoveryRecordFound ?? accessDebug.workerRecoveryRecordFound,
+      workerRecoveryRecordSource:
+        runtimeInfo?.worker?.recoveryRecordSource ?? accessDebug.workerRecoveryRecordSource,
+      workerRecoveryDbName:
+        runtimeInfo?.worker?.recoveryDbName ?? accessDebug.workerRecoveryDbName,
+      workerMainDbAddress:
+        runtimeInfo?.worker?.mainDbAddress ?? accessDebug.workerMainDbAddress,
+    };
+    console.log('[pairing-ui]', entry.role || 'app', entry.stage || 'event', entry.detail, entry.metaSummary || '');
+  }
+
+  function isCanonicalDid(value) {
+    return typeof value === 'string' && /^did:key:z[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{20,}$/.test(value);
+  }
+
+  function resetAccessDebug() {
+    accessDebug = {
+      currentDid: null,
+      currentPeerId: manager?._libp2p?.peerId?.toString?.() || null,
+      registryDeviceCount: devices.length,
+      registryDbName: manager?._devicesDb?.name || 'multi-device-registry',
+      registryDbAddress: manager?._dbAddress?.toString?.() || manager?._dbAddress || null,
+      accessControllerDbName: manager?._devicesDb?.access?.name || 'OrbitDB access controller',
+      accessControllerDbAddress:
+        manager?._devicesDb?.access?.address?.toString?.() ||
+        manager?._devicesDb?.access?.address ||
+        null,
+      recoveryDbAddress: runtimeInfo?.worker?.recoveryDbAddress ?? null,
+      currentIdentityIsRootWriter: null,
+      currentIdentityCanWrite: null,
+      currentIdentityIsAdmin: null,
+      rootWritePermissions: [],
+      writePermissions: [],
+      adminPermissions: [],
+      workerArchiveRestored: runtimeInfo?.worker?.archiveRestored ?? null,
+      workerArchivePrincipalId: runtimeInfo?.worker?.archivePrincipalId ?? null,
+      workerRecoveryRecordFound: runtimeInfo?.worker?.recoveryRecordFound ?? null,
+      workerRecoveryRecordSource: runtimeInfo?.worker?.recoveryRecordSource ?? null,
+      workerRecoveryDbName: runtimeInfo?.worker?.recoveryDbName ?? null,
+      workerMainDbAddress: runtimeInfo?.worker?.mainDbAddress ?? null,
+    };
+  }
+
+  function syncRuntimeDebug() {
+    accessDebug = {
+      ...accessDebug,
+      currentDid: manager?._identity?.id || accessDebug.currentDid,
+      currentPeerId: manager?._libp2p?.peerId?.toString?.() || accessDebug.currentPeerId,
+      registryDeviceCount: devices.length,
+      registryDbName: manager?._devicesDb?.name || accessDebug.registryDbName || 'multi-device-registry',
+      registryDbAddress:
+        manager?._dbAddress?.toString?.() || manager?._dbAddress || accessDebug.registryDbAddress,
+      accessControllerDbName:
+        manager?._devicesDb?.access?.name ||
+        accessDebug.accessControllerDbName ||
+        'OrbitDB access controller',
+      accessControllerDbAddress:
+        manager?._devicesDb?.access?.address?.toString?.() ||
+        manager?._devicesDb?.access?.address ||
+        accessDebug.accessControllerDbAddress,
+      recoveryDbAddress: runtimeInfo?.worker?.recoveryDbAddress ?? accessDebug.recoveryDbAddress,
+      workerArchiveRestored: runtimeInfo?.worker?.archiveRestored ?? null,
+      workerArchivePrincipalId: runtimeInfo?.worker?.archivePrincipalId ?? null,
+      workerRecoveryRecordFound: runtimeInfo?.worker?.recoveryRecordFound ?? null,
+      workerRecoveryRecordSource: runtimeInfo?.worker?.recoveryRecordSource ?? null,
+      workerRecoveryDbName: runtimeInfo?.worker?.recoveryDbName ?? null,
+      workerMainDbAddress: runtimeInfo?.worker?.mainDbAddress ?? null,
+    };
+  }
+
+  function snapshotConnectedPeers(libp2p) {
+    if (!libp2p?.getConnections) return [];
+    const peers = new Map();
+    for (const connection of libp2p.getConnections()) {
+      const peerId = connection.remotePeer?.toString?.() || 'unknown-peer';
+      const remoteAddr = connection.remoteAddr?.toString?.() || '';
+      const state = classifyConnectionState(connection);
+      const key = `${peerId}::${remoteAddr}`;
+      if (!peers.has(key)) {
+        peers.set(key, {
+          peerId,
+          remoteAddr,
+          transportKind: state.transportKind,
+          connectionLimited: state.limited,
+          connectionUpgraded: state.upgraded,
+          pathKind: state.pathKind,
+        });
+      }
+    }
+    return Array.from(peers.values());
+  }
+
+  function detachPeerTracking() {
+    if (libp2pPeerListeners?.libp2p && libp2pPeerListeners?.onConnect && libp2pPeerListeners?.onDisconnect) {
+      libp2pPeerListeners.libp2p.removeEventListener('connection:open', libp2pPeerListeners.onConnect);
+      libp2pPeerListeners.libp2p.removeEventListener('connection:close', libp2pPeerListeners.onDisconnect);
+    }
+    libp2pPeerListeners = null;
+  }
+
+  function attachPeerTracking(libp2p) {
+    detachPeerTracking();
+    if (!libp2p?.addEventListener) {
+      connectedPeers = [];
+      return;
+    }
+
+    const refresh = () => {
+      connectedPeers = snapshotConnectedPeers(libp2p);
+    };
+
+    const onConnect = (event) => {
+      const remoteAddr = event?.detail?.remoteAddr?.toString?.() || null;
+      const state = classifyConnectionState(event?.detail);
+      refresh();
+      addPairingEvent({
+        timestamp: Date.now(),
+        role: 'sync',
+        stage: 'libp2p-connected',
+        level: 'info',
+        detail: 'libp2p connection opened',
+        remotePeerId: event?.detail?.remotePeer?.toString?.() || null,
+        remoteAddr,
+        transportKind: state.transportKind || classifyConnectionAddr(remoteAddr || ''),
+        connectionLimited: state.limited,
+        connectionUpgraded: state.upgraded,
+        pathKind: state.pathKind,
+      });
+    };
+    const onDisconnect = (event) => {
+      const remoteAddr = event?.detail?.remoteAddr?.toString?.() || null;
+      const state = classifyConnectionState(event?.detail);
+      refresh();
+      addPairingEvent({
+        timestamp: Date.now(),
+        role: 'sync',
+        stage: 'libp2p-disconnected',
+        level: 'warning',
+        detail: 'libp2p connection closed',
+        remotePeerId: event?.detail?.remotePeer?.toString?.() || null,
+        remoteAddr,
+        transportKind: state.transportKind || classifyConnectionAddr(remoteAddr || ''),
+        connectionLimited: state.limited,
+        connectionUpgraded: state.upgraded,
+        pathKind: state.pathKind,
+      });
+    };
+
+    libp2p.addEventListener('connection:open', onConnect);
+    libp2p.addEventListener('connection:close', onDisconnect);
+    libp2pPeerListeners = { libp2p, onConnect, onDisconnect };
+    refresh();
   }
 
   function isVarsigMode(mode = identityMode) {
@@ -122,7 +426,7 @@
         return loadWebAuthnCredential();
       }
       if (mode === IDENTITY_MODES.WORKER_ED25519) {
-        return loadWebAuthnCredentialSafe('multi-device-worker-credential');
+        return null;
       }
       return loadWebAuthnVarsigCredential(`multi-device-${mode}-credential`);
     } catch (error) {
@@ -138,7 +442,6 @@
       return;
     }
     if (mode === IDENTITY_MODES.WORKER_ED25519) {
-      storeWebAuthnCredentialSafe(value, 'multi-device-worker-credential');
       return;
     }
     storeWebAuthnVarsigCredential(value, `multi-device-${mode}-credential`);
@@ -150,13 +453,27 @@
       return;
     }
     if (mode === IDENTITY_MODES.WORKER_ED25519) {
-      clearWebAuthnCredentialSafe('multi-device-worker-credential');
       return;
     }
     clearWebAuthnVarsigCredential(`multi-device-${mode}-credential`);
   }
 
   async function detectExistingCredentialForMode(mode = identityMode) {
+    if (isWorkerMode(mode)) {
+      const result = await WebAuthnDIDProvider.detectExistingCredential();
+      if (!result.hasCredentials || !result.credential) {
+        return result;
+      }
+
+      return {
+        hasCredentials: true,
+        credential: {
+          credentialId: WebAuthnDIDProvider.arrayBufferToBase64url(result.credential.rawId),
+          rawCredentialId: new Uint8Array(result.credential.rawId),
+        },
+      };
+    }
+
     if (isVarsigMode(mode)) {
       const stored = loadStoredCredentialForMode(mode);
       return { hasCredentials: Boolean(stored), credential: stored };
@@ -194,13 +511,45 @@
   }
 
   async function setupOrbitDbForCurrentMode() {
+    console.log('[identity-setup] requested mode:', identityMode);
     const orbitdbState = await setupOrbitDB(credential, {
       identityMode,
       encryptKeystore: true,
       keystoreEncryptionMethod: 'prf',
+      onWorkerRecoveryReady: (persistFn) => {
+        persistWorkerRecoveryState = persistFn || null;
+      },
     });
 
     runtimeInfo = orbitdbState.runtimeInfo || runtimeInfo;
+    syncRuntimeDebug();
+    attachPeerTracking(orbitdbState.ipfs?.libp2p);
+
+    const actualIdentityType = orbitdbState.identity?.type;
+    const actualDid = orbitdbState.identity?.id;
+    console.log('[identity-setup] created identity:', {
+      requestedMode: identityMode,
+      runtimeIdentityType: runtimeInfo.identityType,
+      actualIdentityType,
+      did: actualDid,
+      worker: runtimeInfo.worker,
+    });
+
+    if (identityMode === IDENTITY_MODES.WORKER_ED25519 && actualIdentityType !== 'worker-ed25519') {
+      throw new Error(
+        `Identity mode mismatch: requested worker-ed25519 but created ${actualIdentityType || 'unknown'} identity`
+      );
+    }
+
+    if (
+      (identityMode === IDENTITY_MODES.WORKER_ED25519 ||
+        identityMode === IDENTITY_MODES.KEYSTORE_ED25519) &&
+      !isCanonicalDid(actualDid)
+    ) {
+      throw new Error(
+        `Non-canonical DID generated for ${identityMode}: ${actualDid || 'missing DID'}`
+      );
+    }
 
     manager = await MultiDeviceManager.createFromExisting({
       credential,
@@ -211,25 +560,19 @@
       onPairingRequest: handleIncomingPairRequest,
       onDeviceJoined: refreshDevices,
       onDeviceLinked: refreshDevices,
+      onPairingEvent: addPairingEvent,
+    });
+    syncRuntimeDebug();
+    addPairingEvent({
+      timestamp: Date.now(),
+      role: 'app',
+      stage: 'identity-ready',
+      level: 'info',
+      detail: 'OrbitDB identity initialized for this browser session',
+      identityId: manager?._identity?.id || null,
     });
 
     return orbitdbState;
-  }
-
-  function startSyncPolling() {
-    stopSyncPolling();
-    syncPollInterval = setInterval(async () => {
-      if (manager && appMode === 'ready') {
-        await refreshDevices();
-      }
-    }, 5000);
-  }
-
-  function stopSyncPolling() {
-    if (syncPollInterval) {
-      clearInterval(syncPollInterval);
-      syncPollInterval = null;
-    }
   }
 
   // ── Start button handler — detects login state and flows ──────────────────────
@@ -238,30 +581,52 @@
     error = '';
 
     try {
+      resetAccessDebug();
       status = 'Checking for existing passkey…';
       const result = await detectExistingCredentialForMode(identityMode);
 
       if (result.hasCredentials && result.credential) {
         credential = result.credential;
-        
-        const existingDbAddress = getDbAddress();
-        
-        if (existingDbAddress) {
+
+        let existingDbAddress = isWorkerMode(identityMode)
+          ? null
+          : getDbAddress(identityMode);
+
+        if (existingDbAddress || isWorkerMode(identityMode)) {
           // LOGIN FLOW: User has passkey + DB exists
           status = 'Authenticating with existing passkey…';
           isLogin = true;
-          
+
           // Setup OrbitDB with existing credential
           await setupOrbitDbForCurrentMode();
-          
+          if (
+            identityMode === IDENTITY_MODES.WORKER_ED25519 &&
+            !runtimeInfo?.worker?.archiveRestored &&
+            runtimeInfo?.worker?.recoveryRecordFound
+          ) {
+            throw new Error(
+              'Stored worker setup could not be reopened because the original worker identity was not restored.'
+            );
+          }
+
+          if (identityMode === IDENTITY_MODES.WORKER_ED25519) {
+            existingDbAddress = runtimeInfo?.worker?.mainDbAddress || null;
+          }
+
+          if (!existingDbAddress) {
+            appMode = 'link-or-create';
+            status = 'Existing passkey found. Would you like to link to an existing device or create a new setup?';
+            isLogin = false;
+            return;
+          }
+
           await manager.openExistingDb(existingDbAddress);
           dbAddress = manager._dbAddress;
-          
+
           startWatchingQR();
           await refreshDevices();
 
           appMode = 'ready';
-          startSyncPolling();
           status = 'Logged in! Show QR code to link a new device.';
         } else {
           // User has passkey but no local DB - ask: link to existing or create new
@@ -297,6 +662,15 @@
 
   // ── Incoming pairing request handler (Device A side) ─────────────────────────
   async function handleIncomingPairRequest(request) {
+    addPairingEvent({
+      timestamp: Date.now(),
+      role: 'device-a',
+      stage: 'awaiting-user-confirmation',
+      level: 'info',
+      detail: 'Waiting for local confirmation on Device A',
+      requesterDid: request?.identity?.id,
+      credentialId: request?.identity?.credentialId,
+    });
     return new Promise((resolve) => {
       pendingRequest = request;
       pendingResolve = resolve;
@@ -305,11 +679,20 @@
 
   async function handleConfirmDecision(event) {
     const decision = event.detail; // 'granted' | 'rejected'
+    const requesterDid = pendingRequest?.identity?.id;
     pendingRequest = null;
     if (pendingResolve) {
       pendingResolve(decision);
       pendingResolve = null;
     }
+    addPairingEvent({
+      timestamp: Date.now(),
+      role: 'device-a',
+      stage: 'user-confirmed',
+      level: decision === 'granted' ? 'success' : 'warning',
+      detail: decision === 'granted' ? 'User approved pairing on Device A' : 'User rejected pairing on Device A',
+      requesterDid,
+    });
     if (decision === 'granted') {
       await refreshDevices();
     }
@@ -326,6 +709,15 @@
       if (!manager) {
         await setupOrbitDbForCurrentMode();
       }
+      syncRuntimeDebug();
+      pairingEvents = [];
+      addPairingEvent({
+        timestamp: Date.now(),
+        role: 'device-b',
+        stage: 'link-ui-ready',
+        level: 'info',
+        detail: 'Device B is ready to scan or paste Device A QR payload',
+      });
       
       // Show PairView for scanning QR / pasting JSON
       loading = false;
@@ -347,17 +739,29 @@
       if (!manager) {
         await setupOrbitDbForCurrentMode();
       }
+      syncRuntimeDebug();
       
       const created = await manager.createNew();
       dbAddress = created.dbAddress;
-      
-      saveDbAddress(dbAddress);
+
+      if (isWorkerMode(identityMode)) {
+        await persistWorkerRecoveryState?.({ mainDbAddress: dbAddress });
+        runtimeInfo = {
+          ...runtimeInfo,
+          worker: {
+            ...(runtimeInfo.worker || {}),
+            mainDbAddress: dbAddress,
+          },
+        };
+        syncRuntimeDebug();
+      } else {
+        saveDbAddress(dbAddress, identityMode);
+      }
       startWatchingQR();
       await refreshDevices();
 
-      appMode = 'ready';
-      startSyncPolling();
-      status = 'Ready! Show QR code to link a new device.';
+      appMode = 'link-or-create';
+      status = 'New setup created. Share the QR code or JSON from this device, or switch back to connect mode.';
     } catch (err) {
       error = err.message;
       console.error('[create] error:', err);
@@ -366,17 +770,55 @@
     }
   }
 
+  function handleRepairFlow() {
+    error = '';
+    appMode = 'link-or-create';
+    status = 'Use the connect tab to re-pair from another device, or the share tab to inspect current connectivity.';
+  }
+
   async function ensureManagerReady() {
     if (manager) return manager;
     if (!credential) throw new Error('Credential not initialized');
 
+    console.log('[identity-setup] requested mode:', identityMode);
     const orbitdbState = await setupOrbitDB(credential, {
       identityMode,
       encryptKeystore: true,
       keystoreEncryptionMethod: 'prf',
+      onWorkerRecoveryReady: (persistFn) => {
+        persistWorkerRecoveryState = persistFn || null;
+      },
     });
 
     runtimeInfo = orbitdbState.runtimeInfo || runtimeInfo;
+    syncRuntimeDebug();
+    attachPeerTracking(orbitdbState.ipfs?.libp2p);
+
+    const actualIdentityType = orbitdbState.identity?.type;
+    const actualDid = orbitdbState.identity?.id;
+    console.log('[identity-setup] created identity:', {
+      requestedMode: identityMode,
+      runtimeIdentityType: runtimeInfo.identityType,
+      actualIdentityType,
+      did: actualDid,
+      worker: runtimeInfo.worker,
+    });
+
+    if (identityMode === IDENTITY_MODES.WORKER_ED25519 && actualIdentityType !== 'worker-ed25519') {
+      throw new Error(
+        `Identity mode mismatch: requested worker-ed25519 but created ${actualIdentityType || 'unknown'} identity`
+      );
+    }
+
+    if (
+      (identityMode === IDENTITY_MODES.WORKER_ED25519 ||
+        identityMode === IDENTITY_MODES.KEYSTORE_ED25519) &&
+      !isCanonicalDid(actualDid)
+    ) {
+      throw new Error(
+        `Non-canonical DID generated for ${identityMode}: ${actualDid || 'missing DID'}`
+      );
+    }
 
     manager = await MultiDeviceManager.createFromExisting({
       credential,
@@ -387,17 +829,47 @@
       onPairingRequest: handleIncomingPairRequest,
       onDeviceJoined: refreshDevices,
       onDeviceLinked: refreshDevices,
+      onPairingEvent: addPairingEvent,
+    });
+    syncRuntimeDebug();
+    addPairingEvent({
+      timestamp: Date.now(),
+      role: 'app',
+      stage: 'identity-ready',
+      level: 'info',
+      detail: 'OrbitDB identity initialized for this browser session',
+      identityId: manager?._identity?.id || null,
     });
 
     return manager;
   }
 
   async function handlePairFromLink(event) {
-    const { qrPayload: qr } = event.detail;
+    const { qrPayload: rawQr } = event.detail;
+    const qr =
+      rawQr?.peerId && (!Array.isArray(rawQr.multiaddrs) || rawQr.multiaddrs.length === 0)
+        ? {
+            ...rawQr,
+            multiaddrs: getRelayDialHints(rawQr.peerId),
+          }
+        : rawQr;
 
     loading = true;
     error = '';
     status = 'Connecting to Device A…';
+    syncRuntimeDebug();
+    pairingEvents = [];
+    addPairingEvent({
+      timestamp: Date.now(),
+      role: 'device-b',
+      stage: 'qr-loaded',
+      level: 'info',
+      detail:
+        rawQr?.peerId && (!Array.isArray(rawQr.multiaddrs) || rawQr.multiaddrs.length === 0)
+          ? 'Loaded Device A peer ID and derived relay dial hints for pairing'
+          : 'Loaded Device A QR payload and starting pairing request',
+      targetPeerId: qr?.peerId,
+    });
 
     try {
       const result = await manager.linkToDevice(qr);
@@ -405,20 +877,39 @@
       if (result.type === 'granted') {
         status = 'Access granted! Opening shared database…';
         dbAddress = result.dbAddress;
-        
-        saveDbAddress(dbAddress);
+
+        if (isWorkerMode(identityMode)) {
+          await persistWorkerRecoveryState?.({ mainDbAddress: dbAddress });
+          runtimeInfo = {
+            ...runtimeInfo,
+            worker: {
+              ...(runtimeInfo.worker || {}),
+              mainDbAddress: dbAddress,
+            },
+          };
+          syncRuntimeDebug();
+        } else {
+          saveDbAddress(dbAddress, identityMode);
+        }
         await refreshDevices();
 
         startWatchingQR();
 
         appMode = 'ready';
-        startSyncPolling();
         status = 'Linked successfully! You can now access the shared database.';
       } else {
         error = `Pairing rejected: ${result.reason || 'Unknown reason'}`;
       }
     } catch (err) {
       error = err.message;
+      addPairingEvent({
+        timestamp: Date.now(),
+        role: 'device-b',
+        stage: 'pairing-error',
+        level: 'error',
+        detail: `Pairing failed: ${err.message}`,
+        error: err.message,
+      });
       console.error('[pair] error:', err);
     } finally {
       loading = false;
@@ -461,6 +952,8 @@
           identity: manager?._identity ? { id: manager._identity.id } : null,
           worker: runtimeInfo.worker,
         }),
+        getPairingEvents: () => pairingEvents,
+        getAccessDebug: () => accessDebug,
 
         getQRPayload: () => manager ? manager.getPeerInfo() : null,
 
@@ -487,11 +980,22 @@
           await ensureManagerReady();
           const created = await manager.createNew();
           dbAddress = created.dbAddress;
-          saveDbAddress(dbAddress);
+          if (isWorkerMode(identityMode)) {
+            await persistWorkerRecoveryState?.({ mainDbAddress: dbAddress });
+            runtimeInfo = {
+              ...runtimeInfo,
+              worker: {
+                ...(runtimeInfo.worker || {}),
+                mainDbAddress: dbAddress,
+              },
+            };
+            syncRuntimeDebug();
+          } else {
+            saveDbAddress(dbAddress, identityMode);
+          }
           startWatchingQR();
           await refreshDevices();
           appMode = 'ready';
-          startSyncPolling();
           return dbAddress;
         },
 
@@ -522,7 +1026,7 @@
   });
 
   onDestroy(async () => {
-    stopSyncPolling();
+    detachPeerTracking();
     if (manager) {
       await manager.close();
     }
@@ -630,10 +1134,16 @@
         <PairView
           {devices}
           {dbAddress}
+          {qrPayload}
           {status}
           {error}
           {loading}
+          {pairingEvents}
+          identityDebug={accessDebug}
+          {connectedPeers}
+          canCreateSetup={connectedPeers.length > 0}
           on:pair={handlePairFromLink}
+          on:createSetup={handleCreateNewSetup}
           on:error={(e) => { error = e.detail; }}
         />
       {/if}
@@ -648,6 +1158,11 @@
       {status}
       {error}
       {loading}
+      {pairingEvents}
+      identityDebug={accessDebug}
+      {connectedPeers}
+      on:repair={handleRepairFlow}
+      on:retrySync={retryLocalSync}
     />
   {/if}
 

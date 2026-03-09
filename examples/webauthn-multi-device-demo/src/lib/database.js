@@ -70,23 +70,27 @@ export async function loadDevices(db) {
   return await listDevices(db);
 }
 
-const DB_ADDRESS_STORAGE_KEY = 'orbitdb-multi-device-db-address';
+const DB_ADDRESS_STORAGE_KEY_PREFIX = 'orbitdb-multi-device-db-address';
 
-export function saveDbAddress(address) {
+function getStorageKey(mode = 'default') {
+  return `${DB_ADDRESS_STORAGE_KEY_PREFIX}:${mode}`;
+}
+
+export function saveDbAddress(address, mode = 'default') {
   if (typeof localStorage !== 'undefined') {
-    localStorage.setItem(DB_ADDRESS_STORAGE_KEY, address);
+    localStorage.setItem(getStorageKey(mode), address);
   }
 }
 
-export function getDbAddress() {
+export function getDbAddress(mode = 'default') {
   if (typeof localStorage !== 'undefined') {
-    return localStorage.getItem(DB_ADDRESS_STORAGE_KEY);
+    return localStorage.getItem(getStorageKey(mode));
   }
   return null;
 }
 
-export function clearDbAddress() {
+export function clearDbAddress(mode = 'default') {
   if (typeof localStorage !== 'undefined') {
-    localStorage.removeItem(DB_ADDRESS_STORAGE_KEY);
+    localStorage.removeItem(getStorageKey(mode));
   }
 }

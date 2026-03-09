@@ -219,6 +219,8 @@ export {
   checkExtensionSupport,
 } from './keystore/encryption.js';
 
+export { DeferredOrbitDBAccessController } from './multi-device/index.js';
+
 export * from './multi-device/index.js';
 
 export default {

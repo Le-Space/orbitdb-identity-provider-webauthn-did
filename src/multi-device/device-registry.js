@@ -1,11 +1,21 @@
 /**
  * Multi-Device Registry for OrbitDB WebAuthn
  *
- * Manages a KV store of registered devices using OrbitDBAccessController
- * so write access can be dynamically granted to new devices.
+ * Manages a KV store of registered devices using a deferred OrbitDB-backed
+ * access controller so write access can be dynamically granted to new devices
+ * without racing ACL replication.
  */
 
-import { OrbitDBAccessController } from '@orbitdb/core';
+import { useAccessController } from '@orbitdb/core';
+import DeferredOrbitDBAccessController from './deferred-orbitdb-access-controller.js';
+
+try {
+  useAccessController(DeferredOrbitDBAccessController);
+} catch (error) {
+  if (!String(error?.message || '').includes('already added')) {
+    throw error;
+  }
+}
 
 /**
  * Convert P-256 x/y byte arrays from a WebAuthn attestation into JWK format.
@@ -62,7 +72,7 @@ export async function openDeviceRegistry(orbitdb, ownerIdentityId, address = nul
   return await orbitdb.open('multi-device-registry', {
     type: 'keyvalue',
     sync: true,
-    AccessController: OrbitDBAccessController({ write: [ownerIdentityId] }),
+    AccessController: DeferredOrbitDBAccessController({ write: [ownerIdentityId] }),
   });
 }
 

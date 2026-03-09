@@ -2,6 +2,9 @@
   import { createEventDispatcher } from 'svelte';
   import QRCode from './QRCode.svelte';
   import DeviceList from './DeviceList.svelte';
+  import PairingTimeline from './PairingTimeline.svelte';
+  import IdentityDebugPanel from './IdentityDebugPanel.svelte';
+  import ConnectedPeers from './ConnectedPeers.svelte';
 
   export let qrPayload = null;
   export let devices = [];
@@ -9,19 +12,30 @@
   export let status = '';
   export let error = '';
   export let loading = false;
+  export let pairingEvents = [];
+  export let identityDebug = {};
+  export let connectedPeers = [];
 
   const dispatch = createEventDispatcher();
 
   function handleSetup() {
     dispatch('setup');
   }
+
+  function handleRepair() {
+    dispatch('repair');
+  }
+
+  function handleRetrySync() {
+    dispatch('retrySync');
+  }
 </script>
 
 <div class="setup-view">
-  <h2>Device A — First Device Setup</h2>
+  <h2>P2P Passkey Manager</h2>
   <p class="subtitle">
-    Create your WebAuthn credential, initialize the shared device registry, and
-    display a QR code so other devices can join.
+    Use your WebAuthn credential to manage the shared device registry and scan
+    QR codes to link other devices.
   </p>
 
   {#if error}
@@ -46,9 +60,35 @@
       <code data-testid="db-address">{dbAddress}</code>
     </div>
 
+    <ConnectedPeers peers={connectedPeers} />
+
+    {#if devices.length === 0}
+      <div class="warning-banner">
+        Local registry is still empty on this device. This is not just a UI refresh issue: the current browser has not read back any device entries yet.
+      </div>
+
+      <div class="recovery-actions">
+        <button class="btn-secondary" on:click={handleRetrySync} disabled={loading}>
+          Retry Local Sync
+        </button>
+        <button class="btn-primary" on:click={handleRepair} disabled={loading}>
+          Re-pair / Recover From Another Device
+        </button>
+      </div>
+    {/if}
+
     <div class="qr-section">
       <h3>Show QR Code to Link Another Device</h3>
       <QRCode payload={qrPayload} />
+      <div class="json-share">
+        <h4>Copy JSON</h4>
+        <textarea
+          rows="8"
+          readonly
+          value={qrPayload ? JSON.stringify(qrPayload, null, 2) : ''}
+          aria-label="QR payload JSON"
+        ></textarea>
+      </div>
       {#if qrPayload && qrPayload.multiaddrs && qrPayload.multiaddrs.length === 0}
         <p class="relay-notice">
           ⏳ Connecting to relay servers… QR updates automatically when ready.
@@ -70,6 +110,8 @@
     </div>
 
     <DeviceList {devices} />
+    <IdentityDebugPanel debug={identityDebug} />
+    <PairingTimeline entries={pairingEvents} title="Pairing and Replication Log" />
   {/if}
 </div>
 
@@ -102,7 +144,25 @@
     align-self: flex-start;
   }
 
+  .btn-secondary {
+    padding: 0.75rem 1.5rem;
+    background: #eef2ff;
+    color: #312e81;
+    border: 1px solid #c7d2fe;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    align-self: flex-start;
+  }
+
   .btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .btn-secondary:disabled {
     opacity: 0.6;
     cursor: not-allowed;
   }
@@ -130,6 +190,20 @@
     border-radius: 0.4rem;
     color: #1e8449;
     font-weight: 600;
+  }
+
+  .warning-banner {
+    padding: 0.75rem 1rem;
+    background: #fff7ed;
+    border: 1px solid #f97316;
+    border-radius: 0.4rem;
+    color: #9a3412;
+  }
+
+  .recovery-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
   }
 
   .db-address {
@@ -161,6 +235,33 @@
   .qr-section h3 {
     margin: 0;
     font-size: 0.95rem;
+  }
+
+  .json-share {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  .json-share h4 {
+    margin: 0;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #666;
+  }
+
+  .json-share textarea {
+    width: 100%;
+    padding: 0.6rem;
+    font-family: monospace;
+    font-size: 0.78rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    background: #f8fafc;
+    resize: vertical;
+    box-sizing: border-box;
   }
 
   .relay-notice {

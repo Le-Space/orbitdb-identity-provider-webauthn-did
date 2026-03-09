@@ -4,6 +4,7 @@
 
   /** JSON-serialisable payload to encode in the QR code */
   export let payload = null;
+  export let showRawPayload = false;
 
   let canvasEl;
   let payloadStr = '';
@@ -39,7 +40,9 @@
       without needing to decode the actual QR image.
     -->
     <canvas bind:this={canvasEl} data-testid="qr-payload" data-payload={payloadStr}></canvas>
-    <code>{payloadStr}</code>
+    {#if showRawPayload}
+      <code>{payloadStr}</code>
+    {/if}
   {:else}
     <div class="placeholder">QR code will appear here</div>
   {/if}

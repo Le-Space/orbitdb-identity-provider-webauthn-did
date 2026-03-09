@@ -14,6 +14,7 @@ import {
   detectDeviceLabel,
   sendPairingRequest,
   registerLinkDeviceHandler,
+  unregisterLinkDeviceHandler,
 } from './index.js';
 
 import { WebAuthnDIDProvider } from '../webauthn/provider.js';
@@ -30,7 +31,12 @@ export class MultiDeviceManager {
     this._onPairingRequest = null;
     this._onDeviceLinked = null;
     this._onDeviceJoined = null;
+    this._onPairingEvent = null;
     this._listenersSetup = false;
+    this._pairingHandlerRegistered = false;
+    this._pubsubListeners = null;
+    this._dbEventListeners = [];
+    this._replicationObserver = null;
   }
 
   static async create(config) {
@@ -49,6 +55,7 @@ export class MultiDeviceManager {
     manager._onPairingRequest = config.onPairingRequest || null;
     manager._onDeviceLinked = config.onDeviceLinked || null;
     manager._onDeviceJoined = config.onDeviceJoined || null;
+    manager._onPairingEvent = config.onPairingEvent || null;
     return manager;
   }
 
@@ -58,6 +65,7 @@ export class MultiDeviceManager {
     this._onPairingRequest = config.onPairingRequest || null;
     this._onDeviceLinked = config.onDeviceLinked || null;
     this._onDeviceJoined = config.onDeviceJoined || null;
+    this._onPairingEvent = config.onPairingEvent || null;
     if (config.orbitdb) this._orbitdb = config.orbitdb;
     if (config.ipfs) this._ipfs = config.ipfs;
     if (config.libp2p) this._libp2p = config.libp2p;
@@ -70,15 +78,367 @@ export class MultiDeviceManager {
     return x && y ? coseToJwk(x, y) : null;
   }
 
-  /** Attach sync listeners and register the pairing handler (if configured). */
-  async _finalizeDb() {
+  _emitPairingEvent(event) {
+    if (!this._onPairingEvent) return;
+    this._onPairingEvent({
+      timestamp: Date.now(),
+      scope: 'manager',
+      identityId: this._identity?.id || null,
+      dbAddress: this._dbAddress?.toString?.() || this._dbAddress || this._devicesDb?.address?.toString?.() || null,
+      ...event,
+    });
+  }
+
+  async _getAccessSnapshot() {
+    if (!this._devicesDb) {
+      return {
+        rootWritePermissions: [],
+        writePermissions: [],
+        adminPermissions: [],
+        currentIdentityIsRootWriter: false,
+        currentIdentityCanWrite: false,
+        currentIdentityIsAdmin: false,
+      };
+    }
+
+    const identityId = this._identity?.id || null;
+    let rootWritePermissions = [];
+    let writePermissions = [];
+    let adminPermissions = [];
+
+    try {
+      const raw = this._devicesDb.access?.write;
+      if (Array.isArray(raw)) {
+        rootWritePermissions = raw;
+      }
+    } catch {}
+
+    try {
+      if (typeof this._devicesDb.access?.get === 'function') {
+        writePermissions = Array.from(await this._devicesDb.access.get('write'));
+        adminPermissions = Array.from(await this._devicesDb.access.get('admin'));
+      }
+    } catch {}
+
+    return {
+      rootWritePermissions,
+      writePermissions,
+      adminPermissions,
+      currentIdentityIsRootWriter: Boolean(identityId && rootWritePermissions.includes(identityId)),
+      currentIdentityCanWrite: Boolean(identityId && (writePermissions.includes(identityId) || writePermissions.includes('*'))),
+      currentIdentityIsAdmin: Boolean(identityId && (adminPermissions.includes(identityId) || adminPermissions.includes('*'))),
+    };
+  }
+
+  async _emitLocalStateSnapshot(role, stage, detail, extra = {}) {
+    const access = await this._getAccessSnapshot();
+    let deviceCount = 0;
+    let registryHeadCount = 0;
+    let accessAddress = null;
+    let registryPeerCount = 0;
+    let aclPeerCount = 0;
+    let registryHeadHashes = [];
+    try {
+      deviceCount = this._devicesDb ? (await listDevices(this._devicesDb)).length : 0;
+    } catch {}
+    try {
+      if (this._devicesDb?.log) {
+        const heads = await this._devicesDb.log.heads();
+        registryHeadCount = heads.length;
+        registryHeadHashes = heads.map((entry) => entry.hash);
+      }
+    } catch {}
+    try {
+      accessAddress = this._devicesDb?.access?.address || null;
+    } catch {}
+    try {
+      registryPeerCount = this._devicesDb?.peers?.size || 0;
+    } catch {}
+    try {
+      aclPeerCount = this._devicesDb?.access?.events ? 1 : 0;
+    } catch {}
+
+    this._emitPairingEvent({
+      role,
+      stage,
+      detail,
+      level: extra.level || 'info',
+      deviceCount,
+      rootWritePermissions: access.rootWritePermissions,
+      writePermissions: access.writePermissions,
+      adminPermissions: access.adminPermissions,
+      currentIdentityIsRootWriter: access.currentIdentityIsRootWriter,
+      currentIdentityCanWrite: access.currentIdentityCanWrite,
+      currentIdentityIsAdmin: access.currentIdentityIsAdmin,
+      registryHeadCount,
+      registryHeadHashes,
+      accessAddress,
+      registryPeerCount,
+      aclPeerCount,
+      ...extra,
+    });
+  }
+
+  _attachPubsubDebugListeners() {
+    if (this._pubsubListeners || !this._ipfs?.libp2p?.services?.pubsub || !this._devicesDb) {
+      return;
+    }
+
+    const pubsub = this._ipfs.libp2p.services.pubsub;
+    const registryTopic = this._devicesDb.address?.toString?.() || this._devicesDb.address;
+    const aclTopic = this._devicesDb.access?.address || null;
+
+    const onSubscriptionChange = (event) => {
+      const { peerId, subscriptions } = event.detail || {};
+      const relevant = (subscriptions || []).filter((subscription) =>
+        subscription?.topic === registryTopic || subscription?.topic === aclTopic
+      );
+
+      if (relevant.length === 0) return;
+
+      for (const subscription of relevant) {
+        this._emitPairingEvent({
+          role: 'sync',
+          stage: 'pubsub-subscription-change',
+          level: 'info',
+          detail: `Observed pubsub subscription ${subscription.subscribe ? 'join' : 'leave'} for ${subscription.topic === registryTopic ? 'registry' : 'access-controller'} topic`,
+          remotePeerId: peerId?.toString?.() || null,
+          orbitdbAddress: subscription.topic === registryTopic ? registryTopic : null,
+          accessAddress: subscription.topic === aclTopic ? aclTopic : null,
+        });
+      }
+    };
+
+    const onPubsubMessage = (event) => {
+      const { topic, from } = event.detail || {};
+      if (topic !== registryTopic && topic !== aclTopic) return;
+      this._emitPairingEvent({
+        role: 'sync',
+        stage: 'pubsub-message',
+        level: 'info',
+        detail: `Observed pubsub message on ${topic === registryTopic ? 'registry' : 'access-controller'} topic`,
+        remotePeerId: from?.toString?.() || null,
+        orbitdbAddress: topic === registryTopic ? registryTopic : null,
+        accessAddress: topic === aclTopic ? aclTopic : null,
+      });
+    };
+
+    pubsub.addEventListener('subscription-change', onSubscriptionChange);
+    pubsub.addEventListener('message', onPubsubMessage);
+    this._pubsubListeners = { pubsub, onSubscriptionChange, onPubsubMessage };
+  }
+
+  _trackDbListener(target, event, handler) {
+    if (!target?.on) return;
+    target.on(event, handler);
+    this._dbEventListeners.push({ target, event, handler });
+  }
+
+  _detachDbListeners() {
+    for (const listener of this._dbEventListeners) {
+      listener.target?.removeListener?.(listener.event, listener.handler);
+      listener.target?.off?.(listener.event, listener.handler);
+    }
+    this._dbEventListeners = [];
+    this._listenersSetup = false;
+  }
+
+  _detachPubsubListeners() {
+    if (this._pubsubListeners?.pubsub) {
+      this._pubsubListeners.pubsub.removeEventListener(
+        'subscription-change',
+        this._pubsubListeners.onSubscriptionChange
+      );
+      this._pubsubListeners.pubsub.removeEventListener(
+        'message',
+        this._pubsubListeners.onPubsubMessage
+      );
+    }
+    this._pubsubListeners = null;
+  }
+
+  async _evaluateReplicationObserver() {
+    const observer = this._replicationObserver;
+    if (!observer || !this._devicesDb) return;
+
+    const entries = await listDevices(this._devicesDb);
+    const access = await this._getAccessSnapshot();
+    const registryHeadCount = this._devicesDb?.log ? (await this._devicesDb.log.heads()).length : 0;
+    const registryPeerCount = this._devicesDb?.peers?.size || 0;
+
+    if (!observer.registryVisible && entries.length > 0) {
+      observer.registryVisible = true;
+      this._emitPairingEvent({
+        role: 'device-b',
+        stage: 'registry-visible',
+        level: 'success',
+        detail: `Registry entries became visible after ${Date.now() - observer.start}ms`,
+        deviceCount: entries.length,
+        rootWritePermissions: access.rootWritePermissions,
+        writePermissions: access.writePermissions,
+        adminPermissions: access.adminPermissions,
+        currentIdentityIsRootWriter: access.currentIdentityIsRootWriter,
+        currentIdentityCanWrite: access.currentIdentityCanWrite,
+        currentIdentityIsAdmin: access.currentIdentityIsAdmin,
+        registryHeadCount,
+        registryPeerCount,
+      });
+    }
+
+    if (!observer.writeVisible && access.currentIdentityCanWrite) {
+      observer.writeVisible = true;
+      this._emitPairingEvent({
+        role: 'device-b',
+        stage: 'acl-write-visible',
+        level: 'success',
+        detail: `ACL write permission for Device B became visible after ${Date.now() - observer.start}ms`,
+        deviceCount: entries.length,
+        rootWritePermissions: access.rootWritePermissions,
+        writePermissions: access.writePermissions,
+        adminPermissions: access.adminPermissions,
+        currentIdentityIsRootWriter: access.currentIdentityIsRootWriter,
+        currentIdentityCanWrite: access.currentIdentityCanWrite,
+        currentIdentityIsAdmin: access.currentIdentityIsAdmin,
+        registryHeadCount,
+        registryPeerCount,
+      });
+    }
+
+    if (!observer.adminStateVisible && access.adminPermissions.length > 0) {
+      observer.adminStateVisible = true;
+      this._emitPairingEvent({
+        role: 'device-b',
+        stage: 'acl-admin-visible',
+        level: 'info',
+        detail: `ACL admin set became visible after ${Date.now() - observer.start}ms`,
+        deviceCount: entries.length,
+        rootWritePermissions: access.rootWritePermissions,
+        writePermissions: access.writePermissions,
+        adminPermissions: access.adminPermissions,
+        currentIdentityIsRootWriter: access.currentIdentityIsRootWriter,
+        currentIdentityCanWrite: access.currentIdentityCanWrite,
+        currentIdentityIsAdmin: access.currentIdentityIsAdmin,
+        registryHeadCount,
+        registryPeerCount,
+      });
+    }
+
+    observer.snapshot = {
+      devices: entries,
+      access,
+      registryVisible: observer.registryVisible,
+      writeVisible: observer.writeVisible,
+      adminStateVisible: observer.adminStateVisible,
+    };
+
+    if (!observer.settled && entries.length > 0) {
+      observer.settled = true;
+      clearTimeout(observer.timeoutId);
+      observer.resolve({
+        timedOut: false,
+        ...observer.snapshot,
+      });
+      this._replicationObserver = null;
+    }
+  }
+
+  _scheduleReplicationEvaluation() {
+    if (!this._replicationObserver || this._replicationObserver.scheduled) return;
+    this._replicationObserver.scheduled = true;
+    queueMicrotask(async () => {
+      const observer = this._replicationObserver;
+      if (!observer) return;
+      observer.scheduled = false;
+      await this._evaluateReplicationObserver();
+    });
+  }
+
+  _awaitReplicationEvents(timeoutMs = 15000) {
+    if (this._replicationObserver?.timeoutId) {
+      clearTimeout(this._replicationObserver.timeoutId);
+    }
+
+    return new Promise((resolve) => {
+      const observer = {
+        start: Date.now(),
+        resolve,
+        settled: false,
+        scheduled: false,
+        registryVisible: false,
+        writeVisible: false,
+        adminStateVisible: false,
+        snapshot: {
+          devices: [],
+          access: {
+            rootWritePermissions: [],
+            writePermissions: [],
+            adminPermissions: [],
+            currentIdentityIsRootWriter: false,
+            currentIdentityCanWrite: false,
+            currentIdentityIsAdmin: false,
+          },
+          registryVisible: false,
+          writeVisible: false,
+          adminStateVisible: false,
+        },
+        timeoutId: setTimeout(async () => {
+          await this._evaluateReplicationObserver();
+          if (observer.settled) return;
+          observer.settled = true;
+          resolve({
+            timedOut: true,
+            ...observer.snapshot,
+          });
+          if (this._replicationObserver === observer) {
+            this._replicationObserver = null;
+          }
+        }, timeoutMs),
+      };
+
+      this._replicationObserver = observer;
+      this._scheduleReplicationEvaluation();
+    });
+  }
+
+  _beginReplicationWatchdog(timeoutMs = 15000) {
+    void this._awaitReplicationEvents(timeoutMs).then((replication) => {
+      const devices = replication.devices;
+      const access = replication.access;
+      this._emitPairingEvent({
+        role: 'device-b',
+        stage: 'replication-visible',
+        level: devices.length > 0 ? 'success' : 'warning',
+        detail: devices.length > 0
+          ? 'Replicated registry entries are now visible locally'
+          : 'Timed out waiting for replicated registry entries',
+        deviceCount: devices.length,
+        replicationSummary: `registry=${replication.registryVisible ? 'yes' : 'no'}, aclWrite=${replication.writeVisible ? 'yes' : 'no'}, aclAdmin=${replication.adminStateVisible ? 'yes' : 'no'}`,
+        rootWritePermissions: access.rootWritePermissions,
+        writePermissions: access.writePermissions,
+        adminPermissions: access.adminPermissions,
+        currentIdentityIsRootWriter: access.currentIdentityIsRootWriter,
+        currentIdentityCanWrite: access.currentIdentityCanWrite,
+        currentIdentityIsAdmin: access.currentIdentityIsAdmin,
+      });
+    });
+  }
+
+  /** Attach sync listeners and optionally register the pairing handler. */
+  async _finalizeDb({ registerPairingHandler = false } = {}) {
     await this._setupSyncListeners();
-    if (this._onPairingRequest) {
+    if (registerPairingHandler && this._onPairingRequest && !this._pairingHandlerRegistered) {
       console.log('[manager] Registering link device handler for peer:', this._libp2p?.peerId?.toString());
       await registerLinkDeviceHandler(
-        this._libp2p, this._devicesDb, this._onPairingRequest, this._onDeviceLinked
+        this._libp2p, this._devicesDb, this._onPairingRequest, this._onDeviceLinked, this._onPairingEvent
       );
       console.log('[manager] Link device handler registered');
+      this._pairingHandlerRegistered = true;
+      this._emitPairingEvent({
+        role: 'device-a',
+        stage: 'handler-registered',
+        level: 'info',
+        detail: 'Device A pairing handler registered',
+      });
     }
   }
 
@@ -98,6 +458,14 @@ export class MultiDeviceManager {
 
     this._devicesDb = await openDeviceRegistry(this._orbitdb, this._identity.id);
     this._dbAddress = this._devicesDb.address;
+    this._detachDbListeners();
+    this._detachPubsubListeners();
+    this._emitPairingEvent({
+      role: 'device-a',
+      stage: 'db-created',
+      level: 'success',
+      detail: 'Created shared device registry database',
+    });
 
     await registerDevice(this._devicesDb, {
       credential_id: this._credential.credentialId,
@@ -107,9 +475,36 @@ export class MultiDeviceManager {
       status: 'active',
       ed25519_did: this._identity.id,
     });
+    const selfEntry = await getDeviceByDID(this._devicesDb, this._identity.id);
+    const access = await this._getAccessSnapshot();
+    this._emitPairingEvent({
+      role: 'device-a',
+      stage: 'self-registered',
+      level: selfEntry ? 'success' : 'warning',
+      detail: selfEntry
+        ? 'Registered this device as the first authorized device'
+        : 'Attempted to register the first device, but the self entry is not readable back from the local registry',
+      rootWritePermissions: access.rootWritePermissions,
+      writePermissions: access.writePermissions,
+      adminPermissions: access.adminPermissions,
+      currentIdentityIsRootWriter: access.currentIdentityIsRootWriter,
+      currentIdentityCanWrite: access.currentIdentityCanWrite,
+      currentIdentityIsAdmin: access.currentIdentityIsAdmin,
+      deviceCount: selfEntry ? 1 : 0,
+    });
+
+    if (!selfEntry) {
+      throw new Error('Created the device registry, but the first device entry was not readable back from the local database.');
+    }
+
+    await this._emitLocalStateSnapshot(
+      'device-a',
+      'registry-heads-local',
+      'Local registry heads after first-device registration'
+    );
 
     await this.syncDevices();
-    await this._finalizeDb();
+    await this._finalizeDb({ registerPairingHandler: true });
 
     return { dbAddress: this._dbAddress, identity: this._identity };
   }
@@ -120,16 +515,27 @@ export class MultiDeviceManager {
       return;
     }
     this._listenersSetup = true;
+    this._attachPubsubDebugListeners();
 
     console.log('[manager] Setting up sync listeners for DB:', this._devicesDb.address?.toString());
 
     if (this._onDeviceJoined) {
       console.log('[manager] Subscribing to join events');
-      this._devicesDb.events.on('join', async (peerId, details) => {
+      this._trackDbListener(this._devicesDb.events, 'join', async (peerId, details) => {
         console.log('[manager] JOIN event fired:', peerId.toString(), details);
         if (this._onDeviceJoined) {
           this._onDeviceJoined(peerId.toString(), details);
         }
+        this._emitPairingEvent({
+          role: 'sync',
+          stage: 'peer-joined',
+          level: 'info',
+          detail: `Replication peer joined: ${peerId.toString()}`,
+          remotePeerId: peerId.toString(),
+          registryHeadCount: Array.isArray(details) ? details.length : 0,
+          registryHeadHashes: Array.isArray(details) ? details.map((entry) => entry?.hash).filter(Boolean) : [],
+        });
+        this._scheduleReplicationEvaluation();
         // Also refresh device list on join to show all devices
         if (this._onDeviceLinked) {
           const devices = await listDevices(this._devicesDb);
@@ -141,10 +547,47 @@ export class MultiDeviceManager {
       });
     }
 
-    this._devicesDb.events.on('update', async (_entry) => {
-      console.log('[manager] UPDATE event fired, _onDeviceLinked:', !!this._onDeviceLinked);
-      if (this._onDeviceLinked) {
+    this._trackDbListener(this._devicesDb.events, 'error', async (error) => {
+      console.error('[manager] DB error event:', error);
+      this._emitPairingEvent({
+        role: 'sync',
+        stage: 'db-error',
+        level: 'error',
+        detail: `Registry sync/database error: ${error?.message || error}`,
+        error: error?.message || String(error),
+      });
+    });
+
+    this._trackDbListener(this._devicesDb.events, 'leave', async (peerId) => {
+      console.warn('[manager] LEAVE event fired:', peerId.toString());
+      this._emitPairingEvent({
+        role: 'sync',
+        stage: 'peer-left',
+        level: 'warning',
+        detail: `Replication peer left: ${peerId.toString()}`,
+        remotePeerId: peerId.toString(),
+      });
+    });
+
+      this._trackDbListener(this._devicesDb.events, 'update', async (_entry) => {
+        console.log('[manager] UPDATE event fired, _onDeviceLinked:', !!this._onDeviceLinked);
         const devices = await listDevices(this._devicesDb);
+      const heads = this._devicesDb?.log ? await this._devicesDb.log.heads() : [];
+      console.log('[manager] DB UPDATE snapshot:', {
+        dbAddress: this._devicesDb?.address?.toString?.() || null,
+        deviceCount: devices.length,
+        headCount: heads.length,
+        headHashes: heads.map((entry) => entry?.hash).filter(Boolean),
+        peerCount: this._devicesDb?.peers?.size || 0,
+      });
+      this._emitPairingEvent({
+        role: 'sync',
+        stage: 'db-update',
+        level: 'info',
+        detail: `Registry update observed; ${devices.length} device entr${devices.length === 1 ? 'y' : 'ies'} now visible locally`,
+        deviceCount: devices.length,
+      });
+      if (this._onDeviceLinked) {
         console.log('[manager] UPDATE: Devices found:', devices.length);
         // Trigger callback for all devices to refresh the list
         for (const device of devices) {
@@ -152,22 +595,56 @@ export class MultiDeviceManager {
           this._onDeviceLinked(device);
         }
       }
+      this._scheduleReplicationEvaluation();
     });
-    console.log('[manager] Sync listeners setup complete');
-  }
 
-  /** Poll db.all() until at least one entry appears, or timeout. */
-  async _waitForEntries(timeoutMs = 15000) {
-    const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
-      const entries = await listDevices(this._devicesDb);
-      if (entries.length > 0) {
-        console.log('[manager] _waitForEntries: found', entries.length, 'entries after', Date.now() - start, 'ms');
-        return;
-      }
-      await new Promise(resolve => setTimeout(resolve, 500));
+    if (this._devicesDb.access?.events?.on) {
+      this._trackDbListener(this._devicesDb.access.events, 'update', async () => {
+        console.log('[manager] ACL UPDATE event fired');
+        await this._emitLocalStateSnapshot(
+          'sync',
+          'acl-update',
+          'Access controller update observed locally'
+        );
+        this._scheduleReplicationEvaluation();
+      });
+
+      this._trackDbListener(this._devicesDb.access.events, 'join', async (peerId) => {
+        console.log('[manager] ACL JOIN event fired:', peerId.toString());
+        await this._emitLocalStateSnapshot(
+          'sync',
+          'acl-peer-joined',
+          `Access controller peer joined: ${peerId.toString()}`,
+          { remotePeerId: peerId.toString() }
+        );
+        this._scheduleReplicationEvaluation();
+      });
+
+      this._trackDbListener(this._devicesDb.access.events, 'error', async (error) => {
+        console.error('[manager] ACL error event:', error);
+        this._emitPairingEvent({
+          role: 'sync',
+          stage: 'acl-error',
+          level: 'error',
+          detail: `Access-controller sync/database error: ${error?.message || error}`,
+          error: error?.message || String(error),
+          accessAddress: this._devicesDb?.access?.address || null,
+        });
+      });
+
+      this._trackDbListener(this._devicesDb.access.events, 'leave', async (peerId) => {
+        console.warn('[manager] ACL LEAVE event fired:', peerId.toString());
+        this._emitPairingEvent({
+          role: 'sync',
+          stage: 'acl-peer-left',
+          level: 'warning',
+          detail: `Access controller peer left: ${peerId.toString()}`,
+          remotePeerId: peerId.toString(),
+          accessAddress: this._devicesDb?.access?.address || null,
+        });
+      });
     }
-    console.warn('[manager] _waitForEntries: timed out after', timeoutMs, 'ms with 0 entries');
+    console.log('[manager] Sync listeners setup complete');
   }
 
   async restore() {
@@ -182,13 +659,31 @@ export class MultiDeviceManager {
     throw new Error('No credentials found and orbitdb not provided. Pass orbitdb, ipfs, libp2p, identity in config to create new.');
   }
 
-  async openExistingDb(dbAddress) {
+  async openExistingDb(dbAddress, { registerPairingHandler = true } = {}) {
     if (!this._orbitdb) {
       throw new Error('orbitdb not provided. Pass orbitdb, ipfs, libp2p, identity in config.');
     }
+    this._detachDbListeners();
+    this._detachPubsubListeners();
     this._devicesDb = await openDeviceRegistry(this._orbitdb, this._identity.id, dbAddress);
     this._dbAddress = this._devicesDb.address;
-    await this._finalizeDb();
+    const access = await this._getAccessSnapshot();
+    this._emitPairingEvent({
+      role: 'device-b',
+      stage: 'db-opened',
+      level: 'success',
+      detail: 'Opened existing shared device registry',
+      registryHeadCount: this._devicesDb?.log ? (await this._devicesDb.log.heads()).length : 0,
+      registryPeerCount: this._devicesDb?.peers?.size || 0,
+      accessAddress: this._devicesDb?.access?.address || null,
+      rootWritePermissions: access.rootWritePermissions,
+      writePermissions: access.writePermissions,
+      adminPermissions: access.adminPermissions,
+      currentIdentityIsRootWriter: access.currentIdentityIsRootWriter,
+      currentIdentityCanWrite: access.currentIdentityCanWrite,
+      currentIdentityIsAdmin: access.currentIdentityIsAdmin,
+    });
+    await this._finalizeDb({ registerPairingHandler });
     return { dbAddress: this._dbAddress, identity: this._identity };
   }
 
@@ -199,6 +694,13 @@ export class MultiDeviceManager {
 
     console.log('[linkToDevice] QR payload:', JSON.stringify(qrPayload));
     console.log('[linkToDevice] My peerId:', this._libp2p?.peerId?.toString());
+    this._emitPairingEvent({
+      role: 'device-b',
+      stage: 'pairing-start',
+      level: 'info',
+      detail: 'Starting pairing flow from QR payload',
+      targetPeerId: qrPayload.peerId,
+    });
 
     const result = await sendPairingRequest(
       this._libp2p,
@@ -209,26 +711,41 @@ export class MultiDeviceManager {
         publicKey: null,
         deviceLabel: detectDeviceLabel(),
       },
-      qrPayload.multiaddrs || []
+      qrPayload.multiaddrs || [],
+      (event) => this._emitPairingEvent(event)
     );
 
     if (result.type === 'rejected') return result;
 
     console.log('[linkToDevice] Got granted, opening database...');
+    this._emitPairingEvent({
+      role: 'device-b',
+      stage: 'grant-received',
+      level: 'success',
+      detail: 'Received granted database address from Device A',
+      orbitdbAddress: result.orbitdbAddress,
+    });
+    this._detachDbListeners();
+    this._detachPubsubListeners();
     this._devicesDb = await openDeviceRegistry(this._orbitdb, this._identity.id, result.orbitdbAddress);
     this._dbAddress = this._devicesDb.address;
     console.log('[linkToDevice] Database opened, waiting for Device A entries to sync...');
+    this._emitPairingEvent({
+      role: 'device-b',
+      stage: 'db-opened',
+      level: 'success',
+      detail: 'Opened shared registry and waiting for replication',
+      registryHeadCount: this._devicesDb?.log ? (await this._devicesDb.log.heads()).length : 0,
+      registryPeerCount: this._devicesDb?.peers?.size || 0,
+      accessAddress: this._devicesDb?.access?.address || null,
+    });
 
     // Register listeners immediately so we catch update events during the delay below
     this._listenersSetup = false;
     await this._setupSyncListeners();
+    this._beginReplicationWatchdog(15000);
 
-    // Wait for Device A's entries to sync. Device A already granted write access AND
-    // registered Device B during the pairing handshake, so Device B does not write
-    // anything — it just needs to wait until Device A's entries appear locally.
-    await this._waitForEntries(15000);
-
-    await this._finalizeDb();
+    await this._finalizeDb({ registerPairingHandler: false });
 
     return { type: 'granted', dbAddress: this._dbAddress };
   }
@@ -273,12 +790,27 @@ export class MultiDeviceManager {
   async processIncomingPairingRequest(requestMsg) {
     if (!this._devicesDb) throw new Error('Device registry not initialized');
     const { identity } = requestMsg;
+    this._emitPairingEvent({
+      role: 'device-a',
+      stage: 'request-received',
+      level: 'info',
+      detail: 'Processing incoming pairing request via direct API',
+      requesterDid: identity.id,
+      credentialId: identity.credentialId,
+    });
 
     const isKnown =
       (await getDeviceByCredentialId(this._devicesDb, identity.credentialId)) ||
       (await getDeviceByDID(this._devicesDb, identity.id));
 
     if (isKnown) {
+      this._emitPairingEvent({
+        role: 'device-a',
+        stage: 'known-device',
+        level: 'success',
+        detail: 'Known device detected; returning existing database address',
+        requesterDid: identity.id,
+      });
       return { type: 'granted', orbitdbAddress: this._dbAddress };
     }
 
@@ -287,7 +819,44 @@ export class MultiDeviceManager {
       : 'granted';
 
     if (decision === 'granted') {
+      const beforeGrant = await this._getAccessSnapshot();
+      this._emitPairingEvent({
+        role: 'device-a',
+        stage: 'access-check',
+        level: beforeGrant.currentIdentityIsAdmin || beforeGrant.currentIdentityIsRootWriter ? 'info' : 'warning',
+        detail: beforeGrant.currentIdentityIsAdmin || beforeGrant.currentIdentityIsRootWriter
+          ? 'Current Device A identity appears authorized to mutate access control'
+          : 'Current Device A identity does not appear in the access controller admin/root-writer set',
+        requesterDid: identity.id,
+        rootWritePermissions: beforeGrant.rootWritePermissions,
+        writePermissions: beforeGrant.writePermissions,
+        adminPermissions: beforeGrant.adminPermissions,
+        currentIdentityIsRootWriter: beforeGrant.currentIdentityIsRootWriter,
+        currentIdentityCanWrite: beforeGrant.currentIdentityCanWrite,
+        currentIdentityIsAdmin: beforeGrant.currentIdentityIsAdmin,
+      });
+      this._emitPairingEvent({
+        role: 'device-a',
+        stage: 'grant-start',
+        level: 'info',
+        detail: 'Granting write access in OrbitDB access controller',
+        requesterDid: identity.id,
+      });
       await grantDeviceWriteAccess(this._devicesDb, identity.id);
+      const afterGrant = await this._getAccessSnapshot();
+      this._emitPairingEvent({
+        role: 'device-a',
+        stage: 'grant-complete',
+        level: 'success',
+        detail: 'Write access grant completed',
+        requesterDid: identity.id,
+        rootWritePermissions: afterGrant.rootWritePermissions,
+        writePermissions: afterGrant.writePermissions,
+        adminPermissions: afterGrant.adminPermissions,
+        currentIdentityIsRootWriter: afterGrant.currentIdentityIsRootWriter,
+        currentIdentityCanWrite: afterGrant.currentIdentityCanWrite,
+        currentIdentityIsAdmin: afterGrant.currentIdentityIsAdmin,
+      });
       await registerDevice(this._devicesDb, {
         credential_id: identity.credentialId,
         public_key: identity.publicKey || null,
@@ -296,6 +865,15 @@ export class MultiDeviceManager {
         status: 'active',
         ed25519_did: identity.id,
       });
+      const devices = await listDevices(this._devicesDb);
+      this._emitPairingEvent({
+        role: 'device-a',
+        stage: 'registry-write-complete',
+        level: 'success',
+        detail: 'New device registered in shared registry',
+        requesterDid: identity.id,
+        deviceCount: devices.length,
+      });
       return { type: 'granted', orbitdbAddress: this._dbAddress };
     }
     return { type: 'rejected', reason: 'User cancelled' };
@@ -303,6 +881,21 @@ export class MultiDeviceManager {
 
   async close() {
     try {
+      if (this._pubsubListeners?.pubsub) {
+        this._pubsubListeners.pubsub.removeEventListener(
+          'subscription-change',
+          this._pubsubListeners.onSubscriptionChange
+        );
+        this._pubsubListeners.pubsub.removeEventListener(
+          'message',
+          this._pubsubListeners.onPubsubMessage
+        );
+      }
+      this._pubsubListeners = null;
+      if (this._pairingHandlerRegistered && this._libp2p) {
+        await unregisterLinkDeviceHandler(this._libp2p);
+        this._pairingHandlerRegistered = false;
+      }
       if (this._devicesDb) await this._devicesDb.close();
       if (this._orbitdb) await this._orbitdb.stop();
       if (this._ipfs) await this._ipfs.stop();

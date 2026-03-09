@@ -16,6 +16,12 @@ function toBytes(data) {
     return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
   }
   if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  if (Array.isArray(data)) return new Uint8Array(data);
+  if (data && typeof data === 'object') {
+    if (data.bytes) return toBytes(data.bytes);
+    if (data.value) return toBytes(data.value);
+    return new Uint8Array(Object.values(data));
+  }
   throw new Error('Unsupported data type for worker identity');
 }
 
@@ -44,7 +50,7 @@ async function encodeIdentityValue(value) {
 }
 
 async function verifyEd25519Signature(publicKeyBytes, data, signature) {
-  const publicKey = publicKeyFromRaw(publicKeyBytes);
+  const publicKey = publicKeyFromRaw(toBytes(publicKeyBytes));
   return publicKey.verify(toBytes(data), toBytes(signature));
 }
 
@@ -56,10 +62,10 @@ export async function createWorkerEd25519Identity({ did, publicKey, sign }) {
 
   const identity = {
     id: did,
-    publicKey,
+    publicKey: toBytes(publicKey),
     signatures: {
-      id: idSignature,
-      publicKey: publicKeySignature,
+      id: toBytes(idSignature),
+      publicKey: toBytes(publicKeySignature),
     },
     type: 'worker-ed25519',
     sign: (_identity, data) => sign(toBytes(data)),
@@ -132,8 +138,11 @@ export function createWorkerEd25519Identities(identity, storage = null) {
 
     const decoded = {
       id: value.id,
-      publicKey: value.publicKey,
-      signatures: value.signatures,
+      publicKey: toBytes(value.publicKey),
+      signatures: {
+        id: toBytes(value.signatures.id),
+        publicKey: toBytes(value.signatures.publicKey),
+      },
       type: value.type,
       bytes,
       hash,
