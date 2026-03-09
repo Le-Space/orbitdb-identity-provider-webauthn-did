@@ -48,4 +48,7 @@ export default defineConfig({
       allow: [repoRoot],
     },
   },
+  worker: {
+    format: 'es',
+  },
 });

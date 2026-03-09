@@ -1,6 +1,6 @@
 # Ed25519 Encrypted Keystore Demo
 
-This demo showcases the **Ed25519 Keystore DID** and **WebAuthn-Encrypted Keystore** features for OrbitDB.
+This demo showcases the **Ed25519 Keystore DID**, **WebAuthn-Encrypted Keystore**, and **worker-backed Ed25519 signer** flows for OrbitDB.
 
 ## Features Demonstrated
 
@@ -16,6 +16,13 @@ This demo showcases the **Ed25519 Keystore DID** and **WebAuthn-Encrypted Keysto
 - Secret key protected by WebAuthn hardware (largeBlob or hmac-secret)
 - One biometric prompt per session
 - Protected from XSS, malicious extensions, and device theft
+
+### 🧵 Worker-Backed Ed25519 Signer
+
+- Optional worker-backed Ed25519 keystore mode for the demo
+- Derives worker keystore access from the credential seed
+- Stores an encrypted worker archive in browser storage and restores it after reload
+- Keeps the worker signing flow explicit and testable in the UI
 
 ## Running the Demo
 
@@ -37,6 +44,7 @@ Open your browser to the URL shown (typically http://localhost:5173)
 2. **Choose Security Options**:
    - ☑️ Use Ed25519 DID from keystore
    - ☑️ Encrypt keystore with WebAuthn
+   - Optional: ☑️ Use worker-backed Ed25519 keystore
    - Select encryption method (largeBlob or hmac-secret)
 3. **Authenticate**: Click to authenticate and set up OrbitDB
 4. **Add TODOs**: Your data is now secured with the selected options!
@@ -44,6 +52,7 @@ Open your browser to the URL shown (typically http://localhost:5173)
 ## Browser Support
 
 - **Ed25519 DID**: All browsers with WebAuthn
+- **Worker-backed mode**: Browsers with Web Worker support
 - **largeBlob encryption**: Chrome 106+, Edge 106+
 - **hmac-secret encryption**: Chrome, Firefox, Edge
 
@@ -59,6 +68,7 @@ sequenceDiagram
   participant LS as LocalStorage
   participant Prov as WebAuthn DID Provider
   participant KS as OrbitDB Keystore (IndexedDB)
+  participant WK as Worker Keystore
   participant Enc as KeystoreEncryption
   participant DB as OrbitDB Database
 
@@ -100,8 +110,26 @@ sequenceDiagram
     App->>Enc: store encrypted keystore metadata
   end
 
+  opt workerKeystore=true
+    App->>WebAuthn: get() with PRF
+    WebAuthn->>Auth: User verification
+    Auth-->>WebAuthn: PRF output
+    WebAuthn-->>App: PRF bytes
+    App->>WK: initialize worker keystore
+    alt stored worker archive
+      App->>WK: decrypt + load archive
+      WK-->>App: restored Ed25519 signer
+    else first session
+      App->>WK: generate Ed25519 signer
+      WK-->>App: DID + archive
+      App->>WK: encrypt archive for storage
+    end
+  end
+
   User->>App: Add TODO
   App->>DB: db.put()
   DB->>KS: sign entry with Ed25519 key
   KS-->>DB: Entry signature
+
+  Note over App,WK: Worker mode is demonstrated alongside the OrbitDB flow so worker initialization, probe signing, and archive restore stay visible in the demo and E2E tests.
 ```
