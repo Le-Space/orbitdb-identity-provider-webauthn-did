@@ -187,8 +187,8 @@ test.describe('Scenario A — First device setup', () => {
     expect(device.device_label).toBeTruthy();
     expect(device.created_at).toBeGreaterThan(0);
     expect(device.status).toBe('active');
-    // P-256 DIDs start with did:key:zK3 (current implementation)
-    expect(device.ed25519_did).toMatch(/^did:key:zK3/);
+    // Ed25519 did:key identifiers start with did:key:z6Mk
+    expect(device.ed25519_did).toMatch(/^did:key:z6Mk/);
 
     console.log('✅ Scenario A: Device entry:', {
       credential_id: device.credential_id.substring(0, 16),
@@ -266,8 +266,8 @@ test.describe('Scenario B — Device linking (transport bypassed)', () => {
 
       const stateB = await pageB.evaluate(() => window.__multiDevice.getState());
       const deviceBDid = stateB.identity.id;
-      // P-256 DIDs start with did:key:zK3
-      expect(deviceBDid).toMatch(/^did:key:zK3/);
+      // Ed25519 did:key identifiers start with did:key:z6Mk
+      expect(deviceBDid).toMatch(/^did:key:z6Mk/);
 
       // ── Simulate pairing: inject Device B's request into Device A via test API ──
       const grantResult = await pageA.evaluate(
@@ -298,8 +298,8 @@ test.describe('Scenario B — Device linking (transport bypassed)', () => {
       const deviceBEntry = devicesA.find((d) => d.ed25519_did === deviceBDid);
       expect(deviceBEntry).toBeTruthy();
       expect(deviceBEntry.status).toBe('active');
-      // P-256 DIDs start with did:key:zK3
-      expect(deviceBEntry.ed25519_did).toMatch(/^did:key:zK3/);
+      // Ed25519 did:key identifiers start with did:key:z6Mk
+      expect(deviceBEntry.ed25519_did).toMatch(/^did:key:z6Mk/);
 
       console.log('✅ Scenario B: Device A has', devicesA.length, 'devices after pairing');
       console.log('✅ Scenario B: Device B DID in registry:', deviceBDid.substring(0, 20) + '…');

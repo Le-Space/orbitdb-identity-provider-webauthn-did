@@ -282,6 +282,29 @@
     }
   }
 
+  async function ensureManagerReady() {
+    if (manager) return manager;
+    if (!credential) throw new Error('Credential not initialized');
+
+    const orbitdbState = await setupOrbitDB(credential, {
+      encryptKeystore: true,
+      keystoreEncryptionMethod: 'prf',
+    });
+
+    manager = await MultiDeviceManager.createFromExisting({
+      credential,
+      orbitdb: orbitdbState.orbitdb,
+      ipfs: orbitdbState.ipfs,
+      libp2p: orbitdbState.ipfs.libp2p,
+      identity: orbitdbState.identity,
+      onPairingRequest: handleIncomingPairRequest,
+      onDeviceJoined: refreshDevices,
+      onDeviceLinked: refreshDevices,
+    });
+
+    return manager;
+  }
+
   async function handlePairFromLink(event) {
     const { qrPayload: qr } = event.detail;
 
@@ -363,11 +386,14 @@
 
         // Test setup: create new DB as Device A (bypasses UI, for use after clicking Start)
         setupAsDeviceA: async () => {
-          if (!manager) throw new Error('Manager not initialized');
+          await ensureManagerReady();
           const created = await manager.createNew();
-          dbAddress = manager._dbAddress;
+          dbAddress = created.dbAddress;
+          saveDbAddress(dbAddress);
+          startWatchingQR();
           await refreshDevices();
           appMode = 'ready';
+          startSyncPolling();
           return dbAddress;
         },
 
