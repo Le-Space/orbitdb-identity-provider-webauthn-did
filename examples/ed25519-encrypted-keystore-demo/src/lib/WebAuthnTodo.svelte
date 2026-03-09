@@ -1,10 +1,16 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import {
     WebAuthnDIDProvider,
     checkWebAuthnSupport,
     KeystoreEncryption,
   } from '@le-space/orbitdb-identity-provider-webauthn-did';
+  import {
+    extractPrfSeedFromCredential,
+    getDefaultWorkerKeystoreClient,
+    isWorkerKeystoreAvailable,
+    resetDefaultWorkerKeystoreClient,
+  } from '@le-space/orbitdb-identity-provider-webauthn-did/standalone';
 
   import { setupOrbitDB, cleanup, resetDatabaseState } from './libp2p.js';
   import {
@@ -51,9 +57,31 @@
   let useKeystoreDID = true; // Use persistent DID from OrbitDB keystore (instead of WebAuthn P-256)
   let keystoreKeyType = 'Ed25519'; // Key type: 'secp256k1' or 'Ed25519' (default: Ed25519)
   let extensionSupport = { largeBlob: false, hmacSecret: false };
+  let useWorkerKeystore = false;
+  let workerAvailable = false;
+  let workerClient = null;
+  let workerStatus = 'idle';
+  let workerDid = null;
+  let workerSeedSource = null;
+  let workerArchiveRestored = false;
+  let workerSignatureVerified = null;
+  let workerLastOperation = null;
+  let workerLastSignatureLength = 0;
+  let workerProbeCount = 0;
+  let activeSigningBackend = 'main-thread-provider';
+
+  const WORKER_ARCHIVE_STORAGE_KEY = 'worker-keystore-archive';
+  const WORKER_ARCHIVE_META_KEY = 'worker-keystore-meta';
 
   // Computed values
   $: todoStats = getTodoStats(todos);
+  $: workerModeSupported =
+    workerAvailable &&
+    useKeystoreDID &&
+    keystoreKeyType === 'Ed25519';
+  $: if (!workerModeSupported) {
+    useWorkerKeystore = false;
+  }
 
   // UI helper functions
   async function copyToClipboard(text) {
@@ -73,6 +101,8 @@
   }
 
   onMount(async () => {
+    workerAvailable = isWorkerKeystoreAvailable();
+
     // Expose utilities to window for E2E testing
     if (typeof window !== 'undefined') {
       const { addPRFToCredentialOptions, wrapSKWithPRF, unwrapSKWithPRF } =
@@ -83,10 +113,40 @@
         wrapSKWithPRF,
         unwrapSKWithPRF,
       };
+      window.__encryptedKeystoreDemo = {
+        getState: () => ({
+          credentialReady: Boolean(credential),
+          isAuthenticated,
+          useKeystoreDID,
+          keystoreKeyType,
+          useEncryption,
+          encryptionMethod,
+          workerAvailable,
+          workerModeSupported,
+          useWorkerKeystore,
+          workerStatus,
+          workerDid,
+          workerSeedSource,
+          workerArchiveRestored,
+          workerSignatureVerified,
+          workerLastOperation,
+          workerLastSignatureLength,
+          workerProbeCount,
+          activeSigningBackend,
+          orbitdbIdentityDid: orbitdbInstances?.identity?.id || null,
+        }),
+        clearWorkerArchive: () => {
+          clearWorkerArchiveStorage();
+        },
+      };
     }
 
     await initializeWebAuthn();
     await checkEncryptionSupport();
+  });
+
+  onDestroy(() => {
+    resetWorkerClient();
   });
 
   async function checkEncryptionSupport() {
@@ -157,6 +217,127 @@
     return null;
   }
 
+  function resetWorkerClient() {
+    workerClient = null;
+    resetDefaultWorkerKeystoreClient();
+  }
+
+  function clearWorkerArchiveStorage() {
+    localStorage.removeItem(WORKER_ARCHIVE_STORAGE_KEY);
+    localStorage.removeItem(WORKER_ARCHIVE_META_KEY);
+  }
+
+  function persistWorkerArchive(ciphertext, iv, did) {
+    localStorage.setItem(
+      WORKER_ARCHIVE_STORAGE_KEY,
+      JSON.stringify({
+        ciphertext: Array.from(ciphertext),
+        iv: Array.from(iv),
+      })
+    );
+    localStorage.setItem(
+      WORKER_ARCHIVE_META_KEY,
+      JSON.stringify({
+        did,
+      })
+    );
+  }
+
+  function loadStoredWorkerArchive() {
+    try {
+      const payloadRaw = localStorage.getItem(WORKER_ARCHIVE_STORAGE_KEY);
+      if (!payloadRaw) return null;
+      const payload = JSON.parse(payloadRaw);
+      const metaRaw = localStorage.getItem(WORKER_ARCHIVE_META_KEY);
+      const meta = metaRaw ? JSON.parse(metaRaw) : {};
+      return {
+        ciphertext: new Uint8Array(payload.ciphertext || []),
+        iv: new Uint8Array(payload.iv || []),
+        did: meta.did || null,
+      };
+    } catch (error) {
+      console.warn('Failed to load stored worker archive:', error);
+      clearWorkerArchiveStorage();
+      return null;
+    }
+  }
+
+  async function runWorkerSignatureProbe(operation, payload) {
+    if (!workerClient) {
+      return;
+    }
+
+    const data = new TextEncoder().encode(JSON.stringify(payload));
+    const signature = await workerClient.sign(data);
+    const verified = await workerClient.verify(data, signature);
+    workerLastOperation = operation;
+    workerLastSignatureLength = signature.length;
+    workerSignatureVerified = verified;
+    workerProbeCount += 1;
+    workerStatus = verified ? 'ready' : 'verification-failed';
+  }
+
+  async function initializeWorkerKeystore() {
+    if (!useWorkerKeystore) {
+      activeSigningBackend = 'main-thread-provider';
+      workerStatus = 'disabled';
+      workerDid = null;
+      workerSeedSource = null;
+      workerArchiveRestored = false;
+      workerSignatureVerified = null;
+      workerLastOperation = null;
+      workerLastSignatureLength = 0;
+      resetWorkerClient();
+      return;
+    }
+
+    workerStatus = 'initializing';
+    workerArchiveRestored = false;
+    workerSignatureVerified = null;
+    workerLastOperation = null;
+    workerLastSignatureLength = 0;
+    resetWorkerClient();
+    workerClient = getDefaultWorkerKeystoreClient();
+
+    const { seed, source } = await extractPrfSeedFromCredential(credential, {
+      prfInput: credential.prfInput,
+    });
+    workerSeedSource = source;
+    await workerClient.initWithPrfSeed(seed);
+
+    const storedArchive = loadStoredWorkerArchive();
+    if (storedArchive) {
+      const archive = await workerClient.decryptArchive(
+        storedArchive.ciphertext,
+        storedArchive.iv
+      );
+      await workerClient.loadArchive(archive);
+      workerDid = storedArchive.did;
+      workerArchiveRestored = true;
+      workerStatus = 'restored';
+    } else {
+      const generated = await workerClient.generateEd25519Identity();
+      workerDid = generated.did;
+      const encryptedArchive = await workerClient.encryptArchive(
+        generated.archive
+      );
+      persistWorkerArchive(
+        encryptedArchive.ciphertext,
+        encryptedArchive.iv,
+        generated.did
+      );
+      workerArchiveRestored = false;
+      workerStatus = 'ready';
+    }
+
+    activeSigningBackend = 'worker-keystore';
+    await runWorkerSignatureProbe('authenticate', {
+      phase: 'authenticate',
+      orbitdbIdentityDid: orbitdbInstances?.identity?.id || null,
+      workerDid,
+    });
+  }
+
   async function createCredential() {
     try {
       loading = true;
@@ -201,6 +382,7 @@
   async function authenticate() {
     try {
       loading = true;
+      activeSigningBackend = 'main-thread-provider';
 
       status = 'Setting up OrbitDB...';
       // Use the extracted setupOrbitDB function with encryption options
@@ -210,6 +392,8 @@
         encryptKeystore: useEncryption,
         encryptionMethod: encryptionMethod,
       });
+
+      await initializeWorkerKeystore();
 
       status = 'Opening TODO database...';
       // Use the extracted openTodoDatabase function
@@ -302,6 +486,12 @@
       loading = true;
 
       await addTodo(database, newTodo, credential);
+      if (useWorkerKeystore) {
+        await runWorkerSignatureProbe('add-todo', {
+          id: `probe-${Date.now()}`,
+          text: newTodo.trim(),
+        });
+      }
       await refreshTodos();
 
       // Refresh verification states after a short delay to allow database events to process
@@ -324,6 +514,12 @@
       loading = true;
 
       await toggleTodo(database, todo);
+      if (useWorkerKeystore) {
+        await runWorkerSignatureProbe('toggle-todo', {
+          id: todo.id,
+          completed: !todo.completed,
+        });
+      }
       await refreshTodos();
     } catch (error) {
       console.error('Failed to toggle todo:', error);
@@ -339,6 +535,11 @@
       loading = true;
 
       await deleteTodo(database, todo);
+      if (useWorkerKeystore) {
+        await runWorkerSignatureProbe('delete-todo', {
+          id: todo.id,
+        });
+      }
       await refreshTodos();
     } catch (error) {
       console.error('Failed to delete todo:', error);
@@ -367,6 +568,16 @@
       isAuthenticated = false;
       database = null;
       orbitdbInstances = null;
+      resetWorkerClient();
+      workerStatus = 'idle';
+      workerDid = null;
+      workerSeedSource = null;
+      workerArchiveRestored = false;
+      workerSignatureVerified = null;
+      workerLastOperation = null;
+      workerLastSignatureLength = 0;
+      workerProbeCount = 0;
+      activeSigningBackend = 'main-thread-provider';
 
       status = 'Database reset complete - ready to authenticate again';
       console.log('✅ Database reset completed');
@@ -452,6 +663,16 @@
       credential = null;
       database = null;
       orbitdbInstances = null;
+      resetWorkerClient();
+      workerStatus = 'idle';
+      workerDid = null;
+      workerSeedSource = null;
+      workerArchiveRestored = false;
+      workerSignatureVerified = null;
+      workerLastOperation = null;
+      workerLastSignatureLength = 0;
+      workerProbeCount = 0;
+      activeSigningBackend = 'main-thread-provider';
       localStorage.removeItem('webauthn-credential');
       status = 'Logged out successfully';
     } catch (error) {
@@ -463,6 +684,16 @@
       credential = null;
       database = null;
       orbitdbInstances = null;
+      resetWorkerClient();
+      workerStatus = 'idle';
+      workerDid = null;
+      workerSeedSource = null;
+      workerArchiveRestored = false;
+      workerSignatureVerified = null;
+      workerLastOperation = null;
+      workerLastSignatureLength = 0;
+      workerProbeCount = 0;
+      activeSigningBackend = 'main-thread-provider';
       localStorage.removeItem('webauthn-credential');
       status = 'Logged out (with cleanup errors)';
     }
@@ -633,6 +864,32 @@
               >
             </label>
 
+            <label
+              style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;"
+            >
+              <input
+                type="checkbox"
+                bind:checked={useWorkerKeystore}
+                disabled={loading || !workerModeSupported}
+                style="cursor: pointer;"
+                data-testid="worker-mode-toggle"
+              />
+              <span style="color: var(--cds-text-primary);"
+                >Use worker-backed Ed25519 keystore</span
+              >
+              <span
+                style="font-size: 0.75rem; color: var(--cds-text-secondary);"
+              >
+                {#if workerModeSupported}
+                  🧵 Sign outside main thread
+                {:else if !workerAvailable}
+                  ❌ Web Workers unavailable
+                {:else}
+                  ℹ️ Requires Ed25519 keystore identity
+                {/if}
+              </span>
+            </label>
+
             <!-- Encryption Method -->
             {#if useEncryption}
               <div
@@ -701,6 +958,9 @@
                     <li>
                       Persistent {keystoreKeyType} DID from OrbitDB keystore
                     </li>
+                    {#if useWorkerKeystore}
+                      <li>Worker-backed Ed25519 signer initialized from passkey seed</li>
+                    {/if}
                     {#if keystoreKeyType === 'Ed25519'}
                       <li>Ed25519: Faster signing, smaller keys (32 bytes)</li>
                     {:else}
@@ -814,8 +1074,42 @@
             <Button on:click={handleLogout} kind="ghost" size="small">
               Logout
             </Button>
-          </div>
-        </div>
+                </div>
+                <div
+                  style="display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.75rem;"
+                >
+                  <div data-testid="signing-backend">
+                    <strong>Active keystore mode:</strong> {activeSigningBackend}
+                  </div>
+                  <div data-testid="worker-status">
+                    <strong>Worker keystore:</strong> {workerStatus}
+                  </div>
+                  {#if workerDid}
+                    <div data-testid="worker-did">
+                      <strong>Worker signer DID:</strong> <code>{workerDid}</code>
+                    </div>
+                  {/if}
+                  {#if useWorkerKeystore}
+                    <div data-testid="worker-archive-status">
+                      <strong>Worker archive:</strong>
+                      {workerArchiveRestored ? 'restored from storage' : 'created for this session'}
+                    </div>
+                    <div data-testid="worker-seed-source">
+                      <strong>Seed source:</strong> {workerSeedSource}
+                    </div>
+                    <div data-testid="worker-probe-status">
+                      <strong>Last worker probe:</strong>
+                      {workerLastOperation || 'none'} /
+                      {workerSignatureVerified === null
+                        ? 'not-run'
+                        : workerSignatureVerified
+                          ? 'verified'
+                          : 'failed'} /
+                      {workerLastSignatureLength} bytes
+                    </div>
+                  {/if}
+                </div>
+              </div>
       </div>
 
       <!-- Add New TODO -->

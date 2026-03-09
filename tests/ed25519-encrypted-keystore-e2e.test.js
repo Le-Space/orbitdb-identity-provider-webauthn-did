@@ -12,6 +12,27 @@ import { test, expect } from '@playwright/test';
  * 6. Session management and unlocking
  */
 
+async function waitForDemoState(page) {
+  await page.waitForFunction(
+    () => typeof window.__encryptedKeystoreDemo?.getState === 'function',
+    { timeout: 30000 }
+  );
+}
+
+async function createCredentialAndWait(page) {
+  await page.locator('button:has-text("Create Credential")').click();
+  await page.waitForSelector('text=Credential created successfully!', {
+    timeout: 30000,
+  });
+}
+
+async function authenticateAndWait(page) {
+  await page.locator('button:has-text("Authenticate with WebAuthn")').click();
+  await page.waitForSelector('text=Successfully authenticated', {
+    timeout: 60000,
+  });
+}
+
 test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
   test.beforeEach(async ({ page, context }) => {
     // Clear localStorage before each test
@@ -138,6 +159,7 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     await page.waitForSelector('button:has-text("Create Credential")', {
       timeout: 30000,
     });
+    await waitForDemoState(page);
   });
 
   test('should display extension support status correctly', async ({
@@ -509,6 +531,114 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
       console.log('✅ Encryption benefit hidden when encryption disabled');
     }
   });
+
+  test('should initialize worker-backed keystore mode and verify worker probe', async ({
+    page,
+  }) => {
+    test.setTimeout(90000);
+    console.log('\n🧪 Testing worker-backed keystore mode...');
+
+    await page.waitForSelector('text=WebAuthn is fully supported', {
+      timeout: 30000,
+    });
+
+    await createCredentialAndWait(page);
+
+    const workerToggle = page.locator('[data-testid="worker-mode-toggle"]');
+    await expect(workerToggle).toBeVisible();
+    await expect(workerToggle).toBeEnabled();
+    await workerToggle.check();
+
+    await authenticateAndWait(page);
+
+    await page.waitForFunction(() => {
+      const state = window.__encryptedKeystoreDemo?.getState?.();
+      return (
+        state &&
+        state.useWorkerKeystore === true &&
+        state.workerStatus !== 'initializing' &&
+        state.workerProbeCount >= 1
+      );
+    }, { timeout: 60000 });
+
+    const state = await page.evaluate(() => window.__encryptedKeystoreDemo.getState());
+    expect(state.useWorkerKeystore).toBe(true);
+    expect(state.activeSigningBackend).toBe('worker-keystore');
+    expect(state.workerDid).toMatch(/^did:key:z6Mk/);
+    expect(state.workerSignatureVerified).toBe(true);
+    expect(state.workerLastOperation).toBe('authenticate');
+    expect(state.workerLastSignatureLength).toBeGreaterThan(0);
+
+    await expect(page.locator('[data-testid="worker-status"]')).toContainText(
+      /ready|restored/
+    );
+    await expect(
+      page.locator('[data-testid="worker-probe-status"]')
+    ).toContainText('verified');
+
+    console.log('✅ Worker keystore initialized with DID:', state.workerDid);
+  });
+
+  test('should restore worker archive after reload when worker mode is re-enabled', async ({
+    page,
+  }) => {
+    test.setTimeout(90000);
+    console.log('\n🧪 Testing worker archive restore after reload...');
+
+    await page.waitForSelector('text=WebAuthn is fully supported', {
+      timeout: 30000,
+    });
+
+    await createCredentialAndWait(page);
+    await page.locator('[data-testid="worker-mode-toggle"]').check();
+    await authenticateAndWait(page);
+
+    await page.waitForFunction(() => {
+      const state = window.__encryptedKeystoreDemo?.getState?.();
+      return state && state.workerDid && state.workerProbeCount >= 1;
+    }, { timeout: 60000 });
+
+    const firstState = await page.evaluate(
+      () => window.__encryptedKeystoreDemo.getState()
+    );
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => document.readyState === 'complete');
+    await waitForDemoState(page);
+    await page.waitForSelector('button:has-text("Authenticate with WebAuthn")', {
+      timeout: 30000,
+    });
+
+    const workerToggle = page.locator('[data-testid="worker-mode-toggle"]');
+    await workerToggle.check();
+    await authenticateAndWait(page);
+
+    await page.waitForFunction(() => {
+      const state = window.__encryptedKeystoreDemo?.getState?.();
+      return (
+        state &&
+        state.workerArchiveRestored === true &&
+        state.workerStatus !== 'initializing' &&
+        state.workerProbeCount >= 1
+      );
+    }, { timeout: 60000 });
+
+    const restoredState = await page.evaluate(
+      () => window.__encryptedKeystoreDemo.getState()
+    );
+
+    expect(restoredState.useWorkerKeystore).toBe(true);
+    expect(restoredState.workerArchiveRestored).toBe(true);
+    expect(restoredState.workerDid).toBe(firstState.workerDid);
+    expect(restoredState.workerSignatureVerified).toBe(true);
+
+    await expect(
+      page.locator('[data-testid="worker-archive-status"]')
+    ).toContainText('restored from storage');
+
+    console.log('✅ Worker archive restored for DID:', restoredState.workerDid);
+  });
+
   test('should handle browser reload persistence (session management)', async ({
     page,
   }) => {
