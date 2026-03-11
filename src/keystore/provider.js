@@ -9,6 +9,20 @@ import { WebAuthnDIDProvider } from '../webauthn/provider.js';
 
 const identityLog = logger('orbitdb-identity-provider-webauthn-did:identity');
 
+function normalizeByteArray(value) {
+  if (!value) return new Uint8Array(0);
+  if (value instanceof Uint8Array) return value;
+  if (value instanceof ArrayBuffer) return new Uint8Array(value);
+  if (ArrayBuffer.isView(value)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  if (Array.isArray(value)) return new Uint8Array(value);
+  if (typeof value === 'object' && typeof value.length === 'number') {
+    return new Uint8Array(value);
+  }
+  return new Uint8Array(0);
+}
+
 /**
  * OrbitDB Identity Provider that uses WebAuthn
  */
@@ -119,10 +133,7 @@ export class OrbitDBWebAuthnIdentityProvider {
           : await KeystoreEncryption.loadEncryptedKeystore(
               this.credential.credentialId
             );
-        const publicKeyBytes =
-          encryptedData.publicKey instanceof Uint8Array
-            ? encryptedData.publicKey
-            : new Uint8Array(encryptedData.publicKey);
+        const publicKeyBytes = normalizeByteArray(encryptedData.publicKey);
         const keyType = encryptedData.keyType || this.keystoreKeyType;
 
         return this.createDIDFromKeystorePublicKey(
@@ -467,10 +478,7 @@ export class OrbitDBWebAuthnIdentityProvider {
         encryptedData.iv
       );
 
-      const publicKeyBytes =
-        encryptedData.publicKey instanceof Uint8Array
-          ? encryptedData.publicKey
-          : new Uint8Array(encryptedData.publicKey);
+      const publicKeyBytes = normalizeByteArray(encryptedData.publicKey);
       // Store unlocked keypair in memory for session
       this.unlockedKeypair = {
         privateKey: privateKeyBytes,

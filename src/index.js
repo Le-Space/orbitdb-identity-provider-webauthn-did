@@ -14,9 +14,23 @@ import {
   resetWebAuthnConfig,
 } from './webauthn/config.js';
 import {
+  createDidLargeBlobPayload,
+  parseDidLargeBlobPayload,
+  createVarsigLargeBlobPayload,
+  parseVarsigLargeBlobPayload,
+  readLargeBlobMetadata,
+  writeLargeBlobMetadata,
+} from './webauthn/large-blob-metadata.js';
+import {
   OrbitDBWebAuthnIdentityProvider,
   OrbitDBWebAuthnIdentityProviderFunction,
 } from './keystore/provider.js';
+import {
+  storeWebAuthnCredentialSafe,
+  loadWebAuthnCredentialSafe,
+  clearWebAuthnCredentialSafe,
+  extractPrfSeedFromCredential,
+} from './standalone/webauthn/credential.js';
 import {
   WebAuthnVarsigProvider,
   createWebAuthnVarsigIdentity,
@@ -39,6 +53,16 @@ export {
   configureWebAuthn,
   getWebAuthnConfig,
   resetWebAuthnConfig,
+  createDidLargeBlobPayload,
+  parseDidLargeBlobPayload,
+  createVarsigLargeBlobPayload,
+  parseVarsigLargeBlobPayload,
+  readLargeBlobMetadata,
+  writeLargeBlobMetadata,
+  storeWebAuthnCredentialSafe,
+  loadWebAuthnCredentialSafe,
+  clearWebAuthnCredentialSafe,
+  extractPrfSeedFromCredential,
 };
 
 /**
@@ -234,6 +258,16 @@ export default {
   registerWebAuthnProvider,
   checkWebAuthnSupport,
   storeWebAuthnCredential,
+  storeWebAuthnCredentialSafe,
+  loadWebAuthnCredentialSafe,
+  clearWebAuthnCredentialSafe,
+  extractPrfSeedFromCredential,
+  createDidLargeBlobPayload,
+  parseDidLargeBlobPayload,
+  createVarsigLargeBlobPayload,
+  parseVarsigLargeBlobPayload,
+  readLargeBlobMetadata,
+  writeLargeBlobMetadata,
   loadWebAuthnCredential,
   clearWebAuthnCredential,
   WebAuthnVarsigProvider,

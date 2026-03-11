@@ -454,17 +454,38 @@ export async function storeEncryptedKeystore(data, credentialId) {
 
   const storageKey = `encrypted-keystore-${credentialId}`;
 
+  const normalizeBytes = (value) => {
+    if (!value) return null;
+    if (value instanceof Uint8Array) return value;
+    if (value instanceof ArrayBuffer) return new Uint8Array(value);
+    if (ArrayBuffer.isView(value)) {
+      return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    }
+    if (Array.isArray(value)) return new Uint8Array(value);
+    return null;
+  };
+
+  const serializePublicKey = (publicKey) => {
+    if (!publicKey) return undefined;
+    const bytes = normalizeBytes(publicKey);
+    if (bytes) {
+      return {
+        __type: 'uint8array',
+        bytes: Array.from(bytes),
+      };
+    }
+    return {
+      ...publicKey,
+      x: publicKey.x ? Array.from(publicKey.x) : undefined,
+      y: publicKey.y ? Array.from(publicKey.y) : undefined,
+    };
+  };
+
   const serializedData = {
     ciphertext: Array.from(data.ciphertext),
     iv: Array.from(data.iv),
     credentialId: data.credentialId,
-    publicKey: data.publicKey
-      ? {
-          ...data.publicKey,
-          x: data.publicKey.x ? Array.from(data.publicKey.x) : undefined,
-          y: data.publicKey.y ? Array.from(data.publicKey.y) : undefined,
-        }
-      : undefined,
+    publicKey: serializePublicKey(data.publicKey),
     wrappedSK: data.wrappedSK ? Array.from(data.wrappedSK) : undefined,
     wrappingIV: data.wrappingIV ? Array.from(data.wrappingIV) : undefined,
     salt: data.salt ? Array.from(data.salt) : undefined,
@@ -501,17 +522,23 @@ export async function loadEncryptedKeystore(credentialId) {
 
     const data = JSON.parse(stored);
 
+    const deserializePublicKey = (publicKey) => {
+      if (!publicKey) return undefined;
+      if (publicKey.__type === 'uint8array') {
+        return new Uint8Array(publicKey.bytes || []);
+      }
+      return {
+        ...publicKey,
+        x: publicKey.x ? new Uint8Array(publicKey.x) : undefined,
+        y: publicKey.y ? new Uint8Array(publicKey.y) : undefined,
+      };
+    };
+
     const deserialized = {
       ciphertext: new Uint8Array(data.ciphertext),
       iv: new Uint8Array(data.iv),
       credentialId: data.credentialId,
-      publicKey: data.publicKey
-        ? {
-            ...data.publicKey,
-            x: data.publicKey.x ? new Uint8Array(data.publicKey.x) : undefined,
-            y: data.publicKey.y ? new Uint8Array(data.publicKey.y) : undefined,
-          }
-        : undefined,
+      publicKey: deserializePublicKey(data.publicKey),
       wrappedSK: data.wrappedSK ? new Uint8Array(data.wrappedSK) : undefined,
       wrappingIV: data.wrappingIV ? new Uint8Array(data.wrappingIV) : undefined,
       salt: data.salt ? new Uint8Array(data.salt) : undefined,
