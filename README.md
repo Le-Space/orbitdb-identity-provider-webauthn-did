@@ -11,6 +11,21 @@ This package provides:
 - **WebAuthn-Varsig**: No insecure OrbitDB keystore at all. Each entry is signed by WebAuthn (varsig envelope), so keys never leave the authenticator, one Passkey (WebAuthn) prompt per write.
 - **Keystore-based DID**: Generates an Ed25519/secp256k1 keystore keypair for OrbitDB signing in browser memory. When `encryptKeystore` is enabled, the private key is encrypted with AES-GCM and only rehydrated in memory after a WebAuthn unlock (PRF, largeBlob, or hmac-secret).
 
+## Current WebAuthn Model
+
+- Discoverable credentials are enabled by default across the shared WebAuthn config.
+- Authentication/assertion requests omit `allowCredentials` by default, so the browser/authenticator can resolve the credential discoverably.
+- You can switch this centrally with `configureWebAuthn({ discoverableCredentials: true|false })`.
+- Registration is still the point where this package extracts the credential public key from attestation.
+- Later `navigator.credentials.get()` assertions do not reliably return the public key again, so identity reconstruction still needs metadata from somewhere else.
+
+In this repo today, metadata recovery works in two layers:
+
+- **Preferred recovery path**: store identity metadata in WebAuthn `largeBlob` and recover it later through discoverable authentication.
+- **Fallback recovery path**: store the same metadata in browser `localStorage`.
+
+This means discoverable credentials remove the need to pre-select the credential for authentication, but they do not by themselves eliminate the need for identity metadata persistence.
+
 **Recommendation (security-first):**
 
 - **Best security:** Varsig provider (hardware-backed key for every write).
@@ -25,6 +40,30 @@ npm install @le-space/orbitdb-identity-provider-webauthn-did
 ```
 
 Note: `@orbitdb/core` is patched (via `patch-package`) to support Ed25519 keystore keys.
+
+## WebAuthn Configuration
+
+The package now exposes a central WebAuthn policy API:
+
+```javascript
+import {
+  configureWebAuthn,
+  getWebAuthnConfig,
+  resetWebAuthnConfig,
+} from '@le-space/orbitdb-identity-provider-webauthn-did';
+
+configureWebAuthn({ discoverableCredentials: true }); // default
+console.log(getWebAuthnConfig());
+resetWebAuthnConfig();
+```
+
+Behavior:
+
+- `discoverableCredentials: true`
+  - registration requests resident/discoverable credentials
+  - assertion requests omit `allowCredentials`
+- `discoverableCredentials: false`
+  - assertion requests target a specific credential ID via `allowCredentials`
 
 ## Memory Keystore Quick Start
 
@@ -46,6 +85,20 @@ const identity = await identities.createIdentity({
 });
 ```
 
+### Discoverable Recovery Notes
+
+For the DID-based flow:
+
+- `createCredential()` can extract the public key from attestation and derive a DID from it.
+- later discoverable `navigator.credentials.get()` proves possession of the credential, but usually returns only `rawId`, `authenticatorData`, `clientDataJSON`, `signature`, and maybe `userHandle`
+- that assertion is not enough on its own to reconstruct the DID
+
+To address this, the demos now attempt to:
+
+1. write identity metadata to `largeBlob` after passkey creation
+2. recover that metadata later through discoverable authentication
+3. fall back to local browser storage if `largeBlob` is unavailable or empty
+
 ### Hardware-Secured Varsig Quick Start
 
 ```javascript
@@ -61,6 +114,8 @@ const credential = await WebAuthnVarsigProvider.createCredential({
 
 const identity = await createWebAuthnVarsigIdentity({ credential });
 ```
+
+For varsig, the same recovery limitation applies: a discoverable assertion identifies the credential but does not re-export the public key. The demos therefore use the same `largeBlob`-first, local fallback recovery approach for varsig credential metadata.
 
 ## Standalone Toolkit (without OrbitDB identity provider wiring)
 
@@ -207,9 +262,9 @@ sequenceDiagram
 
 Svelte demos:
 
-- `examples/webauthn-todo-demo/` - WebAuthn DID (no keystore signing; identity-only).
+- `examples/webauthn-todo-demo/` - WebAuthn DID (no keystore signing; identity-only). Includes discoverable credential diagnostics, `Use Existing Passkey`, `largeBlob` identity metadata recovery, and local fallback recovery.
 - `examples/ed25519-encrypted-keystore-demo/` - Ed25519 keystore DID; keystore encrypted at rest with WebAuthn (PRF when available, otherwise largeBlob/hmac-secret).
-- `examples/webauthn-varsig-demo/` - Varsig provider with passkey signing for each entry. Live demo: https://dweb.link/ipfs/bafybeib6tpwiby7pik67ufb3lxpr3j4by2l7r3ov3zzk6hjbzjzgsvckhy
+- `examples/webauthn-varsig-demo/` - Varsig provider with passkey signing for each entry. Includes discoverable credential diagnostics, `Use Existing Passkey`, `largeBlob` varsig metadata recovery, and local fallback recovery. Live demo: https://dweb.link/ipfs/bafybeib6tpwiby7pik67ufb3lxpr3j4by2l7r3ov3zzk6hjbzjzgsvckhy
 
 Scripted examples:
 
@@ -229,6 +284,21 @@ Mermaid sequences for scripts:
 - `docs/STANDALONE-API-PLAN.md`
 - `docs/EXAMPLE-SEQUENCES.md`
 - `docs/E2E-TEST-SUMMARY.md`
+
+## Identity Recovery Summary
+
+Current identity recovery behavior in this repo:
+
+- Discoverable passkeys are the default.
+- Discoverable authentication can recover the credential ID used for assertion.
+- Discoverable authentication does not reliably re-expose the credential public key.
+- Because of that, OrbitDB identity recovery requires metadata persistence.
+- The demos now try `largeBlob` first for identity metadata recovery.
+- If `largeBlob` is not supported or has no metadata, the demos fall back to local browser storage.
+
+Practical implication:
+
+- If you create a passkey on one browser profile and later open the app in a fresh profile, the passkey may still exist in the platform passkey manager, but the app can only reconstruct the OrbitDB identity if it can recover metadata from `largeBlob` or some other persisted mapping.
 
 ## License
 

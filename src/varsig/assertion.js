@@ -13,9 +13,38 @@ import {
   verifyWebAuthnAssertion,
 } from 'iso-webauthn-varsig';
 import { buildChallengeBytes, toArrayBuffer, toBytes } from './utils.js';
+import { buildCredentialRequestOptions } from '../webauthn/config.js';
 
 const isTestMode = () =>
   typeof window !== 'undefined' && window.__PLAYWRIGHT__ === true;
+
+function logWebAuthnResponse(label, credential) {
+  const response = credential?.response;
+  const getPublicKeyResult =
+    typeof response?.getPublicKey === 'function' ? response.getPublicKey() : null;
+
+  console.group(`[WebAuthn Debug] ${label}`);
+  console.log('credential', credential);
+  console.log('credential.id', credential?.id);
+  console.log('credential.type', credential?.type);
+  console.log('credential.rawId', credential?.rawId);
+  console.log('credential.response', response);
+  console.log('response.clientDataJSON', response?.clientDataJSON);
+  console.log('response.attestationObject', response?.attestationObject);
+  console.log('response.authenticatorData', response?.authenticatorData);
+  console.log('response.signature', response?.signature);
+  console.log('response.userHandle', response?.userHandle);
+  console.log(
+    'response.getPublicKey exists',
+    typeof response?.getPublicKey === 'function'
+  );
+  console.log('response.getPublicKey()', getPublicKeyResult);
+  console.log(
+    'client extension results',
+    credential?.getClientExtensionResults?.() || null
+  );
+  console.groupEnd();
+}
 
 /**
  * Run a WebAuthn assertion for a payload.
@@ -24,6 +53,7 @@ const isTestMode = () =>
  * @param {string} domainLabel - Challenge domain label.
  * @param {'required'|'preferred'|'discouraged'} [userVerification='preferred'] - WebAuthn user verification mode.
  * @param {'silent'|'optional'|'conditional'|'required'} [mediation] - Credential mediation behavior.
+ * @param {boolean} [discoverableCredentials] - Override global discoverable credential policy.
  * @returns {Promise<Object>} Assertion metadata and bytes.
  */
 async function runWebAuthnAssertionForPayload(
@@ -31,7 +61,8 @@ async function runWebAuthnAssertionForPayload(
   payloadBytes,
   domainLabel,
   userVerification = 'preferred',
-  mediation
+  mediation,
+  discoverableCredentials
 ) {
   const rpId = window.location.hostname;
   const origin = window.location.origin;
@@ -58,24 +89,22 @@ async function runWebAuthnAssertionForPayload(
     };
   }
 
-  const assertion = await navigator.credentials.get({
-    publicKey: {
+  const assertion = await navigator.credentials.get(
+    buildCredentialRequestOptions({
       rpId,
       challenge: challengeBytes,
-      allowCredentials: [
-        {
-          type: 'public-key',
-          id: toArrayBuffer(credential.credentialId),
-        },
-      ],
+      credentialId: toArrayBuffer(credential.credentialId),
       userVerification,
-    },
-    ...(mediation ? { mediation } : {}),
-  });
+      mediation,
+      discoverableCredentials,
+    })
+  );
 
   if (!assertion) {
     throw new Error('Passkey authentication failed.');
   }
+
+  logWebAuthnResponse('varsig navigator.credentials.get()', assertion);
 
   const response = assertion.response;
 

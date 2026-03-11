@@ -3,7 +3,15 @@
   import {
     WebAuthnDIDProvider,
     checkWebAuthnSupport,
+    checkExtensionSupport,
   } from '@le-space/orbitdb-identity-provider-webauthn-did';
+  import { getWebAuthnConfig } from '../../../../src/webauthn/config.js';
+  import {
+    createDidLargeBlobPayload,
+    parseDidLargeBlobPayload,
+    readLargeBlobMetadata,
+    writeLargeBlobMetadata,
+  } from '../../../../src/webauthn/large-blob-metadata.js';
 
   import { setupOrbitDB, cleanup, resetDatabaseState } from './libp2p.js';
   import {
@@ -36,6 +44,16 @@
   let isAuthenticated = false;
   let loading = false;
   let status = 'Checking WebAuthn support...';
+  let webAuthnConfig = getWebAuthnConfig();
+
+  console.log('webAuthnConfig', webAuthnConfig);
+  let recoverySteps = [];
+  let lastAssertionDiagnostics = {
+    seen: false,
+    omittedAllowCredentials: null,
+    mediation: null,
+    rpId: null,
+  };
 
   // Identity verification tracking (not stored in database)
   let todoVerifications = new Map(); // Map<todoId, {verified: boolean, timestamp: number, identityHash: string}>
@@ -43,6 +61,8 @@
   // WebAuthn support detection
   let webAuthnSupported = false;
   let webAuthnPlatformAvailable = false;
+  let extensionSupport = { largeBlob: false, hmacSecret: false };
+  let currentRpId = 'unknown';
 
   // Computed values
   $: todoStats = getTodoStats(todos);
@@ -65,13 +85,50 @@
   }
 
   onMount(async () => {
+    currentRpId = window.location.hostname;
+    installAssertionDiagnostics();
     await initializeWebAuthn();
   });
+
+  function installAssertionDiagnostics() {
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.credentials ||
+      typeof navigator.credentials.get !== 'function'
+    ) {
+      return;
+    }
+
+    const credentialsApi = navigator.credentials;
+    if (credentialsApi.__discoverableDiagnosticsInstalled) {
+      webAuthnConfig = getWebAuthnConfig();
+      return;
+    }
+
+    const originalGet = credentialsApi.get.bind(credentialsApi);
+    credentialsApi.get = async (options) => {
+      const publicKey = options?.publicKey || {};
+      lastAssertionDiagnostics = {
+        seen: true,
+        omittedAllowCredentials: !(
+          Array.isArray(publicKey.allowCredentials) &&
+          publicKey.allowCredentials.length > 0
+        ),
+        mediation: options?.mediation || null,
+        rpId: publicKey.rpId || window.location.hostname,
+      };
+      webAuthnConfig = getWebAuthnConfig();
+      return originalGet(options);
+    };
+    credentialsApi.__discoverableDiagnosticsInstalled = true;
+    webAuthnConfig = getWebAuthnConfig();
+  }
 
   async function initializeWebAuthn() {
     try {
       status = 'Checking WebAuthn support...';
       const support = await checkWebAuthnSupport();
+      extensionSupport = await checkExtensionSupport();
       webAuthnSupported = support.supported;
       webAuthnPlatformAvailable = support.platformAuthenticator;
 
@@ -117,22 +174,236 @@
     return null;
   }
 
+  function bytesEqual(left, right) {
+    if (!left || !right || left.length !== right.length) return false;
+    for (let i = 0; i < left.length; i += 1) {
+      if (left[i] !== right[i]) return false;
+    }
+    return true;
+  }
+
+  function startRecoveryStepLog(title) {
+    console.log('[Recovery Step]', { label: title, status: 'running' });
+    recoverySteps = [{ label: title, status: 'running', detail: '' }];
+  }
+
+  function pushRecoveryStep(label, status, detail = '') {
+    console.log('[Recovery Step]', { label, status, detail });
+    recoverySteps = [...recoverySteps, { label, status, detail }];
+  }
+
+  function markInitialStep(status, detail = '') {
+    if (recoverySteps.length === 0) return;
+    console.log('[Recovery Step]', {
+      label: recoverySteps[0].label,
+      status,
+      detail,
+    });
+    recoverySteps = [
+      { ...recoverySteps[0], status, detail },
+      ...recoverySteps.slice(1),
+    ];
+  }
+
+  function logWebAuthnResponse(label, credential) {
+    const response = credential?.response;
+    const getPublicKeyResult =
+      typeof response?.getPublicKey === 'function'
+        ? response.getPublicKey()
+        : null;
+
+    console.group(`[WebAuthn Debug] ${label}`);
+    console.log('credential', credential);
+    console.log('credential.id', credential?.id);
+    console.log('credential.type', credential?.type);
+    console.log('credential.rawId', credential?.rawId);
+    console.log('credential.response', response);
+    console.log('response.clientDataJSON', response?.clientDataJSON);
+    console.log('response.attestationObject', response?.attestationObject);
+    console.log('response.authenticatorData', response?.authenticatorData);
+    console.log('response.signature', response?.signature);
+    console.log('response.userHandle', response?.userHandle);
+    console.log(
+      'response.getPublicKey exists',
+      typeof response?.getPublicKey === 'function'
+    );
+    console.log('response.getPublicKey()', getPublicKeyResult);
+    console.log(
+      'client extension results',
+      credential?.getClientExtensionResults?.() || null
+    );
+    console.groupEnd();
+  }
+
+  async function useExistingPasskey() {
+    try {
+      loading = true;
+      status = 'Checking for an existing passkey on this device...';
+      startRecoveryStepLog('Start discoverable passkey recovery');
+      markInitialStep('success', 'Started recovery flow');
+      pushRecoveryStep(
+        'Check largeBlob support',
+        extensionSupport.largeBlob ? 'success' : 'warning',
+        extensionSupport.largeBlob
+          ? 'Browser reports largeBlob support'
+          : 'Browser did not report largeBlob support'
+      );
+
+      pushRecoveryStep(
+        'Run discoverable authentication with largeBlob read',
+        'running',
+        'Waiting for passkey selection'
+      );
+      const { assertion, blob, extensionResults } = await readLargeBlobMetadata({
+        rpId: window.location.hostname,
+        discoverableCredentials: true,
+      });
+      console.log('[Recovery Step] largeBlob read result', {
+        blobLength: blob?.byteLength || 0,
+        extensionResults,
+      });
+      recoverySteps = recoverySteps.map((step, index) =>
+        index === recoverySteps.length - 1
+          ? {
+              ...step,
+              status: assertion ? 'success' : 'error',
+              detail: assertion
+                ? 'Authenticator returned an assertion'
+                : 'No assertion returned',
+            }
+          : step
+      );
+
+      if (!assertion) {
+        status = 'No existing passkey was returned by WebAuthn.';
+        return;
+      }
+
+      logWebAuthnResponse('demo useExistingPasskey navigator.credentials.get()', assertion);
+
+      pushRecoveryStep(
+        'Read largeBlob metadata',
+        blob ? 'success' : 'warning',
+        blob
+          ? `Recovered ${blob.byteLength} bytes from largeBlob`
+          : 'No largeBlob metadata found on this credential'
+      );
+
+      if (blob) {
+        const recovered = parseDidLargeBlobPayload(blob);
+        pushRecoveryStep(
+          'Parse identity metadata',
+          'success',
+          recovered.did
+            ? `Recovered DID ${recovered.did}`
+            : 'Recovered public key metadata from largeBlob'
+        );
+        credential = {
+          ...recovered,
+          attestationObject: new Uint8Array(),
+        };
+        storeCredential(credential);
+        pushRecoveryStep(
+          'Bind recovered credential locally',
+          'success',
+          'Stored recovered metadata in localStorage for future reuse'
+        );
+        status =
+          'Recovered OrbitDB identity metadata from largeBlob. Ready to authenticate.';
+        return;
+      }
+
+      const discoveredCredentialId = new Uint8Array(assertion.rawId);
+      const storedCredential = loadStoredCredential();
+      const localMatch =
+        storedCredential &&
+        bytesEqual(storedCredential.rawCredentialId, discoveredCredentialId);
+      pushRecoveryStep(
+        'Fallback to local metadata match',
+        localMatch ? 'success' : 'warning',
+        localMatch
+          ? 'Matched discoverable credential against localStorage metadata'
+          : 'No matching local metadata found for this credential'
+      );
+
+      if (localMatch) {
+        credential = storedCredential;
+        status =
+          'Existing passkey matched locally stored OrbitDB identity metadata. Ready to authenticate.';
+        return;
+      }
+
+      credential = null;
+      status =
+        'Passkey found, but no recoverable OrbitDB identity metadata was found in largeBlob or local storage.';
+    } catch (error) {
+      console.error('Existing passkey lookup failed:', error);
+      pushRecoveryStep('Recovery failed', 'error', error.message);
+      status = `Failed to use existing passkey: ${error.message}`;
+    } finally {
+      loading = false;
+    }
+  }
+
   async function createCredential() {
     try {
       loading = true;
       status = 'Creating WebAuthn credential...';
+      startRecoveryStepLog('Create new passkey and persist recovery metadata');
 
       credential = await WebAuthnDIDProvider.createCredential({
         userId: `todo-user-${Date.now()}`,
         displayName: 'TODO App User',
       });
+      markInitialStep('success', 'Passkey registration completed');
+
+      const did = await WebAuthnDIDProvider.createDID(credential);
+      pushRecoveryStep('Derive DID from public key', 'success', did);
+
+      if (extensionSupport.largeBlob) {
+        const payload = createDidLargeBlobPayload(credential, did);
+        pushRecoveryStep(
+          'Write identity metadata to largeBlob',
+          'running',
+          `Writing ${payload.byteLength} bytes`
+        );
+        const { extensionResults } = await writeLargeBlobMetadata({
+          credentialId: credential.rawCredentialId,
+          rpId: window.location.hostname,
+          payload,
+        });
+        console.log('[Recovery Step] largeBlob write result', {
+          extensionResults,
+        });
+        recoverySteps = recoverySteps.map((step, index) =>
+          index === recoverySteps.length - 1
+            ? {
+                ...step,
+                status: 'success',
+                detail: 'largeBlob write completed',
+              }
+            : step
+        );
+      } else {
+        pushRecoveryStep(
+          'Write identity metadata to largeBlob',
+          'warning',
+          'Skipped because largeBlob support is not available'
+        );
+      }
 
       // Store credential for future use
       storeCredential(credential);
+      pushRecoveryStep(
+        'Store local fallback metadata',
+        'success',
+        'Saved credential metadata to localStorage'
+      );
 
       status = 'Credential created successfully!';
     } catch (error) {
       console.error('Credential creation failed:', error);
+      pushRecoveryStep('Create credential failed', 'error', error.message);
       status = `Failed to create credential: ${error.message}`;
     } finally {
       loading = false;
@@ -434,6 +705,55 @@
         style="margin-top: 0.5rem;"
       />
     {/if}
+
+    <div
+      style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--cds-border-subtle);"
+    >
+      <div style="font-size: 0.75rem; font-weight: 600; margin-bottom: 0.5rem;">
+        Discoverable Credential Diagnostics
+      </div>
+      <div style="font-size: 0.875rem; color: var(--cds-text-secondary);">
+        <div>
+          Global config: <strong
+            >{webAuthnConfig.discoverableCredentials
+              ? 'discoverable'
+              : 'non-discoverable'}</strong
+          >
+        </div>
+        <div>
+          Last assertion:
+          <strong>
+            {#if !lastAssertionDiagnostics.seen}
+              no assertion yet
+            {:else if lastAssertionDiagnostics.omittedAllowCredentials}
+              omitted `allowCredentials`
+            {:else}
+              included `allowCredentials`
+            {/if}
+          </strong>
+        </div>
+        <div>
+          RP ID: <code>{lastAssertionDiagnostics.rpId || currentRpId}</code>
+        </div>
+      </div>
+    </div>
+
+    {#if recoverySteps.length > 0}
+      <div
+        style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--cds-border-subtle);"
+      >
+        <div style="font-size: 0.75rem; font-weight: 600; margin-bottom: 0.5rem;">
+          Recovery Steps
+        </div>
+        <div style="font-size: 0.875rem; color: var(--cds-text-secondary);">
+          {#each recoverySteps as step}
+            <div style="margin-bottom: 0.35rem;">
+              <strong>{step.status.toUpperCase()}</strong> {step.label}{step.detail ? `: ${step.detail}` : ''}
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
   </Tile>
 
   {#if !isAuthenticated}
@@ -454,6 +774,14 @@
           kind="primary"
         >
           {loading ? 'Creating...' : 'Create Credential'}
+        </Button>
+        <Button
+          on:click={useExistingPasskey}
+          disabled={loading || !webAuthnSupported}
+          kind="secondary"
+          style="margin-left: 0.75rem;"
+        >
+          {loading ? 'Checking...' : 'Use Existing Passkey'}
         </Button>
       {:else}
         <p style="margin-bottom: 1.5rem;">

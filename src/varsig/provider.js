@@ -16,7 +16,7 @@ import { createWebAuthnVarsigCredential } from './credential.js';
 export class WebAuthnVarsigProvider {
   /**
    * @param {Object} credentialInfo - Varsig credential info (public key, algorithm, credentialId)
-   * @param {{userVerification?: 'required'|'preferred'|'discouraged', mediation?: 'silent'|'optional'|'conditional'|'required'}} [options] - Signing options.
+   * @param {{userVerification?: 'required'|'preferred'|'discouraged', mediation?: 'silent'|'optional'|'conditional'|'required', discoverableCredentials?: boolean}} [options] - Signing options.
    */
   constructor(credentialInfo, options = {}) {
     this.credential = credentialInfo;
@@ -44,7 +44,7 @@ export class WebAuthnVarsigProvider {
    * Sign raw bytes using WebAuthn and return a varsig envelope.
    * @param {Uint8Array} payloadBytes - Data to sign.
    * @param {string} [domainLabel] - Domain label for the challenge.
-   * @param {{userVerification?: 'required'|'preferred'|'discouraged', mediation?: 'silent'|'optional'|'conditional'|'required'}} [options] - Optional signing overrides.
+   * @param {{userVerification?: 'required'|'preferred'|'discouraged', mediation?: 'silent'|'optional'|'conditional'|'required', discoverableCredentials?: boolean}} [options] - Optional signing overrides.
    * @returns {Promise<Uint8Array>} Varsig signature.
    */
   async signPayload(
@@ -60,7 +60,8 @@ export class WebAuthnVarsigProvider {
       payloadBytes,
       domainLabel,
       userVerification,
-      mediation
+      mediation,
+      options.discoverableCredentials ?? this.options.discoverableCredentials
     );
     const output = await buildVarsigOutput(assertion);
     return output.varsig;
@@ -70,7 +71,7 @@ export class WebAuthnVarsigProvider {
    * Sign data (string or bytes) and return a varsig envelope.
    * @param {string|Uint8Array} data - Data to sign.
    * @param {string} [domainLabel] - Domain label for the challenge.
-   * @param {{userVerification?: 'required'|'preferred'|'discouraged', mediation?: 'silent'|'optional'|'conditional'|'required'}} [options] - Optional signing overrides.
+   * @param {{userVerification?: 'required'|'preferred'|'discouraged', mediation?: 'silent'|'optional'|'conditional'|'required', discoverableCredentials?: boolean}} [options] - Optional signing overrides.
    * @returns {Promise<Uint8Array>} Varsig signature.
    */
   async sign(data, domainLabel = DEFAULT_DOMAIN_LABELS.entry, options = {}) {

@@ -4,9 +4,38 @@
 import { DIDKey } from 'iso-did';
 import { parseAttestationObject } from 'iso-passkeys';
 import { toArrayBuffer } from './utils.js';
+import { buildAuthenticatorSelection } from '../webauthn/config.js';
 
 const isTestMode = () =>
   typeof window !== 'undefined' && window.__PLAYWRIGHT__ === true;
+
+function logWebAuthnResponse(label, credential) {
+  const response = credential?.response;
+  const getPublicKeyResult =
+    typeof response?.getPublicKey === 'function' ? response.getPublicKey() : null;
+
+  console.group(`[WebAuthn Debug] ${label}`);
+  console.log('credential', credential);
+  console.log('credential.id', credential?.id);
+  console.log('credential.type', credential?.type);
+  console.log('credential.rawId', credential?.rawId);
+  console.log('credential.response', response);
+  console.log('response.clientDataJSON', response?.clientDataJSON);
+  console.log('response.attestationObject', response?.attestationObject);
+  console.log('response.authenticatorData', response?.authenticatorData);
+  console.log('response.signature', response?.signature);
+  console.log('response.userHandle', response?.userHandle);
+  console.log(
+    'response.getPublicKey exists',
+    typeof response?.getPublicKey === 'function'
+  );
+  console.log('response.getPublicKey()', getPublicKeyResult);
+  console.log(
+    'client extension results',
+    credential?.getClientExtensionResults?.() || null
+  );
+  console.groupEnd();
+}
 
 /**
  * Extract public key info from a WebAuthn attestation object.
@@ -62,6 +91,7 @@ function extractCredentialInfo(attestationObject) {
  * @param {string} [options.userId] - User identifier.
  * @param {string} [options.displayName] - Display name.
  * @param {string} [options.domain] - RP ID / domain.
+ * @param {boolean} [options.discoverableCredentials] - Override global discoverable credential policy.
  * @returns {Promise<Object>} Credential info including public key and DID.
  */
 async function createWebAuthnVarsigCredential(options = {}) {
@@ -111,19 +141,21 @@ async function createWebAuthnVarsigCredential(options = {}) {
           { type: 'public-key', alg: -7 },
         ],
     attestation: 'none',
-    authenticatorSelection: {
-      residentKey: 'preferred',
+    authenticatorSelection: buildAuthenticatorSelection({
+      ...options,
       ...(authenticatorType !== 'any' && {
         authenticatorAttachment: authenticatorType,
       }),
       userVerification: 'preferred',
-    },
+    }),
   };
 
   const credential = await navigator.credentials.create({ publicKey });
   if (!credential) {
     throw new Error('Passkey registration failed.');
   }
+
+  logWebAuthnResponse('varsig navigator.credentials.create()', credential);
 
   const response = credential.response;
   const {

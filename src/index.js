@@ -9,6 +9,11 @@ import { useIdentityProvider } from '@orbitdb/core';
 import * as KeystoreEncryption from './keystore/encryption.js';
 import { WebAuthnDIDProvider } from './webauthn/provider.js';
 import {
+  configureWebAuthn,
+  getWebAuthnConfig,
+  resetWebAuthnConfig,
+} from './webauthn/config.js';
+import {
   OrbitDBWebAuthnIdentityProvider,
   OrbitDBWebAuthnIdentityProviderFunction,
 } from './keystore/provider.js';
@@ -31,6 +36,9 @@ export {
   WebAuthnDIDProvider,
   OrbitDBWebAuthnIdentityProvider,
   OrbitDBWebAuthnIdentityProviderFunction,
+  configureWebAuthn,
+  getWebAuthnConfig,
+  resetWebAuthnConfig,
 };
 
 /**

@@ -6,6 +6,7 @@
  */
 
 import { logger } from '@libp2p/logger';
+import { buildCredentialRequestOptions } from '../webauthn/config.js';
 
 const log = logger(
   'orbitdb-identity-provider-webauthn-did:keystore-encryption'
@@ -189,24 +190,19 @@ export async function retrieveSKFromLargeBlob(credentialId, rpId) {
   log('Retrieving secret key from largeBlob');
 
   try {
-    const assertion = await navigator.credentials.get({
-      publicKey: {
+    const assertion = await navigator.credentials.get(
+      buildCredentialRequestOptions({
         challenge: crypto.getRandomValues(new Uint8Array(32)),
-        allowCredentials: [
-          {
-            id: credentialId,
-            type: 'public-key',
-          },
-        ],
-        rpId: rpId,
+        credentialId,
+        rpId,
         userVerification: 'required',
         extensions: {
           largeBlob: {
             read: true,
           },
         },
-      },
-    });
+      })
+    );
 
     const extensions = assertion.getClientExtensionResults();
 
@@ -257,24 +253,19 @@ export async function wrapSKWithHmacSecret(credentialId, sk, rpId) {
   const salt = crypto.getRandomValues(new Uint8Array(32));
 
   try {
-    const assertion = await navigator.credentials.get({
-      publicKey: {
+    const assertion = await navigator.credentials.get(
+      buildCredentialRequestOptions({
         challenge: crypto.getRandomValues(new Uint8Array(32)),
-        allowCredentials: [
-          {
-            id: credentialId,
-            type: 'public-key',
-          },
-        ],
-        rpId: rpId,
+        credentialId,
+        rpId,
         userVerification: 'required',
         extensions: {
           hmacGetSecret: {
             salt1: salt,
           },
         },
-      },
-    });
+      })
+    );
 
     const extensions = assertion.getClientExtensionResults();
 
@@ -314,24 +305,19 @@ export async function wrapSKWithPRF(credentialId, sk, rpId, prfInput) {
   const prfEval = prfInput || crypto.getRandomValues(new Uint8Array(32));
 
   try {
-    const assertion = await navigator.credentials.get({
-      publicKey: {
+    const assertion = await navigator.credentials.get(
+      buildCredentialRequestOptions({
         challenge: crypto.getRandomValues(new Uint8Array(32)),
-        allowCredentials: [
-          {
-            id: credentialId,
-            type: 'public-key',
-          },
-        ],
-        rpId: rpId,
+        credentialId,
+        rpId,
         userVerification: 'required',
         extensions: {
           prf: {
             eval: { first: prfEval },
           },
         },
-      },
-    });
+      })
+    );
 
     const { seed, source } = getPrfSeed(assertion, credentialId);
     const prfKey = await deriveKeyFromPrfSeed(seed);
@@ -370,24 +356,19 @@ export async function unwrapSKWithHmacSecret(
   log('Unwrapping secret key with hmac-secret');
 
   try {
-    const assertion = await navigator.credentials.get({
-      publicKey: {
+    const assertion = await navigator.credentials.get(
+      buildCredentialRequestOptions({
         challenge: crypto.getRandomValues(new Uint8Array(32)),
-        allowCredentials: [
-          {
-            id: credentialId,
-            type: 'public-key',
-          },
-        ],
-        rpId: rpId,
+        credentialId,
+        rpId,
         userVerification: 'required',
         extensions: {
           hmacGetSecret: {
             salt1: salt,
           },
         },
-      },
-    });
+      })
+    );
 
     const extensions = assertion.getClientExtensionResults();
 
@@ -437,24 +418,19 @@ export async function unwrapSKWithPRF(
   const prfEval = salt || crypto.getRandomValues(new Uint8Array(32));
 
   try {
-    const assertion = await navigator.credentials.get({
-      publicKey: {
+    const assertion = await navigator.credentials.get(
+      buildCredentialRequestOptions({
         challenge: crypto.getRandomValues(new Uint8Array(32)),
-        allowCredentials: [
-          {
-            id: credentialId,
-            type: 'public-key',
-          },
-        ],
-        rpId: rpId,
+        credentialId,
+        rpId,
         userVerification: 'required',
         extensions: {
           prf: {
             eval: { first: prfEval },
           },
         },
-      },
-    });
+      })
+    );
 
     const { seed, source } = getPrfSeed(assertion, credentialId);
     const prfKey = await deriveKeyFromPrfSeed(seed);

@@ -43,7 +43,7 @@ test.describe('WebAuthn Varsig Demo E2E', () => {
     });
 
     await expect(page.locator('text=WebAuthn Varsig DID')).toBeVisible();
-    await expect(page.locator('code')).toBeVisible();
+    await expect(page.locator('code').filter({ hasText: 'did:key:' })).toBeVisible();
 
     const todoText = 'Test Varsig TODO';
     await page.fill('input[placeholder="Add a new TODO..."]', todoText);

@@ -1,3 +1,5 @@
+import { buildCredentialRequestOptions } from '../../webauthn/config.js';
+
 function ensureUint8Array(value, fieldName) {
   if (value instanceof Uint8Array) return value;
   if (Array.isArray(value)) return new Uint8Array(value);
@@ -101,10 +103,10 @@ export async function extractPrfSeedFromCredential(credential, options = {}) {
     crypto.getRandomValues(new Uint8Array(32));
 
   try {
-    const assertion = await navigator.credentials.get({
-      publicKey: {
+    const assertion = await navigator.credentials.get(
+      buildCredentialRequestOptions({
         challenge: crypto.getRandomValues(new Uint8Array(32)),
-        allowCredentials: [{ id: rawCredentialId, type: 'public-key' }],
+        credentialId: rawCredentialId,
         rpId,
         userVerification: 'required',
         extensions: {
@@ -112,8 +114,9 @@ export async function extractPrfSeedFromCredential(credential, options = {}) {
             eval: { first: prfInput },
           },
         },
-      },
-    });
+        discoverableCredentials: options.discoverableCredentials,
+      })
+    );
 
     const prfResult =
       assertion?.getClientExtensionResults?.()?.prf?.results?.first;

@@ -36,7 +36,8 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
         }),
 
         get: async (options) => ({
-          rawId: options.publicKey.allowCredentials[0].id,
+          rawId:
+            options.publicKey.allowCredentials?.[0]?.id || mockCredentialId,
           response: {
             authenticatorData: crypto.getRandomValues(new Uint8Array(37)),
             clientDataJSON: new TextEncoder().encode(

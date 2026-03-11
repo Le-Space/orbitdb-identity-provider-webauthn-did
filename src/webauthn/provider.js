@@ -7,8 +7,40 @@
 
 import { logger } from '@libp2p/logger';
 import * as KeystoreEncryption from '../keystore/encryption.js';
+import {
+  buildAuthenticatorSelection,
+  buildCredentialRequestOptions,
+} from './config.js';
 
 const webauthnLog = logger('orbitdb-identity-provider-webauthn-did:webauthn');
+
+function logWebAuthnResponse(label, credential) {
+  const response = credential?.response;
+  const getPublicKeyResult =
+    typeof response?.getPublicKey === 'function' ? response.getPublicKey() : null;
+
+  console.group(`[WebAuthn Debug] ${label}`);
+  console.log('credential', credential);
+  console.log('credential.id', credential?.id);
+  console.log('credential.type', credential?.type);
+  console.log('credential.rawId', credential?.rawId);
+  console.log('credential.response', response);
+  console.log('response.clientDataJSON', response?.clientDataJSON);
+  console.log('response.attestationObject', response?.attestationObject);
+  console.log('response.authenticatorData', response?.authenticatorData);
+  console.log('response.signature', response?.signature);
+  console.log('response.userHandle', response?.userHandle);
+  console.log(
+    'response.getPublicKey exists',
+    typeof response?.getPublicKey === 'function'
+  );
+  console.log('response.getPublicKey()', getPublicKeyResult);
+  console.log(
+    'client extension results',
+    credential?.getClientExtensionResults?.() || null
+  );
+  console.groupEnd();
+}
 
 /**
  * WebAuthn DID Provider Core Implementation
@@ -66,6 +98,7 @@ export class WebAuthnDIDProvider {
    * @param {string} options.domain - Domain/RP ID
    * @param {boolean} options.encryptKeystore - Enable keystore encryption
    * @param {string} options.keystoreEncryptionMethod - 'prf' (default), 'hmac-secret', or 'largeBlob'
+   * @param {boolean} [options.discoverableCredentials] - Override global discoverable credential policy
    * @returns {Promise<Object>} Credential info with public key and metadata.
    */
   static async createCredential(options = {}) {
@@ -116,12 +149,11 @@ export class WebAuthnDIDProvider {
           { alg: -7, type: 'public-key' }, // ES256 (P-256 curve)
           { alg: -257, type: 'public-key' }, // RS256 fallback
         ],
-        authenticatorSelection: {
-          authenticatorAttachment: 'platform', // Prefer built-in authenticators
-          requireResidentKey: false,
-          residentKey: 'preferred',
-          userVerification: 'required', // Require biometric/PIN
-        },
+        authenticatorSelection: buildAuthenticatorSelection({
+          ...options,
+          authenticatorAttachment: 'platform',
+          userVerification: 'required',
+        }),
         timeout: 60000,
         attestation: 'none', // Don't need attestation for DID creation
       },
@@ -156,6 +188,8 @@ export class WebAuthnDIDProvider {
         );
         throw new Error('Failed to create WebAuthn credential');
       }
+
+      logWebAuthnResponse('navigator.credentials.create()', credential);
 
       webauthnLog('Credential created successfully: %o', {
         credentialId:
@@ -435,16 +469,15 @@ export class WebAuthnDIDProvider {
       );
 
       // Use WebAuthn to authenticate (this proves the user is present and verified)
+      const requestOptions = buildCredentialRequestOptions({
+        challenge,
+        credentialId: this.rawCredentialId,
+        userVerification: 'required',
+      });
       const assertion = await navigator.credentials.get({
+        ...requestOptions,
         publicKey: {
-          challenge,
-          allowCredentials: [
-            {
-              id: this.rawCredentialId,
-              type: 'public-key',
-            },
-          ],
-          userVerification: 'required',
+          ...requestOptions.publicKey,
           timeout: 60000,
         },
       });
@@ -453,6 +486,8 @@ export class WebAuthnDIDProvider {
         webauthnLog.error('WebAuthn authentication failed - assertion is null');
         throw new Error('WebAuthn authentication failed');
       }
+
+      logWebAuthnResponse('navigator.credentials.get()', assertion);
 
       webauthnLog('Assertion received from navigator.credentials.get(): %o', {
         hasAuthenticatorData: !!assertion.response.authenticatorData,

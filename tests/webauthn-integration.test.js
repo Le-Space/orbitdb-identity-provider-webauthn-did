@@ -179,10 +179,10 @@ test.describe('WebAuthn DID Identity Provider Integration', () => {
 
     // Check that the WebAuthn DID is displayed
     await expect(page.locator('text=WebAuthn DID')).toBeVisible();
-    await expect(page.locator('code')).toBeVisible(); // The DID should be in a code element
+    await expect(page.locator('code').filter({ hasText: 'did:key:' })).toBeVisible(); // The DID should be in a code element
 
     // Verify DID format
-    const didElement = page.locator('code').first();
+    const didElement = page.locator('code').filter({ hasText: 'did:key:' }).first();
     const didText = await didElement.textContent();
     expect(didText).toMatch(/^did:key:z[A-Za-z0-9]+$/);
 
