@@ -313,24 +313,6 @@
     cursor: not-allowed;
   }
 
-  .btn-secondary {
-    padding: 0.65rem 1.25rem;
-    background: var(--cds-layer, #e8e8e8);
-    color: var(--cds-text-primary, #333);
-    border: 1px solid var(--cds-border-subtle, #ccc);
-    border-radius: 0.5rem;
-    font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-    align-self: flex-start;
-    transition: opacity 0.2s;
-  }
-
-  .btn-secondary:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
   .error-banner {
     padding: 0.75rem 1rem;
     background: #fde8e8;

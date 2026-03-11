@@ -95,6 +95,8 @@ export class MultiDeviceManager {
         rootWritePermissions: [],
         writePermissions: [],
         adminPermissions: [],
+        accessControllerHeadCount: 0,
+        accessControllerHeadHashes: [],
         currentIdentityIsRootWriter: false,
         currentIdentityCanWrite: false,
         currentIdentityIsAdmin: false,
@@ -105,6 +107,8 @@ export class MultiDeviceManager {
     let rootWritePermissions = [];
     let writePermissions = [];
     let adminPermissions = [];
+    let accessControllerHeadCount = 0;
+    let accessControllerHeadHashes = [];
 
     try {
       const raw = this._devicesDb.access?.write;
@@ -120,18 +124,116 @@ export class MultiDeviceManager {
       }
     } catch {}
 
+    try {
+      if (this._devicesDb.access?.debugDb?.log?.heads) {
+        const heads = await this._devicesDb.access.debugDb.log.heads();
+        accessControllerHeadCount = heads.length;
+        accessControllerHeadHashes = heads.map((entry) => entry?.hash).filter(Boolean);
+      }
+    } catch {}
+
     return {
       rootWritePermissions,
       writePermissions,
       adminPermissions,
+      accessControllerHeadCount,
+      accessControllerHeadHashes,
       currentIdentityIsRootWriter: Boolean(identityId && rootWritePermissions.includes(identityId)),
       currentIdentityCanWrite: Boolean(identityId && (writePermissions.includes(identityId) || writePermissions.includes('*'))),
       currentIdentityIsAdmin: Boolean(identityId && (adminPermissions.includes(identityId) || adminPermissions.includes('*'))),
     };
   }
 
+  async _getIdentityReplicationSnapshot() {
+    if (!this._devicesDb || !this._orbitdb?.identities) {
+      return {
+        identityReferencesTotal: 0,
+        identitiesResolvedCount: 0,
+        identitiesVerifiedCount: 0,
+        identityReplicationComplete: false,
+        identityMissingHashes: [],
+        identityInvalidHashes: [],
+        identityReplicationDetails: [],
+      };
+    }
+
+    const identities = this._orbitdb.identities;
+    const seen = new Map();
+
+    const collectFromLog = async (scope, log) => {
+      if (!log?.iterator) return;
+
+      for await (const entry of log.iterator()) {
+        const hash = entry?.identity;
+        if (!hash) continue;
+
+        if (!seen.has(hash)) {
+          seen.set(hash, {
+            hash,
+            scopes: new Set(),
+            id: null,
+            resolved: false,
+            verified: false,
+          });
+        }
+
+        const record = seen.get(hash);
+        record.scopes.add(scope);
+
+        if (record.resolved) continue;
+
+        try {
+          const identity = await identities.getIdentity(hash);
+          if (!identity) continue;
+
+          record.resolved = true;
+          record.id = identity.id || null;
+
+          try {
+            record.verified = await identities.verifyIdentity(identity);
+          } catch {
+            record.verified = false;
+          }
+        } catch {
+          // ignore identity lookup failures, surfaced through unresolved count
+        }
+      }
+    };
+
+    await collectFromLog('registry', this._devicesDb?.log);
+    await collectFromLog('acl', this._devicesDb?.access?.debugDb?.log);
+
+    const records = Array.from(seen.values());
+    const identityMissingHashes = records.filter((record) => !record.resolved).map((record) => record.hash);
+    const identityInvalidHashes = records
+      .filter((record) => record.resolved && !record.verified)
+      .map((record) => record.hash);
+
+    return {
+      identityReferencesTotal: records.length,
+      identitiesResolvedCount: records.filter((record) => record.resolved).length,
+      identitiesVerifiedCount: records.filter((record) => record.verified).length,
+      identityReplicationComplete:
+        records.length > 0 &&
+        identityMissingHashes.length === 0 &&
+        identityInvalidHashes.length === 0,
+      identityMissingHashes,
+      identityInvalidHashes,
+      identityReplicationDetails: records.map((record) => {
+        const scopes = Array.from(record.scopes).sort().join('+');
+        const status = record.verified
+          ? 'verified'
+          : record.resolved
+            ? 'resolved-unverified'
+            : 'missing';
+        return `${scopes}: ${record.hash} -> ${record.id || 'unresolved'} [${status}]`;
+      }),
+    };
+  }
+
   async _emitLocalStateSnapshot(role, stage, detail, extra = {}) {
     const access = await this._getAccessSnapshot();
+    const identities = await this._getIdentityReplicationSnapshot();
     let deviceCount = 0;
     let registryHeadCount = 0;
     let accessAddress = null;
@@ -167,9 +269,18 @@ export class MultiDeviceManager {
       rootWritePermissions: access.rootWritePermissions,
       writePermissions: access.writePermissions,
       adminPermissions: access.adminPermissions,
+      accessControllerHeadCount: access.accessControllerHeadCount,
+      accessControllerHeadHashes: access.accessControllerHeadHashes,
       currentIdentityIsRootWriter: access.currentIdentityIsRootWriter,
       currentIdentityCanWrite: access.currentIdentityCanWrite,
       currentIdentityIsAdmin: access.currentIdentityIsAdmin,
+      identityReferencesTotal: identities.identityReferencesTotal,
+      identitiesResolvedCount: identities.identitiesResolvedCount,
+      identitiesVerifiedCount: identities.identitiesVerifiedCount,
+      identityReplicationComplete: identities.identityReplicationComplete,
+      identityMissingHashes: identities.identityMissingHashes,
+      identityInvalidHashes: identities.identityInvalidHashes,
+      identityReplicationDetails: identities.identityReplicationDetails,
       registryHeadCount,
       registryHeadHashes,
       accessAddress,
@@ -353,6 +464,44 @@ export class MultiDeviceManager {
     });
   }
 
+  _scheduleAclHeadProbe(durationMs = 20000, intervalMs = 2000) {
+    if (!this._devicesDb?.access?.debugDb?.log?.heads) return;
+
+    const startedAt = Date.now();
+    const tick = async () => {
+      if (!this._devicesDb?.access?.debugDb?.log?.heads) return;
+
+      try {
+        const heads = await this._devicesDb.access.debugDb.log.heads();
+        this._emitPairingEvent({
+          role: 'sync',
+          stage: 'acl-head-probe',
+          level: 'info',
+          detail: `ACL head probe at ${Date.now() - startedAt}ms`,
+          accessAddress: this._devicesDb?.access?.address || null,
+          accessControllerHeadCount: heads.length,
+          accessControllerHeadHashes: heads.map((entry) => entry?.hash).filter(Boolean),
+        });
+      } catch (error) {
+        this._emitPairingEvent({
+          role: 'sync',
+          stage: 'acl-head-probe-error',
+          level: 'warning',
+          detail: `ACL head probe failed: ${error?.message || error}`,
+          accessAddress: this._devicesDb?.access?.address || null,
+        });
+      }
+
+      if (Date.now() - startedAt + intervalMs <= durationMs) {
+        setTimeout(() => {
+          void tick();
+        }, intervalMs);
+      }
+    };
+
+    void tick();
+  }
+
   _awaitReplicationEvents(timeoutMs = 15000) {
     if (this._replicationObserver?.timeoutId) {
       clearTimeout(this._replicationObserver.timeoutId);
@@ -423,6 +572,49 @@ export class MultiDeviceManager {
     });
   }
 
+  async _waitForAclWriteVisibility(timeoutMs = 10000) {
+    if (!this._devicesDb?.access?.events?.on || !this._devicesDb?.access?.events?.off) {
+      return { visible: false, timedOut: false, access: await this._getAccessSnapshot() };
+    }
+
+    const current = await this._getAccessSnapshot();
+    if (current.currentIdentityCanWrite) {
+      return { visible: true, timedOut: false, access: current };
+    }
+
+    return await new Promise((resolve) => {
+      let settled = false;
+
+      const finalize = async (timedOut) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        this._devicesDb?.access?.events?.off?.('update', onActivity);
+        this._devicesDb?.access?.events?.off?.('join', onActivity);
+        const access = await this._getAccessSnapshot();
+        resolve({
+          visible: access.currentIdentityCanWrite,
+          timedOut,
+          access,
+        });
+      };
+
+      const onActivity = async () => {
+        const access = await this._getAccessSnapshot();
+        if (access.currentIdentityCanWrite) {
+          await finalize(false);
+        }
+      };
+
+      const timeoutId = setTimeout(() => {
+        void finalize(true);
+      }, timeoutMs);
+
+      this._devicesDb.access.events.on('update', onActivity);
+      this._devicesDb.access.events.on('join', onActivity);
+    });
+  }
+
   /** Attach sync listeners and optionally register the pairing handler. */
   async _finalizeDb({ registerPairingHandler = false } = {}) {
     await this._setupSyncListeners();
@@ -487,6 +679,8 @@ export class MultiDeviceManager {
       rootWritePermissions: access.rootWritePermissions,
       writePermissions: access.writePermissions,
       adminPermissions: access.adminPermissions,
+      accessControllerHeadCount: access.accessControllerHeadCount,
+      accessControllerHeadHashes: access.accessControllerHeadHashes,
       currentIdentityIsRootWriter: access.currentIdentityIsRootWriter,
       currentIdentityCanWrite: access.currentIdentityCanWrite,
       currentIdentityIsAdmin: access.currentIdentityIsAdmin,
@@ -606,6 +800,7 @@ export class MultiDeviceManager {
           'acl-update',
           'Access controller update observed locally'
         );
+        this._scheduleAclHeadProbe(10000, 2000);
         this._scheduleReplicationEvaluation();
       });
 
@@ -617,6 +812,7 @@ export class MultiDeviceManager {
           `Access controller peer joined: ${peerId.toString()}`,
           { remotePeerId: peerId.toString() }
         );
+        this._scheduleAclHeadProbe(10000, 2000);
         this._scheduleReplicationEvaluation();
       });
 
@@ -668,6 +864,7 @@ export class MultiDeviceManager {
     this._devicesDb = await openDeviceRegistry(this._orbitdb, this._identity.id, dbAddress);
     this._dbAddress = this._devicesDb.address;
     const access = await this._getAccessSnapshot();
+    const identities = await this._getIdentityReplicationSnapshot();
     this._emitPairingEvent({
       role: 'device-b',
       stage: 'db-opened',
@@ -682,6 +879,32 @@ export class MultiDeviceManager {
       currentIdentityIsRootWriter: access.currentIdentityIsRootWriter,
       currentIdentityCanWrite: access.currentIdentityCanWrite,
       currentIdentityIsAdmin: access.currentIdentityIsAdmin,
+      identityReferencesTotal: identities.identityReferencesTotal,
+      identitiesResolvedCount: identities.identitiesResolvedCount,
+      identitiesVerifiedCount: identities.identitiesVerifiedCount,
+      identityReplicationComplete: identities.identityReplicationComplete,
+      identityMissingHashes: identities.identityMissingHashes,
+      identityInvalidHashes: identities.identityInvalidHashes,
+      identityReplicationDetails: identities.identityReplicationDetails,
+    });
+    this._scheduleAclHeadProbe();
+    const aclStatus = await this._waitForAclWriteVisibility();
+    this._emitPairingEvent({
+      role: 'device-b',
+      stage: aclStatus.visible ? 'acl-ready-before-finalize' : 'acl-pending-before-finalize',
+      level: aclStatus.visible ? 'success' : (aclStatus.timedOut ? 'warning' : 'info'),
+      detail: aclStatus.visible
+        ? 'ACL write permission became visible before continuing'
+        : 'ACL write permission is still not visible before continuing',
+      accessAddress: this._devicesDb?.access?.address || null,
+      rootWritePermissions: aclStatus.access.rootWritePermissions,
+      writePermissions: aclStatus.access.writePermissions,
+      adminPermissions: aclStatus.access.adminPermissions,
+      accessControllerHeadCount: aclStatus.access.accessControllerHeadCount,
+      accessControllerHeadHashes: aclStatus.access.accessControllerHeadHashes,
+      currentIdentityIsRootWriter: aclStatus.access.currentIdentityIsRootWriter,
+      currentIdentityCanWrite: aclStatus.access.currentIdentityCanWrite,
+      currentIdentityIsAdmin: aclStatus.access.currentIdentityIsAdmin,
     });
     await this._finalizeDb({ registerPairingHandler });
     return { dbAddress: this._dbAddress, identity: this._identity };
@@ -729,6 +952,7 @@ export class MultiDeviceManager {
     this._detachPubsubListeners();
     this._devicesDb = await openDeviceRegistry(this._orbitdb, this._identity.id, result.orbitdbAddress);
     this._dbAddress = this._devicesDb.address;
+    const identities = await this._getIdentityReplicationSnapshot();
     console.log('[linkToDevice] Database opened, waiting for Device A entries to sync...');
     this._emitPairingEvent({
       role: 'device-b',
@@ -738,12 +962,36 @@ export class MultiDeviceManager {
       registryHeadCount: this._devicesDb?.log ? (await this._devicesDb.log.heads()).length : 0,
       registryPeerCount: this._devicesDb?.peers?.size || 0,
       accessAddress: this._devicesDb?.access?.address || null,
+      identityReferencesTotal: identities.identityReferencesTotal,
+      identitiesResolvedCount: identities.identitiesResolvedCount,
+      identitiesVerifiedCount: identities.identitiesVerifiedCount,
+      identityReplicationComplete: identities.identityReplicationComplete,
+      identityMissingHashes: identities.identityMissingHashes,
+      identityInvalidHashes: identities.identityInvalidHashes,
+      identityReplicationDetails: identities.identityReplicationDetails,
     });
 
     // Register listeners immediately so we catch update events during the delay below
     this._listenersSetup = false;
     await this._setupSyncListeners();
     this._beginReplicationWatchdog(15000);
+
+    const aclStatus = await this._waitForAclWriteVisibility();
+    this._emitPairingEvent({
+      role: 'device-b',
+      stage: aclStatus.visible ? 'acl-ready-before-use' : 'acl-pending-before-use',
+      level: aclStatus.visible ? 'success' : (aclStatus.timedOut ? 'warning' : 'info'),
+      detail: aclStatus.visible
+        ? 'ACL write permission became visible before using the shared registry'
+        : 'ACL write permission is still not visible before using the shared registry',
+      accessAddress: this._devicesDb?.access?.address || null,
+      rootWritePermissions: aclStatus.access.rootWritePermissions,
+      writePermissions: aclStatus.access.writePermissions,
+      adminPermissions: aclStatus.access.adminPermissions,
+      currentIdentityIsRootWriter: aclStatus.access.currentIdentityIsRootWriter,
+      currentIdentityCanWrite: aclStatus.access.currentIdentityCanWrite,
+      currentIdentityIsAdmin: aclStatus.access.currentIdentityIsAdmin,
+    });
 
     await this._finalizeDb({ registerPairingHandler: false });
 

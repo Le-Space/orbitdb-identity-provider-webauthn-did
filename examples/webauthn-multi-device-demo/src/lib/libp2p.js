@@ -19,6 +19,7 @@ import { gossipsub } from '@chainsafe/libp2p-gossipsub';
 import { bootstrap } from '@libp2p/bootstrap';
 import { pubsubPeerDiscovery } from '@libp2p/pubsub-peer-discovery'
 import { all } from '@libp2p/websockets/filters';
+import { logger as createLogger } from '@libp2p/logger';
 import { LevelBlockstore } from 'blockstore-level';
 import { LevelDatastore } from 'datastore-level';
 import {
@@ -66,6 +67,8 @@ const DEFAULT_ICE_SERVERS = [
     urls: ['stun:stun.l.google.com:19302', 'stun:global.stun.twilio.com:3478'],
   },
 ];
+
+const orbitdbHeadsLog = createLogger('orbitdb:replication:heads');
 
 export const IDENTITY_MODES = {
   KEYSTORE_ED25519: 'keystore-ed25519',
@@ -343,6 +346,70 @@ function attachLibp2pLogging(libp2p, bootstrapList) {
   });
 }
 
+function attachOrbitdbHeadsLogging(libp2p) {
+  if (!libp2p || libp2p.__orbitdbHeadsLoggingAttached) return;
+
+  const originalDialProtocol = libp2p.dialProtocol?.bind(libp2p);
+  const originalHandle = libp2p.handle?.bind(libp2p);
+
+  if (typeof originalDialProtocol === 'function') {
+    libp2p.dialProtocol = async (peer, protocol, options) => {
+      const isHeadsProtocol = typeof protocol === 'string' && protocol.startsWith('/orbitdb/heads/');
+      const peerId = peer?.toString?.() || peer?.id?.toString?.() || 'unknown';
+
+      if (isHeadsProtocol) {
+        orbitdbHeadsLog('dial:start %s %s', peerId, protocol);
+        console.info('[orbitdb-heads] dial:start', { peerId, protocol });
+      }
+
+      try {
+        const stream = await originalDialProtocol(peer, protocol, options);
+        if (isHeadsProtocol) {
+          orbitdbHeadsLog('dial:connected %s %s', peerId, protocol);
+          console.info('[orbitdb-heads] dial:connected', { peerId, protocol });
+        }
+        return stream;
+      } catch (error) {
+        if (isHeadsProtocol) {
+          orbitdbHeadsLog('dial:error %s %s %s', peerId, protocol, error?.message || String(error));
+          console.info('[orbitdb-heads] dial:error', {
+            peerId,
+            protocol,
+            error: error?.message || String(error),
+          });
+        }
+        throw error;
+      }
+    };
+  }
+
+  if (typeof originalHandle === 'function') {
+    libp2p.handle = async (protocol, handler, options) => {
+      const isHeadsProtocol = typeof protocol === 'string' && protocol.startsWith('/orbitdb/heads/');
+      if (!isHeadsProtocol) {
+        return await originalHandle(protocol, handler, options);
+      }
+
+      orbitdbHeadsLog('handle:registered %s', protocol);
+      console.info('[orbitdb-heads] handle:registered', { protocol });
+      const wrappedHandler = async (context) => {
+        const remotePeer = context?.connection?.remotePeer?.toString?.() || 'unknown';
+        orbitdbHeadsLog(
+          'handle:received %s %s',
+          protocol,
+          remotePeer
+        );
+        console.info('[orbitdb-heads] handle:received', { protocol, remotePeer });
+        return await handler(context);
+      };
+
+      return await originalHandle(protocol, wrappedHandler, options);
+    };
+  }
+
+  libp2p.__orbitdbHeadsLoggingAttached = true;
+}
+
 function saveLegacyWorkerArchive(encryptedArchive) {
   if (typeof localStorage === 'undefined' || !encryptedArchive) return;
 
@@ -469,11 +536,32 @@ async function openWorkerRecoveryStore(seed, ipfs) {
     AccessController: OrbitDBAccessController({ write: [identity.id] }),
   });
 
+  let recoveryRootWritePermissions = [];
+  let recoveryWritePermissions = [];
+  let recoveryAdminPermissions = [];
+
+  try {
+    const raw = db?.access?.write;
+    if (Array.isArray(raw)) {
+      recoveryRootWritePermissions = raw;
+    }
+  } catch {}
+
+  try {
+    if (typeof db?.access?.get === 'function') {
+      recoveryWritePermissions = Array.from(await db.access.get('write'));
+      recoveryAdminPermissions = Array.from(await db.access.get('admin'));
+    }
+  } catch {}
+
   return {
     orbitdb: recoveryOrbitdb,
     db,
     bootstrapIdentity: identity,
     name: `multi-device-worker-recovery-${recoveryNameHash}`,
+    rootWritePermissions: recoveryRootWritePermissions,
+    writePermissions: recoveryWritePermissions,
+    adminPermissions: recoveryAdminPermissions,
   };
 }
 
@@ -614,6 +702,10 @@ async function setupWorkerOrbitIdentity(credential, ipfs) {
       archivePrincipalId: archive?.id || null,
       recoveryDbName: recoveryStore.name,
       recoveryDbAddress: recoveryStore.db.address?.toString?.() || recoveryStore.db.address || null,
+      recoveryAccessType: recoveryStore.db?.access?.type || null,
+      recoveryRootWritePermissions: recoveryStore.rootWritePermissions,
+      recoveryWritePermissions: recoveryStore.writePermissions,
+      recoveryAdminPermissions: recoveryStore.adminPermissions,
       recoveryRecordFound: hadExistingRecoveryRecord,
       recoveryRecordSource: recoverySource,
       mainDbAddress: recoveryRecord?.mainDbAddress || null,
@@ -683,6 +775,7 @@ export async function createLibp2pInstance() {
     },
   })
 
+  attachOrbitdbHeadsLogging(libp2p);
   attachLibp2pLogging(libp2p, bootstrapList);
   console.info('[relay] pubsub discovery topics', pubsubTopics);
 

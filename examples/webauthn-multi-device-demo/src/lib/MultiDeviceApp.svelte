@@ -58,9 +58,24 @@
     registryDeviceCount: null,
     registryDbName: null,
     registryDbAddress: null,
+    registryAccessType: null,
     accessControllerDbName: null,
     accessControllerDbAddress: null,
+    accessControllerType: null,
+    accessControllerHeadCount: 0,
+    accessControllerHeadHashes: [],
     recoveryDbAddress: null,
+    recoveryAccessType: null,
+    recoveryRootWritePermissions: [],
+    recoveryWritePermissions: [],
+    recoveryAdminPermissions: [],
+    identityReferencesTotal: 0,
+    identitiesResolvedCount: 0,
+    identitiesVerifiedCount: 0,
+    identityReplicationComplete: null,
+    identityMissingHashes: [],
+    identityInvalidHashes: [],
+    identityReplicationDetails: [],
     currentIdentityIsRootWriter: null,
     currentIdentityCanWrite: null,
     currentIdentityIsAdmin: null,
@@ -229,6 +244,8 @@
       registryDbName: manager?._devicesDb?.name || accessDebug.registryDbName,
       registryDbAddress:
         manager?._dbAddress?.toString?.() || manager?._dbAddress || accessDebug.registryDbAddress,
+      registryAccessType:
+        manager?._devicesDb?.access?.type || accessDebug.registryAccessType,
       accessControllerDbName:
         manager?._devicesDb?.access?.name || accessDebug.accessControllerDbName,
       accessControllerDbAddress:
@@ -236,8 +253,44 @@
         manager?._devicesDb?.access?.address?.toString?.() ||
         manager?._devicesDb?.access?.address ||
         accessDebug.accessControllerDbAddress,
+      accessControllerType:
+        manager?._devicesDb?.access?.type || accessDebug.accessControllerType,
+      accessControllerHeadCount:
+        typeof event.accessControllerHeadCount === 'number'
+          ? event.accessControllerHeadCount
+          : accessDebug.accessControllerHeadCount,
+      accessControllerHeadHashes:
+        event.accessControllerHeadHashes || accessDebug.accessControllerHeadHashes,
       recoveryDbAddress:
         runtimeInfo?.worker?.recoveryDbAddress ?? accessDebug.recoveryDbAddress,
+      recoveryAccessType:
+        runtimeInfo?.worker?.recoveryAccessType ?? accessDebug.recoveryAccessType,
+      recoveryRootWritePermissions:
+        runtimeInfo?.worker?.recoveryRootWritePermissions ?? accessDebug.recoveryRootWritePermissions,
+      recoveryWritePermissions:
+        runtimeInfo?.worker?.recoveryWritePermissions ?? accessDebug.recoveryWritePermissions,
+      recoveryAdminPermissions:
+        runtimeInfo?.worker?.recoveryAdminPermissions ?? accessDebug.recoveryAdminPermissions,
+      identityReferencesTotal:
+        typeof event.identityReferencesTotal === 'number'
+          ? event.identityReferencesTotal
+          : accessDebug.identityReferencesTotal,
+      identitiesResolvedCount:
+        typeof event.identitiesResolvedCount === 'number'
+          ? event.identitiesResolvedCount
+          : accessDebug.identitiesResolvedCount,
+      identitiesVerifiedCount:
+        typeof event.identitiesVerifiedCount === 'number'
+          ? event.identitiesVerifiedCount
+          : accessDebug.identitiesVerifiedCount,
+      identityReplicationComplete:
+        typeof event.identityReplicationComplete === 'boolean'
+          ? event.identityReplicationComplete
+          : accessDebug.identityReplicationComplete,
+      identityMissingHashes: event.identityMissingHashes || accessDebug.identityMissingHashes,
+      identityInvalidHashes: event.identityInvalidHashes || accessDebug.identityInvalidHashes,
+      identityReplicationDetails:
+        event.identityReplicationDetails || accessDebug.identityReplicationDetails,
       rootWritePermissions: event.rootWritePermissions || accessDebug.rootWritePermissions,
       writePermissions: event.writePermissions || accessDebug.writePermissions,
       adminPermissions: event.adminPermissions || accessDebug.adminPermissions,
@@ -266,12 +319,27 @@
       registryDeviceCount: devices.length,
       registryDbName: manager?._devicesDb?.name || 'multi-device-registry',
       registryDbAddress: manager?._dbAddress?.toString?.() || manager?._dbAddress || null,
+      registryAccessType: manager?._devicesDb?.access?.type || null,
       accessControllerDbName: manager?._devicesDb?.access?.name || 'OrbitDB access controller',
       accessControllerDbAddress:
         manager?._devicesDb?.access?.address?.toString?.() ||
         manager?._devicesDb?.access?.address ||
         null,
+      accessControllerType: manager?._devicesDb?.access?.type || null,
+      accessControllerHeadCount: 0,
+      accessControllerHeadHashes: [],
       recoveryDbAddress: runtimeInfo?.worker?.recoveryDbAddress ?? null,
+      recoveryAccessType: runtimeInfo?.worker?.recoveryAccessType ?? null,
+      recoveryRootWritePermissions: runtimeInfo?.worker?.recoveryRootWritePermissions ?? [],
+      recoveryWritePermissions: runtimeInfo?.worker?.recoveryWritePermissions ?? [],
+      recoveryAdminPermissions: runtimeInfo?.worker?.recoveryAdminPermissions ?? [],
+      identityReferencesTotal: 0,
+      identitiesResolvedCount: 0,
+      identitiesVerifiedCount: 0,
+      identityReplicationComplete: null,
+      identityMissingHashes: [],
+      identityInvalidHashes: [],
+      identityReplicationDetails: [],
       currentIdentityIsRootWriter: null,
       currentIdentityCanWrite: null,
       currentIdentityIsAdmin: null,
@@ -296,6 +364,8 @@
       registryDbName: manager?._devicesDb?.name || accessDebug.registryDbName || 'multi-device-registry',
       registryDbAddress:
         manager?._dbAddress?.toString?.() || manager?._dbAddress || accessDebug.registryDbAddress,
+      registryAccessType:
+        manager?._devicesDb?.access?.type || accessDebug.registryAccessType,
       accessControllerDbName:
         manager?._devicesDb?.access?.name ||
         accessDebug.accessControllerDbName ||
@@ -304,7 +374,28 @@
         manager?._devicesDb?.access?.address?.toString?.() ||
         manager?._devicesDb?.access?.address ||
         accessDebug.accessControllerDbAddress,
+      accessControllerType:
+        manager?._devicesDb?.access?.type || accessDebug.accessControllerType,
+      accessControllerHeadCount:
+        accessDebug.accessControllerHeadCount,
+      accessControllerHeadHashes:
+        accessDebug.accessControllerHeadHashes,
       recoveryDbAddress: runtimeInfo?.worker?.recoveryDbAddress ?? accessDebug.recoveryDbAddress,
+      recoveryAccessType:
+        runtimeInfo?.worker?.recoveryAccessType ?? accessDebug.recoveryAccessType,
+      recoveryRootWritePermissions:
+        runtimeInfo?.worker?.recoveryRootWritePermissions ?? accessDebug.recoveryRootWritePermissions,
+      recoveryWritePermissions:
+        runtimeInfo?.worker?.recoveryWritePermissions ?? accessDebug.recoveryWritePermissions,
+      recoveryAdminPermissions:
+        runtimeInfo?.worker?.recoveryAdminPermissions ?? accessDebug.recoveryAdminPermissions,
+      identityReferencesTotal: accessDebug.identityReferencesTotal,
+      identitiesResolvedCount: accessDebug.identitiesResolvedCount,
+      identitiesVerifiedCount: accessDebug.identitiesVerifiedCount,
+      identityReplicationComplete: accessDebug.identityReplicationComplete,
+      identityMissingHashes: accessDebug.identityMissingHashes,
+      identityInvalidHashes: accessDebug.identityInvalidHashes,
+      identityReplicationDetails: accessDebug.identityReplicationDetails,
       workerArchiveRestored: runtimeInfo?.worker?.archiveRestored ?? null,
       workerArchivePrincipalId: runtimeInfo?.worker?.archivePrincipalId ?? null,
       workerRecoveryRecordFound: runtimeInfo?.worker?.recoveryRecordFound ?? null,

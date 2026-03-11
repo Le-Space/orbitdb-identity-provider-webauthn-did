@@ -135,6 +135,7 @@ const DeferredOrbitDBAccessController = ({ write, syncTimeout = DEFAULT_ACL_SYNC
     type,
     address: toCustomAddress(db.address?.toString?.() || db.address),
     write,
+    debugDb: db,
     canAppend,
     capabilities,
     get,

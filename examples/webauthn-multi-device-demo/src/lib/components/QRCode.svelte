@@ -75,9 +75,4 @@
     padding: 1rem;
   }
 
-  .hint {
-    font-size: 0.8rem;
-    color: var(--cds-text-helper, #888);
-    margin: 0;
-  }
 </style>
