@@ -91,22 +91,69 @@ export async function createWebAuthnVarsigIdentity({
 }
 
 /**
+ * Try varsig entry verification, then default OrbitDB identities (worker / keystore WebAuthn).
+ * @param {Object|null} fallbackIdentities - e.g. wrapWithVarsigVerification(Identities({ ipfs }), ipfs)
+ * @param {Object} labels - Merged domain labels (uses .entry for oplog signatures).
+ * @param {Uint8Array} signature
+ * @param {Uint8Array} publicKey
+ * @param {unknown} data
+ * @returns {Promise<boolean>}
+ */
+async function verifyOplogSignatureHybrid(
+  fallbackIdentities,
+  labels,
+  signature,
+  publicKey,
+  data
+) {
+  const varsigOk = await verifyVarsigForPayload(
+    signature,
+    publicKey,
+    toBytes(data),
+    labels.entry
+  );
+  if (varsigOk) return true;
+  if (fallbackIdentities && typeof fallbackIdentities.verify === 'function') {
+    try {
+      return await fallbackIdentities.verify(signature, publicKey, data);
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+/**
  * Build an OrbitDB identities interface for varsig.
  * @param {Object} identity - Local identity instance.
  * @param {Object} [domainLabels] - Domain label overrides.
  * @param {Object} [storage] - Optional storage adapter.
+ * @param {Object} [fallbackIdentities] - Optional default `Identities` instance so hardware peers can verify
+ *   worker-WebAuthn-signed oplog entries (mixed mode). Pass e.g. `wrapWithVarsigVerification(await Identities({ ipfs }), ipfs)`.
  * @returns {Object} Identities-compatible API.
  */
 export function createWebAuthnVarsigIdentities(identity, domainLabels = {}) {
   const labels = { ...DEFAULT_DOMAIN_LABELS, ...domainLabels };
   const identityByHash = new Map([[identity.hash, identity]]);
   const storage = arguments.length > 2 ? arguments[2] : null;
+  const fallbackIdentities = arguments.length > 3 ? arguments[3] : null;
 
   const verify = (signature, publicKey, data) =>
-    verifyVarsigForPayload(signature, publicKey, toBytes(data), labels.entry);
+    verifyOplogSignatureHybrid(fallbackIdentities, labels, signature, publicKey, data);
 
   const verifyIdentity = async (identityToVerify) => {
     if (!identityToVerify) return false;
+
+    if (identityToVerify.type === 'webauthn') {
+      if (fallbackIdentities && typeof fallbackIdentities.verifyIdentity === 'function') {
+        try {
+          return await fallbackIdentities.verifyIdentity(identityToVerify);
+        } catch {
+          return false;
+        }
+      }
+      return false;
+    }
 
     const idBytes = encoder.encode(identityToVerify.id);
     const idValid = await verifyVarsigForPayload(
@@ -133,41 +180,48 @@ export function createWebAuthnVarsigIdentities(identity, domainLabels = {}) {
   const getIdentity = async (hash) => {
     const cached = identityByHash.get(hash);
     if (cached) return cached;
-    if (!storage || !storage.get) return null;
-    const bytes = await storage.get(hash);
-    if (!bytes) return null;
-    const { value } = await Block.decode({
-      bytes,
-      codec: IDENTITY_CODEC,
-      hasher: IDENTITY_HASHER,
-    });
-    const decoded = value;
-    const { hash: decodedHash } = await encodeIdentityValue({
-      id: decoded.id,
-      publicKey: decoded.publicKey,
-      signatures: decoded.signatures,
-      type: decoded.type,
-    });
-    const storedIdentity = {
-      id: decoded.id,
-      publicKey: decoded.publicKey,
-      signatures: decoded.signatures,
-      type: decoded.type,
-      hash: decodedHash,
-      bytes,
-      sign: async () => {
-        throw new Error('Remote identity cannot sign');
-      },
-      verify: (signature, data) =>
-        verifyVarsigForPayload(
-          signature,
-          decoded.publicKey,
-          toBytes(data),
-          labels.entry
-        ),
-    };
-    identityByHash.set(decodedHash, storedIdentity);
-    return storedIdentity;
+    if (storage?.get) {
+      const bytes = await storage.get(hash);
+      if (bytes) {
+        const { value } = await Block.decode({
+          bytes,
+          codec: IDENTITY_CODEC,
+          hasher: IDENTITY_HASHER,
+        });
+        const decoded = value;
+        const { hash: decodedHash } = await encodeIdentityValue({
+          id: decoded.id,
+          publicKey: decoded.publicKey,
+          signatures: decoded.signatures,
+          type: decoded.type,
+        });
+        const storedIdentity = {
+          id: decoded.id,
+          publicKey: decoded.publicKey,
+          signatures: decoded.signatures,
+          type: decoded.type,
+          hash: decodedHash,
+          bytes,
+          sign: async () => {
+            throw new Error('Remote identity cannot sign');
+          },
+          verify: (signature, data) =>
+            verifyOplogSignatureHybrid(
+              fallbackIdentities,
+              labels,
+              signature,
+              decoded.publicKey,
+              data
+            ),
+        };
+        identityByHash.set(decodedHash, storedIdentity);
+        return storedIdentity;
+      }
+    }
+    if (fallbackIdentities && typeof fallbackIdentities.getIdentity === 'function') {
+      return fallbackIdentities.getIdentity(hash);
+    }
+    return null;
   };
 
   if (storage && storage.put) {

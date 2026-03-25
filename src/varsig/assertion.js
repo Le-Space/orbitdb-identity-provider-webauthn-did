@@ -189,6 +189,18 @@ function algorithmFromPublicKey(publicKey) {
 }
 
 /**
+ * True when the signature bytes are not a WebAuthn varsig v1 envelope (e.g. worker WebAuthn entry sigs).
+ * Callers can fall back to standard OrbitDB/WebAuthn verification.
+ * @param {unknown} err - Caught error from decodeWebAuthnVarsigV1.
+ * @returns {boolean}
+ */
+export function isUnsupportedVarsigEnvelopeError(err) {
+  return String(err?.message || '')
+    .toLowerCase()
+    .includes('unsupported varsig header');
+}
+
+/**
  * Verify varsig signature for a payload and domain.
  * @param {Uint8Array} signature - Varsig signature.
  * @param {Uint8Array} publicKey - Public key bytes.
@@ -206,7 +218,16 @@ async function verifyVarsigForPayload(
     return true;
   }
 
-  const decoded = decodeWebAuthnVarsigV1(signature);
+  let decoded;
+  try {
+    decoded = decodeWebAuthnVarsigV1(signature);
+  } catch (err) {
+    // Worker / keystore WebAuthn signatures are not varsig envelopes; let hybrid verifiers try fallback.
+    if (isUnsupportedVarsigEnvelopeError(err)) {
+      return false;
+    }
+    throw err;
+  }
   const clientData = parseClientDataJSON(decoded.clientDataJSON);
   const expectedChallenge = await buildChallengeBytes(
     domainLabel,

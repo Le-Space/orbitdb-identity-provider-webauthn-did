@@ -12,6 +12,7 @@ export {
   wrapWithVarsigVerification,
 } from './identity.js';
 export { DEFAULT_DOMAIN_LABELS } from './domain.js';
+export { isUnsupportedVarsigEnvelopeError } from './assertion.js';
 export {
   storeWebAuthnVarsigCredential,
   loadWebAuthnVarsigCredential,

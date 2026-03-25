@@ -219,6 +219,7 @@ export {
   storeWebAuthnVarsigCredential,
   loadWebAuthnVarsigCredential,
   clearWebAuthnVarsigCredential,
+  isUnsupportedVarsigEnvelopeError,
 } from './varsig/index.js';
 
 // Re-export individual verification functions for convenience
@@ -282,5 +283,6 @@ export default {
   storeWebAuthnVarsigCredential,
   loadWebAuthnVarsigCredential,
   clearWebAuthnVarsigCredential,
+  isUnsupportedVarsigEnvelopeError,
   VerificationUtils,
 };
