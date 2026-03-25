@@ -18,6 +18,31 @@ const IDENTITY_HASHER = sha256;
 const IDENTITY_HASH_ENCODING = base58btc;
 
 /**
+ * OrbitDB KeyStore verifyMessage expects signature and publicKey as base16 strings.
+ * Replicated oplog entries often carry Uint8Arrays; passing those through makes
+ * verifySignature() fail silently (see @orbitdb/core keystore). This affects the
+ * main database log and nested access-controller manifest DBs alike.
+ *
+ * @param {Uint8Array|string} value
+ * @returns {string|Uint8Array}
+ */
+function toOrbitDbBase16KeyMaterial(value) {
+  if (value instanceof Uint8Array) {
+    let hex = '';
+    for (let i = 0; i < value.length; i++) {
+      hex += value[i].toString(16).padStart(2, '0');
+    }
+    return hex;
+  }
+  if (ArrayBuffer.isView(value) && !(value instanceof Uint8Array)) {
+    return toOrbitDbBase16KeyMaterial(
+      new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+    );
+  }
+  return value;
+}
+
+/**
  * Encode an identity value as CBOR and compute its CID hash.
  * @param {Object} value - Identity payload.
  * @returns {Promise<{hash: string, bytes: Uint8Array}>}
@@ -115,7 +140,11 @@ async function verifyOplogSignatureHybrid(
   if (varsigOk) return true;
   if (fallbackIdentities && typeof fallbackIdentities.verify === 'function') {
     try {
-      return await fallbackIdentities.verify(signature, publicKey, data);
+      return await fallbackIdentities.verify(
+        toOrbitDbBase16KeyMaterial(signature),
+        toOrbitDbBase16KeyMaterial(publicKey),
+        data
+      );
     } catch {
       return false;
     }
@@ -352,15 +381,19 @@ export function wrapWithVarsigVerification(
 
   // Hybrid verify: tries default keystore verification, then varsig verification
   const hybridVerify = async (signature, publicKey, data) => {
-    // Try default keystore verification first
+    // Try default keystore verification (Uint8Array -> base16 for OrbitDB keystore)
     try {
-      const result = await defaultIdentities.verify(signature, publicKey, data);
+      const result = await defaultIdentities.verify(
+        toOrbitDbBase16KeyMaterial(signature),
+        toOrbitDbBase16KeyMaterial(publicKey),
+        data
+      );
       if (result) return true;
     } catch {
       // Default verification failed, try varsig
     }
 
-    // Try varsig verification (varsig uses Uint8Array public keys)
+    // Try varsig verification (raw bytes; varsig envelope decode)
     if (publicKey instanceof Uint8Array) {
       try {
         return await verifyVarsigForPayload(
