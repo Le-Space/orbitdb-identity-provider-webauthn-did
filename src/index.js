@@ -44,6 +44,7 @@ import {
   storeWebAuthnVarsigCredential,
   loadWebAuthnVarsigCredential,
   clearWebAuthnVarsigCredential,
+  isUnsupportedVarsigEnvelopeError,
 } from './varsig/index.js';
 
 export {
