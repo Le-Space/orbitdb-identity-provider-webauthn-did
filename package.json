@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.js",
     "./verification": "./verification.js",
-    "./standalone": "./src/standalone/index.js"
+    "./standalone": "./src/standalone/index.js",
+    "./multi-device/manager": "./src/multi-device/manager.js"
   },
   "scripts": {
     "postinstall": "patch-package",
@@ -24,10 +25,14 @@
     "test:varsig-e2e": "playwright test tests/webauthn-varsig-e2e.test.js --project=chromium --reporter=line",
     "test:encrypted-keystore": "USE_ENCRYPTED_DEMO=true playwright test tests/ed25519-encrypted-keystore-e2e.test.js --project=chromium --reporter=line",
     "test:encrypted-keystore-headed": "USE_ENCRYPTED_DEMO=true playwright test tests/ed25519-encrypted-keystore-e2e.test.js --headed --project=chromium",
+    "test:multi-device": "USE_MULTI_DEVICE_DEMO=true playwright test tests/webauthn-multi-device-e2e.test.js --project=chromium --reporter=line",
+    "test:multi-device-headed": "USE_MULTI_DEVICE_DEMO=true playwright test tests/webauthn-multi-device-e2e.test.js --headed --project=chromium",
     "test:full-flow": "npm run demo:setup && npm run test:focused",
     "lint": "eslint src/ tests/",
     "lint:fix": "eslint src/ tests/ --fix",
     "prepublishOnly": "npm run test:ci",
+    "demo:multi-device": "cd examples/webauthn-multi-device-demo && npm run dev",
+    "demo:multi-device-setup": "cd examples/webauthn-multi-device-demo && pnpm install && pnpm run build",
     "demo": "cd examples/webauthn-todo-demo && npm run dev",
     "demo:build": "cd examples/webauthn-todo-demo && npm run build",
     "demo:setup": "cd examples/webauthn-todo-demo && npm ci && npm run build",
@@ -62,11 +67,15 @@
     "@orbitdb/core": "^3.0.0"
   },
   "dependencies": {
-    "@ipld/dag-ucan": "^3.4.3",
     "@ipld/dag-cbor": "^9.2.5",
+    "@ipld/dag-ucan": "^3.4.3",
     "@le-space/ucanto-principal": "^9.1.2",
-    "@libp2p/logger": "^5.1.5",
     "@libp2p/crypto": "^5.1.8",
+    "@libp2p/logger": "^5.1.5",
+    "@libp2p/peer-id": "^4.0.0",
+    "@libp2p/pubsub-peer-discovery": "^12.0.0",
+    "@libp2p/webtransport": "^6.0.12",
+    "@multiformats/multiaddr": "^12.0.0",
     "@simplewebauthn/browser": "^13.0.0",
     "cbor-web": "^9.0.1",
     "iso-base": "npm:@le-space/iso-base",
@@ -74,8 +83,10 @@
     "iso-passkeys": "npm:@le-space/iso-passkeys",
     "iso-web": "^2.1.0",
     "iso-webauthn-varsig": "npm:@le-space/iso-webauthn-varsig",
+    "it-length-prefixed-stream": "^2.0.4",
     "multiformats": "^13.0.0",
     "patch-package": "^8.0.1",
+    "uint8arrays": "^5.1.0",
     "vite-plugin-node-polyfills": "^0.24.0"
   },
   "devDependencies": {
