@@ -96,6 +96,7 @@
         on:click|stopPropagation
         role="dialog"
         aria-modal="true"
+        tabindex="-1"
       >
         <div class="details-header">
           <h6>Verification Details</h6>

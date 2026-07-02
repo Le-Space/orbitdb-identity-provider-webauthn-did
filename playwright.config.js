@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+delete process.env.NO_COLOR;
+
 const e2eTestPattern = '**/*e2e.test.js';
 const playwrightPort = process.env.PLAYWRIGHT_PORT || '5173';
 const baseURL = `http://localhost:${playwrightPort}`;
@@ -99,8 +101,8 @@ export default defineConfig({
           : 'examples/webauthn-todo-demo';
 
       return process.env.CI
-        ? `cd ${demoDir} && npm run preview -- --port ${playwrightPort} --host`
-        : `cd ${demoDir} && npm run dev -- --port ${playwrightPort} --host`;
+        ? `cd ${demoDir} && env -u NO_COLOR -u FORCE_COLOR pnpm run preview -- --port ${playwrightPort} --host`
+        : `cd ${demoDir} && env -u NO_COLOR -u FORCE_COLOR pnpm run dev -- --port ${playwrightPort} --host`;
     })(),
     url: baseURL,
     reuseExistingServer: process.env.PLAYWRIGHT_REUSE_SERVER === 'true',

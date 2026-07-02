@@ -1,5 +1,5 @@
 import { sveltekit } from '@sveltejs/kit/vite';
-import { defineConfig } from 'vite';
+import { createLogger, defineConfig } from 'vite';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import { fileURLToPath } from 'url';
 import { readFileSync } from 'fs';
@@ -15,7 +15,34 @@ const buildDate =
   ' ' +
   new Date().toLocaleTimeString(); // YYYY-MM-DD HH:MM:SS format
 
+function suppressKnownPolyfillWarnings(warning, warn) {
+  if (
+    warning.message.includes(
+      '"default" is imported from external module "vite-plugin-node-polyfills/shims/global"'
+    )
+  ) {
+    return;
+  }
+
+  warn(warning);
+}
+
+const logger = createLogger();
+const warn = logger.warn;
+logger.warn = (message, options) => {
+  if (
+    message.includes(
+      '"default" is imported from external module "vite-plugin-node-polyfills/shims/global"'
+    )
+  ) {
+    return;
+  }
+
+  warn(message, options);
+};
+
 export default defineConfig({
+  customLogger: logger,
   plugins: [
     sveltekit(),
     nodePolyfills({
@@ -41,5 +68,11 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __BUILD_DATE__: JSON.stringify(buildDate),
+  },
+  build: {
+    chunkSizeWarningLimit: 2500,
+    rollupOptions: {
+      onwarn: suppressKnownPolyfillWarnings,
+    },
   },
 });

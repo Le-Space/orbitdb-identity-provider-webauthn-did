@@ -10,13 +10,11 @@
  * - WebAuthn only for authentication, not DID generation
  */
 
-import { createOrbitDB } from '@orbitdb/core';
-import { createHelia } from 'helia';
-import { createLibp2p } from 'libp2p';
 import { 
   WebAuthnDIDProvider, 
   OrbitDBWebAuthnIdentityProviderFunction 
 } from '../src/index.js';
+import { createExampleOrbitDB } from './orbitdb-setup.js';
 
 // ============================================================================
 // Example 1: Default behavior (P-256 DID from WebAuthn)
@@ -32,9 +30,8 @@ async function exampleDefaultP256DID() {
   });
   console.log('✅ WebAuthn credential created');
 
-  // Create IPFS and OrbitDB instances
-  const ipfs = await createHelia({ /* config */ });
-  const orbitdb = await createOrbitDB({ ipfs });
+  // Create Helia and OrbitDB instances
+  const { orbitdb } = await createExampleOrbitDB();
 
   // Create identity with default P-256 DID from WebAuthn
   const identity = await orbitdb.identities.createIdentity({
@@ -63,9 +60,8 @@ async function exampleEd25519KeystoreDID() {
   });
   console.log('✅ WebAuthn credential created (used for authentication only)');
 
-  // Create IPFS and OrbitDB instances
-  const ipfs = await createHelia({ /* config */ });
-  const orbitdb = await createOrbitDB({ ipfs });
+  // Create Helia and OrbitDB instances
+  const { orbitdb } = await createExampleOrbitDB();
 
   // Get the keystore instance
   const keystore = orbitdb.keystore;
@@ -105,8 +101,7 @@ async function exampleFullWorkflow() {
 
   // Step 2: Initialize OrbitDB
   console.log('Step 2: Initializing OrbitDB...');
-  const ipfs = await createHelia({ /* config */ });
-  const orbitdb = await createOrbitDB({ ipfs });
+  const { orbitdb } = await createExampleOrbitDB();
   console.log('✅ OrbitDB initialized\n');
 
   // Step 3: Create identity with Ed25519 keystore DID
@@ -161,8 +156,7 @@ async function compareP256vsEd25519() {
     displayName: 'Comparison User'
   });
 
-  const ipfs = await createHelia({ /* config */ });
-  const orbitdb = await createOrbitDB({ ipfs });
+  const { orbitdb } = await createExampleOrbitDB();
 
   // Create P-256 DID (default)
   const identityP256 = await orbitdb.identities.createIdentity({

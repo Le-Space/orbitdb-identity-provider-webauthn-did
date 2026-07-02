@@ -6,6 +6,8 @@
  */
 
 import { logger } from '@libp2p/logger';
+import { varint } from 'multiformats';
+import { base58btc } from 'multiformats/bases/base58';
 import * as KeystoreEncryption from '../keystore/encryption.js';
 import {
   buildAuthenticatorSelection,
@@ -341,11 +343,6 @@ export class WebAuthnDIDProvider {
    */
   static async createDID(credentialInfo) {
     try {
-      // Import multiformats modules with correct exports
-      const multiformats = await import('multiformats');
-      const varint = multiformats.varint;
-      const { base58btc } = await import('multiformats/bases/base58');
-
       // Extract public key coordinates
       const { x, y } = credentialInfo.publicKey;
 

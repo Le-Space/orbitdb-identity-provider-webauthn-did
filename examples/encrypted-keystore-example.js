@@ -12,13 +12,12 @@
  * - Session management and keystore lifecycle
  */
 
-import { createOrbitDB } from '@orbitdb/core';
-import { createHelia } from 'helia';
 import { 
   WebAuthnDIDProvider, 
   OrbitDBWebAuthnIdentityProviderFunction,
   KeystoreEncryption
 } from '../src/index.js';
+import { createExampleOrbitDB } from './orbitdb-setup.js';
 
 // ============================================================================
 // Example 1: Basic Encrypted Keystore (largeBlob)
@@ -39,8 +38,7 @@ async function exampleBasicEncryptedKeystore() {
 
   // Step 2: Initialize OrbitDB
   console.log('Step 2: Initializing OrbitDB...');
-  const ipfs = await createHelia({ /* config */ });
-  const orbitdb = await createOrbitDB({ ipfs });
+  const { orbitdb } = await createExampleOrbitDB();
   console.log('✅ OrbitDB initialized\n');
 
   // Step 3: Create identity with encrypted keystore
@@ -84,8 +82,7 @@ async function exampleHmacSecretEncryption() {
   console.log('✅ WebAuthn credential created\n');
 
   // Step 2: Initialize OrbitDB
-  const ipfs = await createHelia({ /* config */ });
-  const orbitdb = await createOrbitDB({ ipfs });
+  const { orbitdb } = await createExampleOrbitDB();
 
   // Step 3: Create identity with hmac-secret encryption
   console.log('Step 2: Creating identity with hmac-secret encryption...');
@@ -129,8 +126,7 @@ async function exampleCompleteWorkflow() {
 
   // Step 2: Initialize OrbitDB
   console.log('Step 2: Initializing OrbitDB...');
-  const ipfs = await createHelia({ /* config */ });
-  const orbitdb = await createOrbitDB({ ipfs });
+  const { orbitdb } = await createExampleOrbitDB();
   console.log('✅ OrbitDB initialized\n');
 
   // Step 3: Create encrypted identity
@@ -200,8 +196,9 @@ async function exampleSessionManagement() {
   });
   console.log('✅ First session: Credential created (🔐 biometric prompt)\n');
 
-  const ipfs1 = await createHelia({ /* config */ });
-  const orbitdb1 = await createOrbitDB({ ipfs: ipfs1 });
+  const { orbitdb: orbitdb1 } = await createExampleOrbitDB({
+    storagePrefix: './orbitdb/examples/session-1',
+  });
 
   const identity1 = await orbitdb1.identities.createIdentity({
     provider: OrbitDBWebAuthnIdentityProviderFunction({ 
@@ -231,8 +228,9 @@ async function exampleSessionManagement() {
   console.log('✅ Second session: Loaded credential from storage\n');
 
   // Re-initialize OrbitDB
-  const ipfs2 = await createHelia({ /* config */ });
-  const orbitdb2 = await createOrbitDB({ ipfs: ipfs2 });
+  const { orbitdb: orbitdb2 } = await createExampleOrbitDB({
+    storagePrefix: './orbitdb/examples/session-2',
+  });
 
   // Re-create identity (will unlock keystore with biometric)
   console.log('Unlocking keystore... (🔐 biometric prompt)\n');
@@ -316,8 +314,9 @@ async function exampleComparison() {
     displayName: 'Unencrypted User'
   });
 
-  const ipfs1 = await createHelia({ /* config */ });
-  const orbitdb1 = await createOrbitDB({ ipfs: ipfs1 });
+  const { orbitdb: orbitdb1 } = await createExampleOrbitDB({
+    storagePrefix: './orbitdb/examples/unencrypted',
+  });
 
   const identity1 = await orbitdb1.identities.createIdentity({
     provider: OrbitDBWebAuthnIdentityProviderFunction({ 
@@ -343,8 +342,9 @@ async function exampleComparison() {
     keystoreEncryptionMethod: 'largeBlob'
   });
 
-  const ipfs2 = await createHelia({ /* config */ });
-  const orbitdb2 = await createOrbitDB({ ipfs: ipfs2 });
+  const { orbitdb: orbitdb2 } = await createExampleOrbitDB({
+    storagePrefix: './orbitdb/examples/encrypted',
+  });
 
   const identity2 = await orbitdb2.identities.createIdentity({
     provider: OrbitDBWebAuthnIdentityProviderFunction({ 

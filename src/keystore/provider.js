@@ -4,6 +4,8 @@
 
 import { logger } from '@libp2p/logger';
 import { generateKeyPair } from '@libp2p/crypto/keys';
+import { varint } from 'multiformats';
+import { base58btc } from 'multiformats/bases/base58';
 import * as KeystoreEncryption from './encryption.js';
 import { WebAuthnDIDProvider } from '../webauthn/provider.js';
 
@@ -119,11 +121,6 @@ export class OrbitDBWebAuthnIdentityProvider {
     }
 
     try {
-      // Import multiformats modules
-      const multiformats = await import('multiformats');
-      const varint = multiformats.varint;
-      const { base58btc } = await import('multiformats/bases/base58');
-
       if (this.encryptKeystore) {
         const encryptedData = this.unlockedKeypair
           ? {
@@ -157,10 +154,12 @@ export class OrbitDBWebAuthnIdentityProvider {
           identityId.substring(0, 32) + '...',
           this.keystoreKeyType
         );
-        keystoreKey = await this.keystore.createKey(
-          identityId,
-          this.keystoreKeyType
-        );
+        const keyType =
+          this.keystoreKeyType === 'secp256k1' ? 'secp256k1' : 'Ed25519';
+        keystoreKey = await generateKeyPair(keyType);
+        await this.keystore.addKey(identityId, {
+          privateKey: keystoreKey.raw,
+        });
       }
 
       identityLog(

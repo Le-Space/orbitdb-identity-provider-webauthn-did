@@ -42,7 +42,7 @@ This is a **solid, well-tested project** with good documentation and comprehensi
 
 ### 4. **Professional Development Workflow**
 
-- Git hooks and patch management (patch-package)
+- Git hooks and dependency upgrade workflow
 - Multiple npm scripts for different testing scenarios
 - Examples directory with working demonstrations
 - Contributing guidelines (CONTRIBUTING.md)

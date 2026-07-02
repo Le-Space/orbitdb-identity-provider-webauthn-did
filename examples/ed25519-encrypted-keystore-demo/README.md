@@ -81,7 +81,7 @@ sequenceDiagram
 
   User->>App: Authenticate / create identity
   App->>Prov: getId(useKeystoreDID=true)
-  Prov->>KS: getKey() / createKey(Ed25519)
+  Prov->>KS: getKey() / add generated Ed25519 key
   KS-->>Prov: Ed25519 keypair
   Prov-->>App: DID from keystore public key
 

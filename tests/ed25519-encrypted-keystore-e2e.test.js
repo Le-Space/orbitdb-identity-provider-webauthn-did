@@ -34,6 +34,8 @@ async function authenticateAndWait(page) {
 }
 
 test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
+  test.describe.configure({ mode: 'serial' });
+
   test.beforeEach(async ({ page, context }) => {
     // Clear localStorage before each test
     await context.clearCookies();
@@ -547,7 +549,8 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     const workerToggle = page.locator('[data-testid="worker-mode-toggle"]');
     await expect(workerToggle).toBeVisible();
     await expect(workerToggle).toBeEnabled();
-    await workerToggle.check();
+    await workerToggle.check({ force: true });
+    await expect(workerToggle).toBeChecked();
 
     await authenticateAndWait(page);
 
@@ -610,7 +613,8 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     });
 
     const workerToggle = page.locator('[data-testid="worker-mode-toggle"]');
-    await workerToggle.check();
+    await workerToggle.check({ force: true });
+    await expect(workerToggle).toBeChecked();
     await authenticateAndWait(page);
 
     await page.waitForFunction(() => {
@@ -670,8 +674,8 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     console.log('✅ TODO added before reload');
 
     // Reload the page
-    await page.reload();
-    await page.waitForLoadState('networkidle');
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => document.readyState === 'complete');
     await page.waitForTimeout(2000);
 
     // Check if re-authentication is required

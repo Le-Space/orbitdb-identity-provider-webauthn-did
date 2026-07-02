@@ -21,7 +21,7 @@ sequenceDiagram
   Auth-->>WebAuthn: Attestation
   WebAuthn-->>App: Credential
 
-  App->>KS: getKey() / createKey(Ed25519)
+  App->>KS: getKey() / add generated Ed25519 key
   KS-->>App: Ed25519 keypair
   App->>Prov: create identity (useKeystoreDID=true)
   Prov-->>App: DID from keystore public key
@@ -52,7 +52,7 @@ sequenceDiagram
   Auth-->>WebAuthn: Attestation
   WebAuthn-->>App: Credential
 
-  App->>KS: getKey() / createKey(Ed25519)
+  App->>KS: getKey() / add generated Ed25519 key
   KS-->>App: Ed25519 keypair
   App->>Enc: generateSecretKey()
   Enc-->>App: sk
@@ -182,7 +182,7 @@ sequenceDiagram
   WebAuthn-->>App: Credential (rawId, publicKey)
 
   User->>App: Select encryption method (PRF / largeBlob / hmac-secret)
-  App->>KS: createKey(Ed25519)
+  App->>KS: add generated Ed25519 key
   KS-->>App: Keystore keypair
   App->>Enc: generateSecretKey()
   Enc-->>App: sk

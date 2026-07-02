@@ -1,28 +1,30 @@
 import { createOrbitDB, Identities, useIdentityProvider } from '@orbitdb/core';
 import { createLibp2p } from 'libp2p';
-import { createHelia } from 'helia';
+import { createHeliaLight } from 'helia';
+import { withBitswap } from '@helia/bitswap';
+import { withHTTP } from '@helia/http';
+import { withLibp2p } from '@helia/libp2p';
+import * as dagCbor from '@ipld/dag-cbor';
+import * as dagJson from '@ipld/dag-json';
 import { circuitRelayTransport } from '@libp2p/circuit-relay-v2';
 import { webSockets } from '@libp2p/websockets';
 import { webRTC } from '@libp2p/webrtc';
 import { noise } from '@chainsafe/libp2p-noise';
 import { yamux } from '@chainsafe/libp2p-yamux';
 import { identify } from '@libp2p/identify';
-import { gossipsub } from '@chainsafe/libp2p-gossipsub';
-import { all } from '@libp2p/websockets/filters';
+import { gossipsub } from '@libp2p/gossipsub';
 import { LevelBlockstore } from 'blockstore-level';
 import { LevelDatastore } from 'datastore-level';
+import * as json from 'multiformats/codecs/json';
+import { sha512 } from 'multiformats/hashes/sha2';
 import {
   OrbitDBWebAuthnIdentityProviderFunction,
   OrbitDBWebAuthnIdentityProvider,
   KeystoreEncryption,
 } from '@le-space/orbitdb-identity-provider-webauthn-did';
 
-/**
- * Creates a browser-compatible libp2p instance with optimal configuration
- * for WebRTC, WebSocket, and circuit relay connections
- */
-export async function createLibp2pInstance() {
-  return await createLibp2p({
+export function createLibp2pOptions() {
+  return {
     addresses: {
       listen: [
         '/p2p-circuit', // Essential for relay connections
@@ -30,9 +32,7 @@ export async function createLibp2pInstance() {
       ],
     },
     transports: [
-      webSockets({
-        filter: all,
-      }),
+      webSockets(),
       webRTC({
         rtcConfiguration: {
           iceServers: [
@@ -46,7 +46,7 @@ export async function createLibp2pInstance() {
         maxReservations: 2, // Allow more reservations
       }),
     ],
-    connectionEncryption: [noise()],
+    connectionEncrypters: [noise()],
     streamMuxers: [yamux()],
     services: {
       identify: identify(),
@@ -59,19 +59,47 @@ export async function createLibp2pInstance() {
       maxConnections: 20,
       minConnections: 1,
     },
-  });
+  };
+}
+
+/**
+ * Creates a browser-compatible libp2p instance with optimal configuration
+ * for WebRTC, WebSocket, and circuit relay connections
+ */
+export async function createLibp2pInstance() {
+  const libp2p = await createLibp2p(createLibp2pOptions());
+
+  if (libp2p.status !== 'started') {
+    await libp2p.start();
+  }
+
+  return libp2p;
 }
 
 /**
  * Creates a Helia IPFS instance with persistent Level storage
- * @param {Libp2p} libp2p - The libp2p instance to use
+ * @param {Object} libp2pOptions - The libp2p options to use
  */
-export async function createHeliaInstance(libp2p) {
-  return await createHelia({
-    libp2p,
-    blockstore: new LevelBlockstore('./orbitdb/blocks'),
-    datastore: new LevelDatastore('./orbitdb/data'),
-  });
+export async function createHeliaInstance(
+  libp2pOptions = createLibp2pOptions()
+) {
+  const ipfs = withBitswap(
+    withLibp2p(
+      withHTTP(
+        createHeliaLight({
+          blockstore: new LevelBlockstore('./orbitdb/blocks'),
+          datastore: new LevelDatastore('./orbitdb/data'),
+          codecs: [dagCbor, dagJson, json],
+          hashers: [sha512],
+        })
+      ),
+      libp2pOptions
+    )
+  );
+
+  await ipfs.start();
+
+  return ipfs;
 }
 
 /**
@@ -149,11 +177,8 @@ export async function createOrbitDBInstance(ipfs, identities, identity) {
  * @returns {Object} Contains orbitdb, ipfs, identity, and identities instances
  */
 export async function setupOrbitDB(credential, options = {}) {
-  // Create libp2p instance
-  const libp2p = await createLibp2pInstance();
-
   // Create Helia instance
-  const ipfs = await createHeliaInstance(libp2p);
+  const ipfs = await createHeliaInstance();
 
   // Register WebAuthn provider
   registerWebAuthnProvider();

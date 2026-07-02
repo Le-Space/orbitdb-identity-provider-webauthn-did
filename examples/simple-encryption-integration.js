@@ -10,9 +10,7 @@
  * - Hardware-backed encryption key
  */
 
-import { createOrbitDB } from '@orbitdb/core';
-import { createHelia } from 'helia';
-import { SimpleEncryption } from '@orbitdb/simple-encryption';
+import SimpleEncryption from '@orbitdb/simple-encryption';
 import {
   OrbitDBWebAuthnIdentityProviderFunction,
   generateSecretKey,
@@ -20,6 +18,7 @@ import {
   unwrapSKWithHmacSecret,
   loadEncryptedKeystore
 } from '@le-space/orbitdb-identity-provider-webauthn-did';
+import { createExampleOrbitDB } from './orbitdb-setup.js';
 
 /**
  * Convert 32-byte secret key to base64 string for use with SimpleEncryption
@@ -152,8 +151,7 @@ async function unlockAndAccessDatabase(credential, orbitdb, dbAddress) {
  */
 async function main() {
   // Setup Helia and OrbitDB
-  const ipfs = await createHelia();
-  const orbitdb = await createOrbitDB({ ipfs });
+  const { ipfs, orbitdb } = await createExampleOrbitDB();
 
   // 1. Create WebAuthn credential (first time)
   const credential = await navigator.credentials.create({

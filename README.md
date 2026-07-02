@@ -39,7 +39,7 @@ Note: WebAuthn varsig support in this repo relies on our forked `@le-space/iso-*
 npm install @le-space/orbitdb-identity-provider-webauthn-did
 ```
 
-Note: `@orbitdb/core` is patched (via `patch-package`) to support Ed25519 keystore keys.
+Note: Ed25519 keystore DIDs are handled without patching OrbitDB. The provider generates the requested libp2p key type and stores it through OrbitDB's public keystore API.
 
 ## WebAuthn Configuration
 
@@ -186,7 +186,7 @@ sequenceDiagram
   Auth-->>WebAuthn: Attestation
   WebAuthn-->>App: Credential
 
-  App->>KS: getKey()/createKey(Ed25519)
+  App->>KS: getKey() or add generated Ed25519 key
   KS-->>App: Keystore keypair
 
   opt encryptKeystore=true
