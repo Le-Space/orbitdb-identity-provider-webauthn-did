@@ -101,8 +101,8 @@ export default defineConfig({
           : 'examples/webauthn-todo-demo';
 
       return process.env.CI
-        ? `cd ${demoDir} && env -u NO_COLOR -u FORCE_COLOR pnpm run preview -- --port ${playwrightPort} --host`
-        : `cd ${demoDir} && env -u NO_COLOR -u FORCE_COLOR pnpm run dev -- --port ${playwrightPort} --host`;
+        ? `cd ${demoDir} && env -u NO_COLOR -u FORCE_COLOR pnpm run preview --port ${playwrightPort} --host`
+        : `cd ${demoDir} && env -u NO_COLOR -u FORCE_COLOR pnpm run dev --port ${playwrightPort} --host`;
     })(),
     url: baseURL,
     reuseExistingServer: process.env.PLAYWRIGHT_REUSE_SERVER === 'true',
