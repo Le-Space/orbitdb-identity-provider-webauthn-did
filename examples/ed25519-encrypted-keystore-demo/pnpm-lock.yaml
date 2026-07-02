@@ -17,9 +17,21 @@ importers:
       '@chainsafe/libp2p-yamux':
         specifier: ^8.0.1
         version: 8.0.1
+      '@helia/bitswap':
+        specifier: ^4.0.1
+        version: 4.0.1(react-native@0.83.1(@babel/core@7.28.6)(react@19.2.3))
+      '@helia/http':
+        specifier: ^4.0.1
+        version: 4.0.1
+      '@helia/libp2p':
+        specifier: ^1.0.1
+        version: 1.0.1(react-native@0.83.1(@babel/core@7.28.6)(react@19.2.3))
       '@ipld/dag-cbor':
         specifier: ^10.0.1
         version: 10.0.1
+      '@ipld/dag-json':
+        specifier: ^11.0.0
+        version: 11.0.0
       '@le-space/orbitdb-identity-provider-webauthn-did':
         specifier: link:../..
         version: link:../..
@@ -708,9 +720,6 @@ packages:
 
   '@libp2p/keychain@6.1.3':
     resolution: {integrity: sha512-inkEQehXycDZY3xD13GnqXRxl8HRmGVvpwdHi/FVxQltKgGzkX5pagnFrviWIGelCXMheY8UQMfdFW/7Fy0PXw==}
-
-  '@libp2p/logger@6.2.2':
-    resolution: {integrity: sha512-XtanXDT+TuMuZoCK760HGV1AmJsZbwAw5AiRUxWDbsZPwAroYq64nb41AHRu9Gyc0TK9YD+p72+5+FIxbw0hzw==}
 
   '@libp2p/logger@6.2.9':
     resolution: {integrity: sha512-hjuF81KSt9dWNPJZcdJ4SHEuygMLHrPZVTGNzCWu+2jxpJqOHWy9CJS8llLH7pgbDtlq4jJ4uuqihCR5Gjo4gA==}
@@ -2061,12 +2070,6 @@ packages:
 
   interface-datastore@10.0.1:
     resolution: {integrity: sha512-DYMj/Og5Cz1Qwkx6/x5KRvR8SYEX7rVAv3KKCm2NzTwWSfpNAC4PahjcYbHyoZBP6zPWrhQv5n5wE+vaDdgSAg==}
-
-  interface-datastore@9.0.2:
-    resolution: {integrity: sha512-jebn+GV/5LTDDoyicNIB4D9O0QszpPqT09Z/MpEWvf3RekjVKpXJCDguM5Au2fwIFxFDAQMZe5bSla0jMamCNg==}
-
-  interface-store@7.0.1:
-    resolution: {integrity: sha512-OPRRUO3Cs6Jr/t98BrJLQp1jUTPgrRH0PqFfuNoPAqd+J7ABN1tjFVjQdaOBiybYJTS/AyBSZnZVWLPvp3dW3w==}
 
   interface-store@8.0.0:
     resolution: {integrity: sha512-e2+s3EEROzM+Wlas4hU3zveTUscvVMf1BOvdsJfpzFm19SoEXLVadpACjWOnM491HqGpvtfFnevyiaN8W+I6Eg==}
@@ -3461,9 +3464,6 @@ packages:
   walker@1.0.8:
     resolution: {integrity: sha512-ts/8E8l5b7kY0vlWLewOkDXMmPdLcVV4GmOQLyxuSswIJsweeFZtAsMF7k1Nszz+TYBQrlYRmzOnr398y1JemQ==}
 
-  weald@1.1.1:
-    resolution: {integrity: sha512-PaEQShzMCz8J/AD2N3dJMc1hTZWkJeLKS2NMeiVkV5KDHwgZe7qXLEzyodsT/SODxWDdXJJqocuwf3kHzcXhSQ==}
-
   weald@1.1.3:
     resolution: {integrity: sha512-vMWtNbYuPb58NeG2+0sKA0Een4VMDwzf+3oHqh68buWRSOMUBlUeRb11LhV28czV+DUpJHRykifijZDuS9bInA==}
 
@@ -3578,7 +3578,7 @@ snapshots:
     dependencies:
       '@achingbrain/ssdp': 4.2.4
       '@chainsafe/is-ip': 2.1.0
-      '@libp2p/logger': 6.2.2
+      '@libp2p/logger': 6.2.9
       abort-error: 1.0.2
       err-code: 3.0.1
       netmask: 2.0.2
@@ -4436,9 +4436,9 @@ snapshots:
 
   '@libp2p/interface@3.2.4':
     dependencies:
-      '@multiformats/dns': 1.0.13
+      '@multiformats/dns': 1.0.15
       '@multiformats/multiaddr': 13.0.3
-      main-event: 1.0.1
+      main-event: 1.0.4
       multiformats: 14.0.3
       progress-events: 1.1.0
       uint8arraylist: 3.0.2
@@ -4464,8 +4464,8 @@ snapshots:
       it-merge: 3.0.14
       it-parallel: 3.0.13
       it-pipe: 3.0.1
-      it-pushable: 3.2.3
-      it-take: 3.0.9
+      it-pushable: 3.2.4
+      it-take: 3.0.11
       main-event: 1.0.4
       multiformats: 14.0.3
       p-defer: 4.0.1
@@ -4488,21 +4488,13 @@ snapshots:
       sanitize-filename: 1.6.3
       uint8arrays: 6.1.1
 
-  '@libp2p/logger@6.2.2':
-    dependencies:
-      '@libp2p/interface': 3.2.4
-      '@multiformats/multiaddr': 13.0.3
-      interface-datastore: 9.0.2
-      multiformats: 13.4.2
-      weald: 1.1.1
-
   '@libp2p/logger@6.2.9':
     dependencies:
       '@libp2p/interface': 3.2.4
       '@multiformats/multiaddr': 13.0.3
       interface-datastore: 10.0.1
       multiformats: 14.0.3
-      weald: 1.1.1
+      weald: 1.1.3
 
   '@libp2p/mdns@12.0.25':
     dependencies:
@@ -4520,7 +4512,7 @@ snapshots:
     dependencies:
       '@libp2p/interface': 3.2.4
       '@libp2p/utils': 7.2.3
-      it-pushable: 3.2.3
+      it-pushable: 3.2.4
       uint8-varint: 3.0.0
       uint8arraylist: 3.0.2
       uint8arrays: 6.1.1
@@ -6257,13 +6249,6 @@ snapshots:
       interface-store: 8.0.0
       uint8arrays: 6.1.1
 
-  interface-datastore@9.0.2:
-    dependencies:
-      interface-store: 7.0.1
-      uint8arrays: 5.1.0
-
-  interface-store@7.0.1: {}
-
   interface-store@8.0.0:
     dependencies:
       abort-error: 1.0.2
@@ -6462,7 +6447,7 @@ snapshots:
   it-queue@1.1.1:
     dependencies:
       abort-error: 1.0.2
-      it-pushable: 3.2.3
+      it-pushable: 3.2.4
       main-event: 1.0.4
       race-event: 1.6.1
       race-signal: 2.0.0
@@ -7907,11 +7892,6 @@ snapshots:
   walker@1.0.8:
     dependencies:
       makeerror: 1.0.12
-
-  weald@1.1.1:
-    dependencies:
-      ms: 2.1.3
-      supports-color: 10.2.2
 
   weald@1.1.3:
     dependencies:
