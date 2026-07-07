@@ -554,17 +554,22 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
 
     await authenticateAndWait(page);
 
-    await page.waitForFunction(() => {
-      const state = window.__encryptedKeystoreDemo?.getState?.();
-      return (
-        state &&
-        state.useWorkerKeystore === true &&
-        state.workerStatus !== 'initializing' &&
-        state.workerProbeCount >= 1
-      );
-    }, { timeout: 60000 });
+    await page.waitForFunction(
+      () => {
+        const state = window.__encryptedKeystoreDemo?.getState?.();
+        return (
+          state &&
+          state.useWorkerKeystore === true &&
+          state.workerStatus !== 'initializing' &&
+          state.workerProbeCount >= 1
+        );
+      },
+      { timeout: 60000 }
+    );
 
-    const state = await page.evaluate(() => window.__encryptedKeystoreDemo.getState());
+    const state = await page.evaluate(() =>
+      window.__encryptedKeystoreDemo.getState()
+    );
     expect(state.useWorkerKeystore).toBe(true);
     expect(state.activeSigningBackend).toBe('worker-keystore');
     expect(state.workerDid).toMatch(/^did:key:z6Mk/);
@@ -596,39 +601,48 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     await page.locator('[data-testid="worker-mode-toggle"]').check();
     await authenticateAndWait(page);
 
-    await page.waitForFunction(() => {
-      const state = window.__encryptedKeystoreDemo?.getState?.();
-      return state && state.workerDid && state.workerProbeCount >= 1;
-    }, { timeout: 60000 });
+    await page.waitForFunction(
+      () => {
+        const state = window.__encryptedKeystoreDemo?.getState?.();
+        return state && state.workerDid && state.workerProbeCount >= 1;
+      },
+      { timeout: 60000 }
+    );
 
-    const firstState = await page.evaluate(
-      () => window.__encryptedKeystoreDemo.getState()
+    const firstState = await page.evaluate(() =>
+      window.__encryptedKeystoreDemo.getState()
     );
 
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => document.readyState === 'complete');
     await waitForDemoState(page);
-    await page.waitForSelector('button:has-text("Authenticate with WebAuthn")', {
-      timeout: 30000,
-    });
+    await page.waitForSelector(
+      'button:has-text("Authenticate with WebAuthn")',
+      {
+        timeout: 30000,
+      }
+    );
 
     const workerToggle = page.locator('[data-testid="worker-mode-toggle"]');
     await workerToggle.check({ force: true });
     await expect(workerToggle).toBeChecked();
     await authenticateAndWait(page);
 
-    await page.waitForFunction(() => {
-      const state = window.__encryptedKeystoreDemo?.getState?.();
-      return (
-        state &&
-        state.workerArchiveRestored === true &&
-        state.workerStatus !== 'initializing' &&
-        state.workerProbeCount >= 1
-      );
-    }, { timeout: 60000 });
+    await page.waitForFunction(
+      () => {
+        const state = window.__encryptedKeystoreDemo?.getState?.();
+        return (
+          state &&
+          state.workerArchiveRestored === true &&
+          state.workerStatus !== 'initializing' &&
+          state.workerProbeCount >= 1
+        );
+      },
+      { timeout: 60000 }
+    );
 
-    const restoredState = await page.evaluate(
-      () => window.__encryptedKeystoreDemo.getState()
+    const restoredState = await page.evaluate(() =>
+      window.__encryptedKeystoreDemo.getState()
     );
 
     expect(restoredState.useWorkerKeystore).toBe(true);

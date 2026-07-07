@@ -168,13 +168,22 @@ export function createWebAuthnVarsigIdentities(identity, domainLabels = {}) {
   const fallbackIdentities = arguments.length > 3 ? arguments[3] : null;
 
   const verify = (signature, publicKey, data) =>
-    verifyOplogSignatureHybrid(fallbackIdentities, labels, signature, publicKey, data);
+    verifyOplogSignatureHybrid(
+      fallbackIdentities,
+      labels,
+      signature,
+      publicKey,
+      data
+    );
 
   const verifyIdentity = async (identityToVerify) => {
     if (!identityToVerify) return false;
 
     if (identityToVerify.type === 'webauthn') {
-      if (fallbackIdentities && typeof fallbackIdentities.verifyIdentity === 'function') {
+      if (
+        fallbackIdentities &&
+        typeof fallbackIdentities.verifyIdentity === 'function'
+      ) {
         try {
           return await fallbackIdentities.verifyIdentity(identityToVerify);
         } catch {
@@ -247,7 +256,10 @@ export function createWebAuthnVarsigIdentities(identity, domainLabels = {}) {
         return storedIdentity;
       }
     }
-    if (fallbackIdentities && typeof fallbackIdentities.getIdentity === 'function') {
+    if (
+      fallbackIdentities &&
+      typeof fallbackIdentities.getIdentity === 'function'
+    ) {
       return fallbackIdentities.getIdentity(hash);
     }
     return null;

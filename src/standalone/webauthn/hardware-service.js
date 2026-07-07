@@ -7,8 +7,9 @@ import {
   StandaloneWebAuthnVarsigSigner,
   createWebAuthnSigner,
 } from './signers.js';
+import { KEY_TYPES, STORAGE_KEYS } from '../../constants.js';
 
-const DEFAULT_STORAGE_KEY = 'webauthn_ed25519_hardware_signer';
+const DEFAULT_STORAGE_KEY = STORAGE_KEYS.WEBAUTHN_HARDWARE_SIGNER;
 
 function readLegacySignerMetadata(key) {
   const raw = localStorage.getItem(key);
@@ -19,7 +20,10 @@ function readLegacySignerMetadata(key) {
     if (typeof parsed?.did !== 'string') return null;
     return {
       did: parsed.did,
-      algorithm: parsed.algorithm === 'P-256' ? 'P-256' : 'Ed25519',
+      algorithm:
+        parsed.algorithm === KEY_TYPES.P256
+          ? KEY_TYPES.P256
+          : KEY_TYPES.ED25519,
     };
   } catch {
     return null;
@@ -37,7 +41,10 @@ export function getStoredWebAuthnHardwareSignerInfo(key = DEFAULT_STORAGE_KEY) {
     if (credential?.did) {
       return {
         did: credential.did,
-        algorithm: credential.algorithm === 'P-256' ? 'P-256' : 'Ed25519',
+        algorithm:
+          credential.algorithm === KEY_TYPES.P256
+            ? KEY_TYPES.P256
+            : KEY_TYPES.ED25519,
       };
     }
   } catch {

@@ -7,6 +7,11 @@
 
 import { logger } from '@libp2p/logger';
 import { buildCredentialRequestOptions } from '../webauthn/config.js';
+import {
+  CRYPTO_ALGORITHMS,
+  KEYSTORE_ENCRYPTION_METHODS,
+} from '../constants.js';
+import { KeystoreEncryptionError } from '../errors.js';
 
 const log = logger(
   'orbitdb-identity-provider-webauthn-did:keystore-encryption'
@@ -14,15 +19,22 @@ const log = logger(
 const PRF_INFO = new TextEncoder().encode('orbitdb/keystore-prf');
 
 async function deriveKeyFromPrfSeed(prfSeed) {
-  const saltHash = await crypto.subtle.digest('SHA-256', prfSeed);
+  const saltHash = await crypto.subtle.digest(
+    CRYPTO_ALGORITHMS.SHA_256,
+    prfSeed
+  );
   const salt = new Uint8Array(saltHash).slice(0, 16);
-  const baseKey = await crypto.subtle.importKey('raw', prfSeed, 'HKDF', false, [
-    'deriveBits',
-  ]);
+  const baseKey = await crypto.subtle.importKey(
+    'raw',
+    prfSeed,
+    CRYPTO_ALGORITHMS.HKDF,
+    false,
+    ['deriveBits']
+  );
   const bits = await crypto.subtle.deriveBits(
     {
       name: 'HKDF',
-      hash: 'SHA-256',
+      hash: CRYPTO_ALGORITHMS.SHA_256,
       salt,
       info: PRF_INFO,
     },
@@ -41,7 +53,7 @@ function getPrfSeed(credential, rawCredentialId) {
         log('Using WebAuthn PRF extension for key derivation');
         return {
           seed: new Uint8Array(prfResults.results.first),
-          source: 'prf',
+          source: KEYSTORE_ENCRYPTION_METHODS.PRF,
         };
       }
     } catch (error) {
@@ -77,14 +89,14 @@ export async function encryptWithAESGCM(data, sk) {
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
     sk,
-    { name: 'AES-GCM', length: 256 },
+    { name: CRYPTO_ALGORITHMS.AES_GCM, length: 256 },
     false,
     ['encrypt']
   );
 
   // Encrypt
   const ciphertext = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
+    { name: CRYPTO_ALGORITHMS.AES_GCM, iv },
     cryptoKey,
     data
   );
@@ -112,14 +124,14 @@ export async function decryptWithAESGCM(ciphertext, sk, iv) {
     const cryptoKey = await crypto.subtle.importKey(
       'raw',
       sk,
-      { name: 'AES-GCM', length: 256 },
+      { name: CRYPTO_ALGORITHMS.AES_GCM, length: 256 },
       false,
       ['decrypt']
     );
 
     // Decrypt
     const plaintext = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv },
+      { name: CRYPTO_ALGORITHMS.AES_GCM, iv },
       cryptoKey,
       ciphertext
     );
@@ -129,7 +141,10 @@ export async function decryptWithAESGCM(ciphertext, sk, iv) {
     return new Uint8Array(plaintext);
   } catch (error) {
     log.error('Decryption failed: %s', error.message);
-    throw new Error(`Failed to decrypt data: ${error.message}`);
+    throw new KeystoreEncryptionError(
+      `Failed to decrypt data: ${error.message}`,
+      { cause: error }
+    );
   }
 }
 
@@ -207,7 +222,9 @@ export async function retrieveSKFromLargeBlob(credentialId, rpId) {
     const extensions = assertion.getClientExtensionResults();
 
     if (!extensions.largeBlob || !extensions.largeBlob.blob) {
-      throw new Error('No largeBlob data found in credential');
+      throw new KeystoreEncryptionError(
+        'No largeBlob data found in credential'
+      );
     }
 
     const sk = new Uint8Array(extensions.largeBlob.blob);
@@ -219,7 +236,10 @@ export async function retrieveSKFromLargeBlob(credentialId, rpId) {
       'Failed to retrieve secret key from largeBlob: %s',
       error.message
     );
-    throw new Error(`Failed to retrieve secret key: ${error.message}`);
+    throw new KeystoreEncryptionError(
+      `Failed to retrieve secret key: ${error.message}`,
+      { cause: error }
+    );
   }
 }
 
@@ -270,7 +290,9 @@ export async function wrapSKWithHmacSecret(credentialId, sk, rpId) {
     const extensions = assertion.getClientExtensionResults();
 
     if (!extensions.hmacGetSecret || !extensions.hmacGetSecret.output1) {
-      throw new Error('No hmac-secret output from credential');
+      throw new KeystoreEncryptionError(
+        'No hmac-secret output from credential'
+      );
     }
 
     const hmacOutput = new Uint8Array(extensions.hmacGetSecret.output1);
@@ -287,7 +309,10 @@ export async function wrapSKWithHmacSecret(credentialId, sk, rpId) {
     };
   } catch (error) {
     log.error('Failed to wrap secret key with hmac-secret: %s', error.message);
-    throw new Error(`Failed to wrap secret key: ${error.message}`);
+    throw new KeystoreEncryptionError(
+      `Failed to wrap secret key: ${error.message}`,
+      { cause: error }
+    );
   }
 }
 
@@ -333,7 +358,10 @@ export async function wrapSKWithPRF(credentialId, sk, rpId, prfInput) {
     };
   } catch (error) {
     log.error('Failed to wrap secret key with PRF: %s', error.message);
-    throw new Error(`Failed to wrap secret key: ${error.message}`);
+    throw new KeystoreEncryptionError(
+      `Failed to wrap secret key: ${error.message}`,
+      { cause: error }
+    );
   }
 }
 
@@ -373,7 +401,9 @@ export async function unwrapSKWithHmacSecret(
     const extensions = assertion.getClientExtensionResults();
 
     if (!extensions.hmacGetSecret || !extensions.hmacGetSecret.output1) {
-      throw new Error('No hmac-secret output from credential');
+      throw new KeystoreEncryptionError(
+        'No hmac-secret output from credential'
+      );
     }
 
     const hmacOutput = new Uint8Array(extensions.hmacGetSecret.output1);
@@ -393,7 +423,10 @@ export async function unwrapSKWithHmacSecret(
       'Failed to unwrap secret key with hmac-secret: %s',
       error.message
     );
-    throw new Error(`Failed to unwrap secret key: ${error.message}`);
+    throw new KeystoreEncryptionError(
+      `Failed to unwrap secret key: ${error.message}`,
+      { cause: error }
+    );
   }
 }
 
@@ -440,7 +473,10 @@ export async function unwrapSKWithPRF(
     return sk;
   } catch (error) {
     log.error('Failed to unwrap secret key with PRF: %s', error.message);
-    throw new Error(`Failed to unwrap secret key: ${error.message}`);
+    throw new KeystoreEncryptionError(
+      `Failed to unwrap secret key: ${error.message}`,
+      { cause: error }
+    );
   }
 }
 
@@ -489,7 +525,8 @@ export async function storeEncryptedKeystore(data, credentialId) {
     wrappedSK: data.wrappedSK ? Array.from(data.wrappedSK) : undefined,
     wrappingIV: data.wrappingIV ? Array.from(data.wrappingIV) : undefined,
     salt: data.salt ? Array.from(data.salt) : undefined,
-    encryptionMethod: data.encryptionMethod || 'largeBlob',
+    encryptionMethod:
+      data.encryptionMethod || KEYSTORE_ENCRYPTION_METHODS.LARGE_BLOB,
     keyType: data.keyType,
     timestamp: Date.now(),
   };
@@ -499,7 +536,10 @@ export async function storeEncryptedKeystore(data, credentialId) {
     log('Encrypted keystore stored successfully');
   } catch (error) {
     log.error('Failed to store encrypted keystore: %s', error.message);
-    throw new Error(`Failed to store encrypted keystore: ${error.message}`);
+    throw new KeystoreEncryptionError(
+      `Failed to store encrypted keystore: ${error.message}`,
+      { cause: error }
+    );
   }
 }
 
@@ -517,7 +557,9 @@ export async function loadEncryptedKeystore(credentialId) {
     const stored = localStorage.getItem(storageKey);
 
     if (!stored) {
-      throw new Error('No encrypted keystore found for this credential');
+      throw new KeystoreEncryptionError(
+        'No encrypted keystore found for this credential'
+      );
     }
 
     const data = JSON.parse(stored);
@@ -542,7 +584,8 @@ export async function loadEncryptedKeystore(credentialId) {
       wrappedSK: data.wrappedSK ? new Uint8Array(data.wrappedSK) : undefined,
       wrappingIV: data.wrappingIV ? new Uint8Array(data.wrappingIV) : undefined,
       salt: data.salt ? new Uint8Array(data.salt) : undefined,
-      encryptionMethod: data.encryptionMethod || 'largeBlob',
+      encryptionMethod:
+        data.encryptionMethod || KEYSTORE_ENCRYPTION_METHODS.LARGE_BLOB,
       keyType: data.keyType,
       timestamp: data.timestamp,
     };
@@ -552,7 +595,10 @@ export async function loadEncryptedKeystore(credentialId) {
     return deserialized;
   } catch (error) {
     log.error('Failed to load encrypted keystore: %s', error.message);
-    throw new Error(`Failed to load encrypted keystore: ${error.message}`);
+    throw new KeystoreEncryptionError(
+      `Failed to load encrypted keystore: ${error.message}`,
+      { cause: error }
+    );
   }
 }
 

@@ -7,6 +7,25 @@
 
 import { useIdentityProvider } from '@orbitdb/core';
 import * as KeystoreEncryption from './keystore/encryption.js';
+import {
+  CRYPTO_ALGORITHMS,
+  DID_KEY_PREFIX,
+  IDENTITY_TYPES,
+  KEYSTORE_ENCRYPTION_METHODS,
+  KEY_TYPES,
+  STORAGE_KEYS,
+  WEBAUTHN_CLIENT_DATA_TYPES,
+} from './constants.js';
+import {
+  ERROR_CODES,
+  KeystoreEncryptionError,
+  VarsigVerificationError,
+  WebAuthnAuthenticationError,
+  WebAuthnCredentialError,
+  WebAuthnIdentityError,
+  WebAuthnNotSupportedError,
+  WebAuthnVerificationError,
+} from './errors.js';
 import { WebAuthnDIDProvider } from './webauthn/provider.js';
 import {
   configureWebAuthn,
@@ -64,6 +83,21 @@ export {
   loadWebAuthnCredentialSafe,
   clearWebAuthnCredentialSafe,
   extractPrfSeedFromCredential,
+  CRYPTO_ALGORITHMS,
+  DID_KEY_PREFIX,
+  ERROR_CODES,
+  IDENTITY_TYPES,
+  KEYSTORE_ENCRYPTION_METHODS,
+  KEY_TYPES,
+  STORAGE_KEYS,
+  WEBAUTHN_CLIENT_DATA_TYPES,
+  KeystoreEncryptionError,
+  VarsigVerificationError,
+  WebAuthnAuthenticationError,
+  WebAuthnCredentialError,
+  WebAuthnIdentityError,
+  WebAuthnNotSupportedError,
+  WebAuthnVerificationError,
 };
 
 /**
@@ -130,7 +164,7 @@ export async function checkWebAuthnSupport() {
  */
 export function storeWebAuthnCredential(
   credential,
-  key = 'webauthn-credential'
+  key = STORAGE_KEYS.WEBAUTHN_CREDENTIAL
 ) {
   try {
     const serializedCredential = {
@@ -158,7 +192,7 @@ export function storeWebAuthnCredential(
  * @param {string} key - The localStorage key (defaults to 'webauthn-credential')
  * @returns {Object|null} The deserialized credential object or null if not found
  */
-export function loadWebAuthnCredential(key = 'webauthn-credential') {
+export function loadWebAuthnCredential(key = STORAGE_KEYS.WEBAUTHN_CREDENTIAL) {
   try {
     const storedCredential = localStorage.getItem(key);
     if (storedCredential) {
@@ -189,7 +223,9 @@ export function loadWebAuthnCredential(key = 'webauthn-credential') {
  * Clear WebAuthn credential from localStorage
  * @param {string} key - The localStorage key (defaults to 'webauthn-credential')
  */
-export function clearWebAuthnCredential(key = 'webauthn-credential') {
+export function clearWebAuthnCredential(
+  key = STORAGE_KEYS.WEBAUTHN_CREDENTIAL
+) {
   try {
     localStorage.removeItem(key);
   } catch (error) {

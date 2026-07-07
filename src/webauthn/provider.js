@@ -10,6 +10,20 @@ import { varint } from 'multiformats';
 import { base58btc } from 'multiformats/bases/base58';
 import * as KeystoreEncryption from '../keystore/encryption.js';
 import {
+  CRYPTO_ALGORITHMS,
+  DID_KEY_PREFIX,
+  IDENTITY_TYPES,
+  KEYSTORE_ENCRYPTION_METHODS,
+  WEBAUTHN_CLIENT_DATA_TYPES,
+} from '../constants.js';
+import {
+  WebAuthnIdentityError,
+  WebAuthnAuthenticationError,
+  WebAuthnCredentialError,
+  WebAuthnNotSupportedError,
+  WebAuthnVerificationError,
+} from '../errors.js';
+import {
   buildAuthenticatorSelection,
   buildCredentialRequestOptions,
 } from './config.js';
@@ -19,7 +33,9 @@ const webauthnLog = logger('orbitdb-identity-provider-webauthn-did:webauthn');
 function logWebAuthnResponse(label, credential) {
   const response = credential?.response;
   const getPublicKeyResult =
-    typeof response?.getPublicKey === 'function' ? response.getPublicKey() : null;
+    typeof response?.getPublicKey === 'function'
+      ? response.getPublicKey()
+      : null;
 
   console.group(`[WebAuthn Debug] ${label}`);
   console.log('credential', credential);
@@ -58,7 +74,7 @@ export class WebAuthnDIDProvider {
     this.credentialId = credentialInfo.credentialId;
     this.publicKey = credentialInfo.publicKey;
     this.rawCredentialId = credentialInfo.rawCredentialId;
-    this.type = 'webauthn';
+    this.type = IDENTITY_TYPES.WEBAUTHN;
   }
 
   /**
@@ -109,7 +125,7 @@ export class WebAuthnDIDProvider {
       displayName,
       domain,
       encryptKeystore = false,
-      keystoreEncryptionMethod = 'prf',
+      keystoreEncryptionMethod = KEYSTORE_ENCRYPTION_METHODS.PRF,
     } = {
       userId: `orbitdb-user-${Date.now()}`,
       displayName: 'Local-First Peer-to-Peer OrbitDB User',
@@ -125,7 +141,7 @@ export class WebAuthnDIDProvider {
 
     if (!this.isSupported()) {
       webauthnLog.error('WebAuthn is not supported in this browser');
-      throw new Error('WebAuthn is not supported in this browser');
+      throw new WebAuthnNotSupportedError();
     }
 
     // Generate challenge for credential creation
@@ -166,13 +182,15 @@ export class WebAuthnDIDProvider {
     if (encryptKeystore) {
       webauthnLog('Adding encryption extension: %s', keystoreEncryptionMethod);
 
-      if (keystoreEncryptionMethod === 'prf') {
+      if (keystoreEncryptionMethod === KEYSTORE_ENCRYPTION_METHODS.PRF) {
         const prfConfig = KeystoreEncryption.addPRFToCredentialOptions(
           credentialOptions.publicKey
         );
         credentialOptions.publicKey = prfConfig.credentialOptions;
         prfInput = prfConfig.prfInput;
-      } else if (keystoreEncryptionMethod === 'hmac-secret') {
+      } else if (
+        keystoreEncryptionMethod === KEYSTORE_ENCRYPTION_METHODS.HMAC_SECRET
+      ) {
         credentialOptions.publicKey =
           KeystoreEncryption.addHmacSecretToCredentialOptions(
             credentialOptions.publicKey
@@ -188,7 +206,9 @@ export class WebAuthnDIDProvider {
         webauthnLog.error(
           'Failed to create WebAuthn credential - credential is null'
         );
-        throw new Error('Failed to create WebAuthn credential');
+        throw new WebAuthnCredentialError(
+          'Failed to create WebAuthn credential'
+        );
       }
 
       logWebAuthnResponse('navigator.credentials.create()', credential);
@@ -207,7 +227,10 @@ export class WebAuthnDIDProvider {
         this.extractPublicKey(credential),
         new Promise((_, reject) =>
           setTimeout(
-            () => reject(new Error('Public key extraction timeout')),
+            () =>
+              reject(
+                new WebAuthnCredentialError('Public key extraction timeout')
+              ),
             10000
           )
         ),
@@ -241,15 +264,30 @@ export class WebAuthnDIDProvider {
     } catch (error) {
       console.error('WebAuthn credential creation failed:', error);
 
+      if (error instanceof WebAuthnIdentityError) {
+        throw error;
+      }
+
       // Provide user-friendly error messages
       if (error.name === 'NotAllowedError') {
-        throw new Error('Biometric authentication was cancelled or failed');
+        throw new WebAuthnAuthenticationError(
+          'Biometric authentication was cancelled or failed',
+          { cause: error }
+        );
       } else if (error.name === 'InvalidStateError') {
-        throw new Error('A credential with this ID already exists');
+        throw new WebAuthnCredentialError(
+          'A credential with this ID already exists',
+          { cause: error }
+        );
       } else if (error.name === 'NotSupportedError') {
-        throw new Error('WebAuthn is not supported on this device');
+        throw new WebAuthnNotSupportedError(
+          'WebAuthn is not supported on this device',
+          { cause: error }
+        );
       } else {
-        throw new Error(`WebAuthn error: ${error.message}`);
+        throw new WebAuthnCredentialError(`WebAuthn error: ${error.message}`, {
+          cause: error,
+        });
       }
     }
   }
@@ -310,14 +348,20 @@ export class WebAuthnDIDProvider {
       // This ensures the SAME public key is generated every time for the same credential
       const credentialId = new Uint8Array(credential.rawId);
 
-      const hash = await crypto.subtle.digest('SHA-256', credentialId);
+      const hash = await crypto.subtle.digest(
+        CRYPTO_ALGORITHMS.SHA_256,
+        credentialId
+      );
       const seed = new Uint8Array(hash);
 
       // Create a second hash for the y coordinate to ensure uniqueness but determinism
       const yData = new Uint8Array(credentialId.length + 4);
       yData.set(credentialId, 0);
       yData.set([0x59, 0x43, 0x4f, 0x4f], credentialId.length); // "YCOO" marker
-      const yHash = await crypto.subtle.digest('SHA-256', yData);
+      const yHash = await crypto.subtle.digest(
+        CRYPTO_ALGORITHMS.SHA_256,
+        yData
+      );
       const ySeed = new Uint8Array(yHash);
 
       const fallbackKey = {
@@ -374,7 +418,7 @@ export class WebAuthnDIDProvider {
 
       // Encode as base58btc and create did:key
       const multikeyEncoded = base58btc.encode(multikey);
-      return `did:key:${multikeyEncoded}`;
+      return `${DID_KEY_PREFIX}${multikeyEncoded}`;
     } catch (error) {
       console.warn(
         'Failed to create DID with multiformats, using fallback:',
@@ -407,7 +451,7 @@ export class WebAuthnDIDProvider {
         }
       }
 
-      return `did:key:${encoded}`;
+      return `${DID_KEY_PREFIX}${encoded}`;
     }
   }
 
@@ -423,7 +467,7 @@ export class WebAuthnDIDProvider {
   async sign(data) {
     if (!WebAuthnDIDProvider.isSupported()) {
       webauthnLog.error('WebAuthn is not supported in this browser');
-      throw new Error('WebAuthn is not supported in this browser');
+      throw new WebAuthnNotSupportedError();
     }
 
     try {
@@ -436,7 +480,10 @@ export class WebAuthnDIDProvider {
         typeof data === 'string'
           ? new TextEncoder().encode(data)
           : new Uint8Array(data);
-      const dataHash = await crypto.subtle.digest('SHA-256', dataBytes);
+      const dataHash = await crypto.subtle.digest(
+        CRYPTO_ALGORITHMS.SHA_256,
+        dataBytes
+      );
       const dataHashStr = Array.from(new Uint8Array(dataHash))
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('')
@@ -454,7 +501,10 @@ export class WebAuthnDIDProvider {
       );
       combined.set(this.rawCredentialId, 0);
       combined.set(dataBytes, this.rawCredentialId.length);
-      const challenge = await crypto.subtle.digest('SHA-256', combined);
+      const challenge = await crypto.subtle.digest(
+        CRYPTO_ALGORITHMS.SHA_256,
+        combined
+      );
       const challengeHashStr = Array.from(new Uint8Array(challenge))
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('')
@@ -481,7 +531,7 @@ export class WebAuthnDIDProvider {
 
       if (!assertion) {
         webauthnLog.error('WebAuthn authentication failed - assertion is null');
-        throw new Error('WebAuthn authentication failed');
+        throw new WebAuthnAuthenticationError('WebAuthn authentication failed');
       }
 
       logWebAuthnResponse('navigator.credentials.get()', assertion);
@@ -498,7 +548,7 @@ export class WebAuthnDIDProvider {
       const webauthnProof = {
         credentialId: this.credentialId,
         dataHash: WebAuthnDIDProvider.arrayBufferToBase64url(
-          await crypto.subtle.digest('SHA-256', dataBytes)
+          await crypto.subtle.digest(CRYPTO_ALGORITHMS.SHA_256, dataBytes)
         ),
         authenticatorData: WebAuthnDIDProvider.arrayBufferToBase64url(
           assertion.response.authenticatorData
@@ -531,9 +581,15 @@ export class WebAuthnDIDProvider {
       webauthnLog.error('WebAuthn signing failed: %s', error.message);
 
       if (error.name === 'NotAllowedError') {
-        throw new Error('Biometric authentication was cancelled');
+        throw new WebAuthnAuthenticationError(
+          'Biometric authentication was cancelled',
+          { cause: error }
+        );
       } else {
-        throw new Error(`WebAuthn signing error: ${error.message}`);
+        throw new WebAuthnAuthenticationError(
+          `WebAuthn signing error: ${error.message}`,
+          { cause: error }
+        );
       }
     }
   }
@@ -561,7 +617,7 @@ export class WebAuthnDIDProvider {
 
       // Verify the proof structure
       if (!proof.credentialId || !proof.dataHash || !proof.signature) {
-        throw new Error('Invalid WebAuthn proof structure');
+        throw new WebAuthnVerificationError('Invalid WebAuthn proof structure');
       }
 
       // Check if credential ID matches
@@ -570,7 +626,7 @@ export class WebAuthnDIDProvider {
         webauthnLog.error(
           'Credential ID mismatch in WebAuthn proof verification'
         );
-        throw new Error('Credential ID mismatch');
+        throw new WebAuthnVerificationError('Credential ID mismatch');
       }
       webauthnLog('Verification step: credential ID check PASSED');
 
@@ -578,14 +634,14 @@ export class WebAuthnDIDProvider {
       webauthnLog('Verification step: checking client data');
       if (proof.clientDataJSON) {
         const clientData = JSON.parse(proof.clientDataJSON);
-        if (clientData.type !== 'webauthn.get') {
+        if (clientData.type !== WEBAUTHN_CLIENT_DATA_TYPES.GET) {
           webauthnLog.error('Invalid WebAuthn proof type: %s', clientData.type);
-          throw new Error('Invalid WebAuthn proof type');
+          throw new WebAuthnVerificationError('Invalid WebAuthn proof type');
         }
         webauthnLog('Verification step: client data check PASSED');
       } else {
         webauthnLog.error('Invalid client data in WebAuthn proof');
-        throw new Error('Invalid client data');
+        throw new WebAuthnVerificationError('Invalid client data');
       }
 
       // Check if proof is recent (within 24 hours)
@@ -594,7 +650,7 @@ export class WebAuthnDIDProvider {
       const maxAge = 24 * 60 * 60 * 1000; // 24 hours
       if (proofAge > maxAge) {
         webauthnLog.error('WebAuthn proof is too old: %d ms', proofAge);
-        throw new Error('WebAuthn proof has expired');
+        throw new WebAuthnVerificationError('WebAuthn proof has expired');
       }
       webauthnLog(
         'Verification step: timestamp check PASSED (age: %d ms)',
@@ -605,7 +661,7 @@ export class WebAuthnDIDProvider {
       webauthnLog('Verification step: checking authenticator data');
       if (!proof.authenticatorData) {
         webauthnLog.error('Missing authenticator data in WebAuthn proof');
-        throw new Error('Missing authenticator data');
+        throw new WebAuthnVerificationError('Missing authenticator data');
       }
       webauthnLog('Verification step: authenticator data check PASSED');
 

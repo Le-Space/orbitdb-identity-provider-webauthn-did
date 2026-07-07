@@ -1,5 +1,22 @@
 # Changes
 
+## Unreleased
+
+- Add `SECURITY.md` with vulnerability reporting and supported-version policy.
+- Rename `changes.md` to `CHANGELOG.md` and include it in the published package.
+- Add public TypeScript declarations for the root, standalone, verification,
+  and keystore package entrypoints.
+- Add `docs/API.md` and expose `@le-space/orbitdb-identity-provider-webauthn-did/keystore`
+  as a typed package subpath.
+- Remove the Vite node polyfill plugin from production dependencies, update
+  the varsig support stack to `iso-web@^3.1.2`, and verify
+  `npm audit --omit=dev` reports zero production advisories.
+- Re-enable the CI lint step and verify `pnpm run lint` passes.
+- Add shared public constants and catchable error classes for WebAuthn,
+  keystore, and varsig flows.
+- Add root Prettier scripts, ignore rules, and a CI formatting check.
+- Add `CODE_OF_CONDUCT.md` and include it in the published package.
+
 ## 0.3.1
 
 - Bump package metadata to `0.3.1` and create the clean release tag after

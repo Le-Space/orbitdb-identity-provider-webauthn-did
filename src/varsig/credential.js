@@ -12,7 +12,9 @@ const isTestMode = () =>
 function logWebAuthnResponse(label, credential) {
   const response = credential?.response;
   const getPublicKeyResult =
-    typeof response?.getPublicKey === 'function' ? response.getPublicKey() : null;
+    typeof response?.getPublicKey === 'function'
+      ? response.getPublicKey()
+      : null;
 
   console.group(`[WebAuthn Debug] ${label}`);
   console.log('credential', credential);

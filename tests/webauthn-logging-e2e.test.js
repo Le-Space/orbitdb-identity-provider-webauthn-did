@@ -462,7 +462,7 @@ function generateFindingsReport(analysis) {
   if (analysis.credentialsGetCallCount < analysis.signCallCount) {
     console.log('   ✅ YES - Browser grace period is likely active.');
     console.log(
-      '      Some sign() operations don\'t trigger new biometric prompts.'
+      "      Some sign() operations don't trigger new biometric prompts."
     );
   } else {
     console.log(

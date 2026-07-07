@@ -1,4 +1,5 @@
 import { buildCredentialRequestOptions } from '../../webauthn/config.js';
+import { STORAGE_KEYS } from '../../constants.js';
 
 function ensureUint8Array(value, fieldName) {
   if (value instanceof Uint8Array) return value;
@@ -15,7 +16,7 @@ function ensureUint8Array(value, fieldName) {
  */
 export function storeWebAuthnCredentialSafe(
   credential,
-  key = 'webauthn_credential_info'
+  key = STORAGE_KEYS.WEBAUTHN_CREDENTIAL_SAFE
 ) {
   if (!credential || typeof credential !== 'object') {
     throw new Error('storeWebAuthnCredentialSafe requires a credential object');
@@ -31,7 +32,9 @@ export function storeWebAuthnCredentialSafe(
  * @param {string} [key]
  * @returns {Object|null}
  */
-export function loadWebAuthnCredentialSafe(key = 'webauthn_credential_info') {
+export function loadWebAuthnCredentialSafe(
+  key = STORAGE_KEYS.WEBAUTHN_CREDENTIAL_SAFE
+) {
   const raw = localStorage.getItem(key);
   if (!raw) return null;
 
@@ -74,7 +77,9 @@ export function loadWebAuthnCredentialSafe(key = 'webauthn_credential_info') {
  * Remove persisted WebAuthn credential info.
  * @param {string} [key]
  */
-export function clearWebAuthnCredentialSafe(key = 'webauthn_credential_info') {
+export function clearWebAuthnCredentialSafe(
+  key = STORAGE_KEYS.WEBAUTHN_CREDENTIAL_SAFE
+) {
   localStorage.removeItem(key);
 }
 

@@ -291,10 +291,12 @@ The complete implementation is available in `src/keystore/encryption.js` with th
 ```javascript
 import {
   generateSecretKey,
-  generateEncryptedKeystore,
-  unlockKeystore,
-  listEncryptedKeystores,
-  deleteEncryptedKeystore,
+  encryptWithAESGCM,
+  decryptWithAESGCM,
+  storeEncryptedKeystore,
+  loadEncryptedKeystore,
+  clearEncryptedKeystore,
+  checkExtensionSupport,
 } from '@le-space/orbitdb-identity-provider-webauthn-did/keystore';
 ```
 

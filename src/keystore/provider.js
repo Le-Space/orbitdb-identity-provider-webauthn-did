@@ -8,6 +8,12 @@ import { varint } from 'multiformats';
 import { base58btc } from 'multiformats/bases/base58';
 import * as KeystoreEncryption from './encryption.js';
 import { WebAuthnDIDProvider } from '../webauthn/provider.js';
+import {
+  DID_KEY_PREFIX,
+  IDENTITY_TYPES,
+  KEYSTORE_ENCRYPTION_METHODS,
+  KEY_TYPES,
+} from '../constants.js';
 
 const identityLog = logger('orbitdb-identity-provider-webauthn-did:identity');
 
@@ -42,13 +48,13 @@ export class OrbitDBWebAuthnIdentityProvider {
     webauthnCredential,
     useKeystoreDID = false,
     keystore = null,
-    keystoreKeyType = 'secp256k1',
+    keystoreKeyType = KEY_TYPES.SECP256K1,
     encryptKeystore = false,
-    keystoreEncryptionMethod = 'prf',
+    keystoreEncryptionMethod = KEYSTORE_ENCRYPTION_METHODS.PRF,
   }) {
     this.credential = webauthnCredential;
     this.webauthnProvider = new WebAuthnDIDProvider(webauthnCredential);
-    this.type = 'webauthn'; // Set instance property
+    this.type = IDENTITY_TYPES.WEBAUTHN; // Set instance property
     this.useKeystoreDID = useKeystoreDID; // Flag to use Ed25519 DID from keystore
     this.keystore = keystore; // OrbitDB keystore instance
     this.keystoreKeyType = keystoreKeyType; // Key type: 'secp256k1' or 'Ed25519'
@@ -58,7 +64,7 @@ export class OrbitDBWebAuthnIdentityProvider {
   }
 
   static get type() {
-    return 'webauthn';
+    return IDENTITY_TYPES.WEBAUTHN;
   }
 
   /**
@@ -155,7 +161,9 @@ export class OrbitDBWebAuthnIdentityProvider {
           this.keystoreKeyType
         );
         const keyType =
-          this.keystoreKeyType === 'secp256k1' ? 'secp256k1' : 'Ed25519';
+          this.keystoreKeyType === KEY_TYPES.SECP256K1
+            ? KEY_TYPES.SECP256K1
+            : KEY_TYPES.ED25519;
         keystoreKey = await generateKeyPair(keyType);
         await this.keystore.addKey(identityId, {
           privateKey: keystoreKey.raw,
@@ -274,10 +282,10 @@ export class OrbitDBWebAuthnIdentityProvider {
     // Determine the correct multicodec based on key type
     // secp256k1 multicodec code (0xe7) or Ed25519 (0xed)
     let multicodec;
-    if (keyType === 'secp256k1') {
+    if (keyType === KEY_TYPES.SECP256K1) {
       multicodec = 0xe7; // secp256k1-pub
       identityLog('Using secp256k1 multicodec (0xe7)');
-    } else if (keyType === 'Ed25519' || keyType === 'ed25519') {
+    } else if (keyType === KEY_TYPES.ED25519 || keyType === 'ed25519') {
       multicodec = 0xed; // ed25519-pub
       identityLog('Using Ed25519 multicodec (0xed)');
     } else {
@@ -299,7 +307,7 @@ export class OrbitDBWebAuthnIdentityProvider {
 
     // Encode as base58btc and create did:key
     const multikeyEncoded = base58btc.encode(multikey);
-    return `did:key:${multikeyEncoded}`;
+    return `${DID_KEY_PREFIX}${multikeyEncoded}`;
   }
 
   /**
@@ -326,7 +334,9 @@ export class OrbitDBWebAuthnIdentityProvider {
       const sk = KeystoreEncryption.generateSecretKey();
 
       const keyType =
-        this.keystoreKeyType === 'secp256k1' ? 'secp256k1' : 'Ed25519';
+        this.keystoreKeyType === KEY_TYPES.SECP256K1
+          ? KEY_TYPES.SECP256K1
+          : KEY_TYPES.ED25519;
       const keyPair = await generateKeyPair(keyType);
       const privateKeyBytes = keyPair.marshal ? keyPair.marshal() : keyPair.raw;
       const publicKeyBytes = keyPair.publicKey?.marshal
@@ -344,7 +354,7 @@ export class OrbitDBWebAuthnIdentityProvider {
       // Store SK in WebAuthn or wrap it
       let encryptedData;
 
-      if (this.keystoreEncryptionMethod === 'prf') {
+      if (this.keystoreEncryptionMethod === KEYSTORE_ENCRYPTION_METHODS.PRF) {
         // Wrap SK with PRF (WebAuthn Level 3 - preferred method)
         const wrapped = await KeystoreEncryption.wrapSKWithPRF(
           this.credential.rawCredentialId,
@@ -361,9 +371,11 @@ export class OrbitDBWebAuthnIdentityProvider {
           wrappedSK: wrapped.wrappedSK,
           wrappingIV: wrapped.wrappingIV,
           salt: wrapped.salt,
-          encryptionMethod: 'prf',
+          encryptionMethod: KEYSTORE_ENCRYPTION_METHODS.PRF,
         };
-      } else if (this.keystoreEncryptionMethod === 'largeBlob') {
+      } else if (
+        this.keystoreEncryptionMethod === KEYSTORE_ENCRYPTION_METHODS.LARGE_BLOB
+      ) {
         // For largeBlob, we need to store SK during next authentication
         // Store it temporarily for wrapping
         encryptedData = {
@@ -373,9 +385,12 @@ export class OrbitDBWebAuthnIdentityProvider {
           publicKey: publicKeyBytes,
           keyType,
           secretKey: sk, // Will be moved to largeBlob
-          encryptionMethod: 'largeBlob',
+          encryptionMethod: KEYSTORE_ENCRYPTION_METHODS.LARGE_BLOB,
         };
-      } else if (this.keystoreEncryptionMethod === 'hmac-secret') {
+      } else if (
+        this.keystoreEncryptionMethod ===
+        KEYSTORE_ENCRYPTION_METHODS.HMAC_SECRET
+      ) {
         // Wrap SK with hmac-secret
         const wrapped = await KeystoreEncryption.wrapSKWithHmacSecret(
           this.credential.rawCredentialId,
@@ -392,7 +407,7 @@ export class OrbitDBWebAuthnIdentityProvider {
           wrappedSK: wrapped.wrappedSK,
           wrappingIV: wrapped.wrappingIV,
           salt: wrapped.salt,
-          encryptionMethod: 'hmac-secret',
+          encryptionMethod: KEYSTORE_ENCRYPTION_METHODS.HMAC_SECRET,
         };
       }
 
@@ -444,7 +459,7 @@ export class OrbitDBWebAuthnIdentityProvider {
 
       let sk;
 
-      if (encryptedData.encryptionMethod === 'prf') {
+      if (encryptedData.encryptionMethod === KEYSTORE_ENCRYPTION_METHODS.PRF) {
         // Unwrap SK with PRF
         sk = await KeystoreEncryption.unwrapSKWithPRF(
           this.credential.rawCredentialId,
@@ -453,13 +468,19 @@ export class OrbitDBWebAuthnIdentityProvider {
           encryptedData.salt,
           window.location.hostname
         );
-      } else if (encryptedData.encryptionMethod === 'largeBlob') {
+      } else if (
+        encryptedData.encryptionMethod ===
+        KEYSTORE_ENCRYPTION_METHODS.LARGE_BLOB
+      ) {
         // Retrieve SK from largeBlob
         sk = await KeystoreEncryption.retrieveSKFromLargeBlob(
           this.credential.rawCredentialId,
           window.location.hostname
         );
-      } else if (encryptedData.encryptionMethod === 'hmac-secret') {
+      } else if (
+        encryptedData.encryptionMethod ===
+        KEYSTORE_ENCRYPTION_METHODS.HMAC_SECRET
+      ) {
         // Unwrap SK with hmac-secret
         sk = await KeystoreEncryption.unwrapSKWithHmacSecret(
           this.credential.rawCredentialId,
@@ -548,9 +569,9 @@ export class OrbitDBWebAuthnIdentityProvider {
       webauthnCredential,
       useKeystoreDID = false,
       keystore = null,
-      keystoreKeyType = 'secp256k1',
+      keystoreKeyType = KEY_TYPES.SECP256K1,
       encryptKeystore = false,
-      keystoreEncryptionMethod = 'prf',
+      keystoreEncryptionMethod = KEYSTORE_ENCRYPTION_METHODS.PRF,
     } = options;
 
     identityLog(
@@ -598,7 +619,7 @@ export class OrbitDBWebAuthnIdentityProvider {
 
     identityLog('Identity created successfully: %o', {
       id: id.substring(0, 32) + '...',
-      type: 'webauthn',
+      type: IDENTITY_TYPES.WEBAUTHN,
       didType: useKeystoreDID
         ? 'Ed25519 (from keystore)'
         : 'P-256 (from WebAuthn)',
@@ -609,7 +630,7 @@ export class OrbitDBWebAuthnIdentityProvider {
     return {
       id,
       publicKey: webauthnCredential.publicKey,
-      type: 'webauthn',
+      type: IDENTITY_TYPES.WEBAUTHN,
       sign: (identity, data) => {
         identityLog('identity.sign() called from OrbitDB');
         return provider.signIdentity(data);
@@ -648,7 +669,7 @@ export function OrbitDBWebAuthnIdentityProviderFunction(options = {}) {
 }
 
 // Add static methods and properties that OrbitDB expects
-OrbitDBWebAuthnIdentityProviderFunction.type = 'webauthn';
+OrbitDBWebAuthnIdentityProviderFunction.type = IDENTITY_TYPES.WEBAUTHN;
 OrbitDBWebAuthnIdentityProviderFunction.verifyIdentity = async function (
   identity
 ) {
@@ -660,10 +681,13 @@ OrbitDBWebAuthnIdentityProviderFunction.verifyIdentity = async function (
     // For WebAuthn, the identity should have been created with our provider,
     // so we can trust it if it has the right structure
     // Accept both DID format (did:key:...) and hash format (hex string) for backward compatibility
-    const isValidDID = identity.id && identity.id.startsWith('did:key:');
+    const isValidDID = identity.id && identity.id.startsWith(DID_KEY_PREFIX);
     const isValidHash = identity.id && /^[a-f0-9]{64}$/.test(identity.id); // 64-char hex string (legacy)
 
-    if (identity.type === 'webauthn' && (isValidDID || isValidHash)) {
+    if (
+      identity.type === IDENTITY_TYPES.WEBAUTHN &&
+      (isValidDID || isValidHash)
+    ) {
       return true;
     }
 

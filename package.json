@@ -3,11 +3,25 @@
   "version": "0.3.1",
   "description": "WebAuthn-based DID identity provider for OrbitDB for hardware-secured wallets and biometric Passkey authentication",
   "main": "src/index.js",
+  "types": "types/index.d.ts",
   "type": "module",
   "exports": {
-    ".": "./src/index.js",
-    "./verification": "./verification.js",
-    "./standalone": "./src/standalone/index.js"
+    ".": {
+      "types": "./types/index.d.ts",
+      "import": "./src/index.js"
+    },
+    "./verification": {
+      "types": "./types/verification.d.ts",
+      "import": "./verification.js"
+    },
+    "./standalone": {
+      "types": "./types/standalone.d.ts",
+      "import": "./src/standalone/index.js"
+    },
+    "./keystore": {
+      "types": "./types/keystore.d.ts",
+      "import": "./src/keystore/index.js"
+    }
   },
   "scripts": {
     "test": "npm run test:all",
@@ -26,6 +40,8 @@
     "test:full-flow": "npm run demo:setup && npm run test:focused",
     "lint": "eslint src/ tests/",
     "lint:fix": "eslint src/ tests/ --fix",
+    "format": "prettier --write . --ignore-unknown",
+    "format:check": "prettier --check . --ignore-unknown",
     "prepublishOnly": "npm run test:ci",
     "demo": "cd examples/webauthn-todo-demo && npm run dev",
     "demo:build": "cd examples/webauthn-todo-demo && npm run build",
@@ -71,10 +87,9 @@
     "iso-base": "npm:@le-space/iso-base",
     "iso-did": "npm:@le-space/iso-did@2.1.2",
     "iso-passkeys": "npm:@le-space/iso-passkeys",
-    "iso-web": "^2.1.0",
-    "iso-webauthn-varsig": "npm:@le-space/iso-webauthn-varsig",
-    "multiformats": "^14.0.0",
-    "vite-plugin-node-polyfills": "^0.24.0"
+    "iso-web": "^3.1.2",
+    "iso-webauthn-varsig": "npm:@le-space/iso-webauthn-varsig@^0.2.0",
+    "multiformats": "^14.0.0"
   },
   "devDependencies": {
     "@chainsafe/libp2p-noise": "^17.0.0",
@@ -93,9 +108,12 @@
     "chai": "^5.0.0",
     "datastore-level": "^13.0.1",
     "eslint": "^9.0.0",
-    "helia": "^7.0.1",
+    "eslint-config-prettier": "^10.1.8",
+    "helia": "^7.0.5",
     "libp2p": "^3.3.4",
-    "mocha": "^10.0.0"
+    "mocha": "^10.0.0",
+    "prettier": "^3.6.2",
+    "vite-plugin-node-polyfills": "^0.24.0"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -105,8 +123,13 @@
   },
   "files": [
     "src/",
+    "types/",
+    "docs/API.md",
     "verification.js",
     "README.md",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "CODE_OF_CONDUCT.md",
     "LICENSE",
     "package.json"
   ],
@@ -114,13 +137,17 @@
     "overrides": {
       "iso-base": "npm:@le-space/iso-base",
       "iso-did": "npm:@le-space/iso-did@2.1.2",
-      "iso-webauthn-varsig": "npm:@le-space/iso-webauthn-varsig"
+      "iso-web": "^3.1.2",
+      "iso-webauthn-varsig": "npm:@le-space/iso-webauthn-varsig@^0.2.0"
     },
     "onlyBuiltDependencies": [
       "@ipshipyard/node-datachannel",
       "classic-level",
       "esbuild"
     ]
+  },
+  "overrides": {
+    "iso-web": "^3.1.2"
   },
   "publishConfig": {
     "access": "public"

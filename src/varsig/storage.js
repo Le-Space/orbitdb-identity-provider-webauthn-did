@@ -2,6 +2,7 @@
  * LocalStorage helpers for varsig credential persistence.
  */
 import { base64urlToBytes, bytesToBase64url } from 'iso-webauthn-varsig';
+import { STORAGE_KEYS } from '../constants.js';
 
 /**
  * Persist varsig credential to localStorage.
@@ -10,7 +11,7 @@ import { base64urlToBytes, bytesToBase64url } from 'iso-webauthn-varsig';
  */
 export function storeWebAuthnVarsigCredential(
   credential,
-  key = 'webauthn-varsig-credential'
+  key = STORAGE_KEYS.WEBAUTHN_VARSIG_CREDENTIAL
 ) {
   const payload = {
     credentialId: bytesToBase64url(credential.credentialId),
@@ -28,7 +29,7 @@ export function storeWebAuthnVarsigCredential(
  * @returns {Object|null} Credential info or null.
  */
 export function loadWebAuthnVarsigCredential(
-  key = 'webauthn-varsig-credential'
+  key = STORAGE_KEYS.WEBAUTHN_VARSIG_CREDENTIAL
 ) {
   const stored = localStorage.getItem(key);
   if (!stored) return null;
@@ -47,7 +48,7 @@ export function loadWebAuthnVarsigCredential(
  * @param {string} [key] - Storage key.
  */
 export function clearWebAuthnVarsigCredential(
-  key = 'webauthn-varsig-credential'
+  key = STORAGE_KEYS.WEBAUTHN_VARSIG_CREDENTIAL
 ) {
   localStorage.removeItem(key);
 }

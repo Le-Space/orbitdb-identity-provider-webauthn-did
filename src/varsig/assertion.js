@@ -14,6 +14,11 @@ import {
 } from 'iso-webauthn-varsig';
 import { buildChallengeBytes, toArrayBuffer, toBytes } from './utils.js';
 import { buildCredentialRequestOptions } from '../webauthn/config.js';
+import { KEY_TYPES, WEBAUTHN_CLIENT_DATA_TYPES } from '../constants.js';
+import {
+  VarsigVerificationError,
+  WebAuthnAuthenticationError,
+} from '../errors.js';
 
 const isTestMode = () =>
   typeof window !== 'undefined' && window.__PLAYWRIGHT__ === true;
@@ -21,7 +26,9 @@ const isTestMode = () =>
 function logWebAuthnResponse(label, credential) {
   const response = credential?.response;
   const getPublicKeyResult =
-    typeof response?.getPublicKey === 'function' ? response.getPublicKey() : null;
+    typeof response?.getPublicKey === 'function'
+      ? response.getPublicKey()
+      : null;
 
   console.group(`[WebAuthn Debug] ${label}`);
   console.log('credential', credential);
@@ -79,7 +86,7 @@ async function runWebAuthnAssertionForPayload(
         authenticatorData: new Uint8Array(37),
         clientDataJSON: new TextEncoder().encode(
           JSON.stringify({
-            type: 'webauthn.get',
+            type: WEBAUTHN_CLIENT_DATA_TYPES.GET,
             challenge: 'test',
             origin,
           })
@@ -101,7 +108,7 @@ async function runWebAuthnAssertionForPayload(
   );
 
   if (!assertion) {
-    throw new Error('Passkey authentication failed.');
+    throw new WebAuthnAuthenticationError('Passkey authentication failed.');
   }
 
   logWebAuthnResponse('varsig navigator.credentials.get()', assertion);
@@ -162,12 +169,12 @@ async function buildVarsigOutput(assertionData) {
   }
 
   const signatureValid =
-    algorithm === 'Ed25519'
+    algorithm === KEY_TYPES.ED25519
       ? await verifyEd25519Signature(signedData, decoded.signature, publicKey)
       : await verifyP256Signature(signedData, p256Signature, publicKey);
 
   if (!verification.valid || !signatureValid) {
-    throw new Error('WebAuthn varsig verification failed.');
+    throw new VarsigVerificationError('WebAuthn varsig verification failed.');
   }
 
   return { varsig, clientData, verification, signatureValid };
@@ -180,12 +187,12 @@ async function buildVarsigOutput(assertionData) {
  */
 function algorithmFromPublicKey(publicKey) {
   if (publicKey.length === 32) {
-    return 'Ed25519';
+    return KEY_TYPES.ED25519;
   }
   if (publicKey.length === 65 && publicKey[0] === 0x04) {
-    return 'P-256';
+    return KEY_TYPES.P256;
   }
-  throw new Error('Unsupported public key format');
+  throw new VarsigVerificationError('Unsupported public key format');
 }
 
 /**

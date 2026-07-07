@@ -58,6 +58,19 @@
 </Header>
 
 <Content>
+  <nav
+    aria-label="Demo switcher"
+    style="display:flex;justify-content:center;gap:0.75rem;margin:1rem 0 0;flex-wrap:wrap;"
+  >
+    <a href="../" style="color:var(--cds-link-primary);">All demos</a>
+    <a href="../ed25519-encrypted-keystore-demo/" style="color:var(--cds-link-primary);"
+      >Encrypted keystore</a
+    >
+    <a href="../webauthn-todo-demo/" style="color:var(--cds-link-primary);"
+      >WebAuthn DID</a
+    >
+  </nav>
+
   <div style="display:flex;justify-content:center;margin:2rem 0;">
     <div>
       <div style="display:flex;justify-content:center;margin-bottom:1rem;">
@@ -168,7 +181,7 @@
           style="display:flex;align-items:center;gap:0.25rem;text-decoration:none;color:inherit;"
         >
           <img
-            src="/orbitdb.png"
+            src="./orbitdb.png"
             alt="OrbitDB"
             style="width:20px;height:20px;object-fit:contain;"
           />
@@ -194,7 +207,7 @@
           style="display:flex;align-items:center;gap:0.25rem;text-decoration:none;color:inherit;"
         >
           <img
-            src="/helia.svg"
+            src="./helia.svg"
             alt="Helia"
             style="width:20px;height:20px;object-fit:contain;"
           />
@@ -209,7 +222,7 @@
           style="display:flex;align-items:center;gap:0.25rem;text-decoration:none;color:inherit;"
         >
           <img
-            src="/ipfs.png"
+            src="./ipfs.png"
             alt="IPFS"
             style="width:20px;height:20px;object-fit:contain;"
           />
@@ -224,7 +237,7 @@
           style="display:flex;align-items:center;gap:0.25rem;text-decoration:none;color:inherit;"
         >
           <img
-            src="/libp2p.png"
+            src="./libp2p.png"
             alt="libp2p"
             style="width:20px;height:20px;object-fit:contain;"
           />

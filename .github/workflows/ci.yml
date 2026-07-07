@@ -2,21 +2,21 @@ name: CI
 
 on:
   push:
-    branches: [ '**' ]
+    branches: ['**']
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
   release:
-    types: [ created ]
+    types: [created]
 
 jobs:
   test:
     name: Run Tests
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
-      
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         with:
@@ -27,25 +27,29 @@ jobs:
         with:
           node-version: '22.x'
           cache: 'pnpm'
-      
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      
-      # Run linting (disabled)
-      
+
+      - name: Run lint
+        run: pnpm run lint
+
+      - name: Check formatting
+        run: pnpm run format:check
+
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
-      
+
       - name: Install demo dependencies (webauthn-todo-demo)
         run: |
           cd examples/webauthn-todo-demo
           pnpm install --frozen-lockfile
-      
+
       - name: Build demo application (webauthn-todo-demo)
         run: |
           cd examples/webauthn-todo-demo
           pnpm run build
-      
+
       - name: Install demo dependencies (ed25519-encrypted-keystore-demo)
         run: |
           cd examples/ed25519-encrypted-keystore-demo
@@ -55,7 +59,7 @@ jobs:
         run: |
           cd examples/webauthn-varsig-demo
           pnpm install --frozen-lockfile
-      
+
       - name: Build demo application (ed25519-encrypted-keystore-demo)
         run: |
           cd examples/ed25519-encrypted-keystore-demo
@@ -65,7 +69,7 @@ jobs:
         run: |
           cd examples/webauthn-varsig-demo
           pnpm run build
-      
+
       - name: Run WebAuthn focused tests
         run: pnpm exec playwright test tests/webauthn-focused.test.js --project=chromium --reporter=github
         env:
@@ -91,12 +95,12 @@ jobs:
         env:
           CI: true
           USE_ENCRYPTED_DEMO: true
-      
+
       - name: Run Ed25519 Encrypted Keystore E2E tests
         run: USE_ENCRYPTED_DEMO=true pnpm exec playwright test tests/ed25519-encrypted-keystore-e2e.test.js --project=chromium --reporter=github
         env:
           CI: true
-      
+
       - name: Upload test artifacts
         if: failure()
         uses: actions/upload-artifact@v7

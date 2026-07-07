@@ -34,7 +34,7 @@ importers:
         version: 11.0.0
       '@le-space/orbitdb-identity-provider-webauthn-did':
         specifier: file:../..
-        version: file:../..(@orbitdb/core@4.0.0)(rollup@4.56.0)(vite@7.3.1(@types/node@25.0.10)(terser@5.46.0)(yaml@2.8.2))
+        version: file:../..(@orbitdb/core@4.0.0)
       '@libp2p/circuit-relay-v2':
         specifier: ^4.2.7
         version: 4.2.7
@@ -81,8 +81,8 @@ importers:
         specifier: ^13.0.1
         version: 13.0.1
       helia:
-        specifier: ^7.0.1
-        version: 7.0.1(react-native@0.83.1(@babel/core@7.28.6)(react@19.2.3))
+        specifier: ^7.0.5
+        version: 7.0.5(react-native@0.83.1(@babel/core@7.28.6)(react@19.2.3))
       libp2p:
         specifier: ^3.3.4
         version: 3.3.4
@@ -571,29 +571,56 @@ packages:
   '@helia/bitswap@4.0.1':
     resolution: {integrity: sha512-4xVD3xLG+73xZZiJZpmQ9402MDVQau/4jW9z7B+n9iAIkYGlW1pGCjLZ1STzAj9QmlCb/zbsrURxkEkvc2/2AQ==}
 
+  '@helia/bitswap@4.0.5':
+    resolution: {integrity: sha512-2jGb9wpUF75SqfIZgiMVDfzgyGu6z7g2A4PVD3Yx6GT0TaT9UeRyEL0ZXvYeDtsf1ogrd5G62bfPzRe+3JrkPA==}
+
   '@helia/delegated-routing-client@1.0.1':
     resolution: {integrity: sha512-0+wuADkE67vBPD8OSY5ymx5yhC4gCuQExPJPP9v/Og2tQMHasUb23zgARrFgxZlyZe+X6IMyKRv++LDA1vbymg==}
+
+  '@helia/delegated-routing-client@1.0.4':
+    resolution: {integrity: sha512-j4KDU5atZYw7lGvfszoORpMhEsDkvzlLQJAaPA0CV6ZDsVjP0OTGRhgK1vZFmixCByqOLkPH33RQGMRg4hIwUQ==}
 
   '@helia/delegated-routing-v1-http-api-client@8.0.1':
     resolution: {integrity: sha512-O9SjMwd4Xb1Umr8yyyxeCdL+0dNb/BF+ceN/CCTWE/Mfiy+B0aEafpcoSm/3Wn3e0WwXHnGfNWQqBN6cLu30qQ==}
 
+  '@helia/delegated-routing-v1-http-api-client@9.0.0':
+    resolution: {integrity: sha512-o5F8wr80dels/I3BE2DFBaBR657/4qdKdo728AJNIgD9mJQdmqdyj9chgVXozE55MGUYRHjMeK3Bq8Ygl8B48w==}
+
   '@helia/fallback-router@1.0.1':
     resolution: {integrity: sha512-UEYbP+bpgn1hNIH9wgiIFOfQmYbv6Ue7m78BTZvKpkqrwLzHe0TqBlaDNzLdghJ/b4jsoirQci2Hxck+y5O6bg==}
+
+  '@helia/fallback-router@1.0.3':
+    resolution: {integrity: sha512-FdnEMP3fLQ3MMEau5SxfE82eGmSqRFUKvruuW2xJbS3g+3RFRTmytYcQXU7a4iJE87eFkWyN9q4NtHiNBs+VXg==}
 
   '@helia/http@4.0.1':
     resolution: {integrity: sha512-i1RVsS888f8LfugztWI5LG/t0/MdhNuC6E7nIY+/htxUiJ//CNDkz5mfv2yxy/NR1pv0vJxa9Vghly/1uFlFvw==}
 
+  '@helia/http@4.0.4':
+    resolution: {integrity: sha512-w8L7UGNd9BpZjPulT/exASyn2VmYcMMYTQrMvxbzu9cxdW3zXQU7sfhjxpW4rzNa0QzaVUCgH34kq0QxM0zBEw==}
+
   '@helia/interface@7.0.1':
     resolution: {integrity: sha512-el9+XXr1TfoIIaCOwsPiTU1ZFcK1FwieyquKe+BWwOWlVHVLulsoHyvR4fDXyQ3H54kpNqnYoG0xLRzUD2R+aQ==}
+
+  '@helia/interface@7.0.3':
+    resolution: {integrity: sha512-PYINbpGpYwX9WDMxiXZvHGYxkSXAgmSlNGATbWzkzD1V/Q9dW06oIT4Xkr9V93grQ/FWZPdxc+ZiQppu0ejguQ==}
 
   '@helia/libp2p@1.0.1':
     resolution: {integrity: sha512-ohoQIzwBv6HxnTmLw6WpjKITB+PJnCcd5lG/QTH7vvakCVaPOjG1pOYStsA+bnlnKVGoF8VTeO2kvp9M+Eo0Ng==}
 
+  '@helia/libp2p@1.0.5':
+    resolution: {integrity: sha512-rq1W2Q/0G5lUSRFVHENy6uShtNeT+Zxq6Isstr0Egj11uSdH+ymK2p1G2VR9aC2QGVFu95m5zeX0rlIRx0N2LA==}
+
   '@helia/trustless-gateway-client@1.0.1':
     resolution: {integrity: sha512-rcxSnLJ23BENXM6ihyqSQSjGj69NOk8sFWSFjtINwZws2jptMx0L4FmaQJprXnVhOgsYgC6NceSJUMjYy9f7HA==}
 
+  '@helia/trustless-gateway-client@1.0.3':
+    resolution: {integrity: sha512-ARr+YseJZ5wkMTaesepz1tUQOuDcrIOj371BmWNfyp3bnqkmH3Ba5Z5GnoGTw2aGg8xDTpF3KbO+4KGe/iWYug==}
+
   '@helia/utils@3.0.1':
     resolution: {integrity: sha512-vsjstiGZ9k7oD6LJhNur8dmAwZ+LoEGsvI3Af4tK20uGKLXL7u7gvCEp6cHj41rAYWF2mF5PPd2udfaYBcFAYw==}
+
+  '@helia/utils@3.0.3':
+    resolution: {integrity: sha512-5bfeE9PgLOStWbSdqJsBE2fOV0J8wUT/1PN0jGofMcKS3RyuekRturqLtFVtAwJIx5Rsqyp9Ne400/wrXJeREA==}
 
   '@humanfs/core@0.19.1':
     resolution: {integrity: sha512-5DyQ4+1JEUzejeK1JGICcideyfUbGixgS9jNgex5nqkW+cY7WZhxBigmieN5Qnw9ZosSNVC9KQKyb+GUaGyKUA==}
@@ -1606,6 +1633,10 @@ packages:
     resolution: {integrity: sha512-JBSrutapCafTrddF9dH3lc7+T2tBycGF4uPkI4Js+g4vLLEhG6RZcFi3aJd5zntdf5tQxAejJt8dihkoQ/eSJw==}
     engines: {node: '>=20'}
 
+  conf@15.1.0:
+    resolution: {integrity: sha512-Uy5YN9KEu0WWDaZAVJ5FAmZoaJt9rdK6kH+utItPyGsCqCgaTKkrmZx3zoE0/3q6S3bcp3Ihkk+ZqPxWxFK5og==}
+    engines: {node: '>=20'}
+
   connect@3.7.0:
     resolution: {integrity: sha512-ZqRXc+tZukToSNmh5C2iWMSoV3X1YUcPbqEM4DkEG5tNQXrQUZCNVGGv3IuicnkMtPfGf3Xtp8WCXs295iQ1pQ==}
     engines: {node: '>= 0.10.0'}
@@ -2138,8 +2169,8 @@ packages:
     resolution: {integrity: sha512-0hJU9SCPvmMzIBdZFqNPXWa6dqh7WdH0cII9y+CyS8rG3nL48Bclra9HmKhVVUHyPWNH5Y7xDwAB7bfgSjkUMQ==}
     engines: {node: '>= 0.4'}
 
-  helia@7.0.1:
-    resolution: {integrity: sha512-pvi8cCdhkjXo3I9ATzv1o7SG4+inBnvBjOmwufkLoTgWWBRojEMTW75rHNVUklC9N+6Pvr1JabO+OGMbZ2Cbww==}
+  helia@7.0.5:
+    resolution: {integrity: sha512-BgzGQyfX3IA0bggis3KMvMjQxra7n7rDpQQICp0xl+4R6NGsSGApuNa6YlagwXv+G4nrB/NTlDJTaNc5zo2Nqg==}
 
   hermes-compiler@0.14.0:
     resolution: {integrity: sha512-clxa193o+GYYwykWVFfpHduCATz8fR5jvU7ngXpfKHj+E9hr9vjLNtdLSEe8MUbObvVexV3wcyxQ00xTPIrB1Q==}
@@ -2272,6 +2303,10 @@ packages:
     resolution: {integrity: sha512-6oIwpsgRfnDiyEDLMay/GqCl3HoAtH5+RUKW29gYkL0QA+ipzpDLA16yQs7/RHCSu+BwgbJaOUqa4A99qNVQVw==}
     engines: {node: '>=16'}
 
+  is-network-error@1.3.2:
+    resolution: {integrity: sha512-PhBY86zaxNZUuWP6h13Vu5oFe0XY6/UlKzQnYFELzGVHygP3MxmvTfYSG7GN3aIab/iWudSMgjSnG9Dq+nHrgA==}
+    engines: {node: '>=16'}
+
   is-number@7.0.0:
     resolution: {integrity: sha512-41Cifkg6e8TylSpdtTpeLVMqvSBEVzTttHvERD741+pnZ8ANv0004MRL43QKPDlK9cGvNp6NZWZUBlbGXYxxng==}
     engines: {node: '>=0.12.0'}
@@ -2308,11 +2343,20 @@ packages:
   isexe@2.0.0:
     resolution: {integrity: sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==}
 
+  iso-base@4.4.0:
+    resolution: {integrity: sha512-W4BJbRDBi66wcBFJ23ZlGnFOZ874CIut4y9PlsScMSYu7ckCX+MWNAaEoE0efTSYDoVEn1qy0FDVSjE8q0ieHw==}
+
   iso-kv@3.1.1:
     resolution: {integrity: sha512-yKTLmUCc8gl0MXJs3ZaTaNDgfG/2ROasZERKPa5aYY7Ks/eb8BvGfLHrC+t1cHxiRkogvaXulDP77ovwLKgLPg==}
 
+  iso-kv@3.2.0:
+    resolution: {integrity: sha512-rMVXO7zDEecXOJEiDnbDqjZ7gSe7VqDn2FTkUFWeqkcYMmgMdmB7pDgUaZxiEyiL1+gO7RnbqEI2Ce3xIW4UBQ==}
+
   iso-web@2.1.0:
     resolution: {integrity: sha512-8l+JF8vtcr1CGRU4yXiltoZzT5HTYQkXNfXSs8n64VqbjCnTBW/yv1xEP5G7VTes7DTQJfbIwt/cLoMOSIAWng==}
+
+  iso-web@3.1.2:
+    resolution: {integrity: sha512-OpWz+KNH4vYNVvpc6T1z/zkZtT6iTQXYjc0sIbkPDwYEM5Qurg0LYESrEHloxb6xj5T/2rrnsTtaYlUSIzgicg==}
 
   isomorphic-timers-promises@1.0.1:
     resolution: {integrity: sha512-u4sej9B1LPSxTGKB/HiuzvEQnXH0ECYkSVQU39koSwmFAxhlEAFl9RdTvLv4TOTQUgBS5O3O5fwUxk6byBZ+IQ==}
@@ -2508,6 +2552,10 @@ packages:
   kysely@0.28.10:
     resolution: {integrity: sha512-ksNxfzIW77OcZ+QWSAPC7yDqUSaIVwkTWnTPNiIy//vifNbwsSgQ57OkkncHxxpcBHM3LRfLAZVEh7kjq5twVA==}
     engines: {node: '>=20.0.0'}
+
+  kysely@0.29.3:
+    resolution: {integrity: sha512-VHtBdW6XB/pgoTSqraM3UAa2rYoYdNXqnNPpX+8XXP+cwYbVEFuAp3HyPt1vpNfU9l7Y2kpUrA9QDPsy8uUqOQ==}
+    engines: {node: '>=22.0.0'}
 
   level-supports@6.2.0:
     resolution: {integrity: sha512-QNxVXP0IRnBmMsJIh+sb2kwNCYcKciQZJEt+L1hPCHrKNELllXhvrlClVHXBYZVT+a7aTSM6StgNXdAldoab3w==}
@@ -4187,10 +4235,53 @@ snapshots:
       - supports-color
       - utf-8-validate
 
+  '@helia/bitswap@4.0.5(react-native@0.83.1(@babel/core@7.28.6)(react@19.2.3))':
+    dependencies:
+      '@helia/interface': 7.0.3
+      '@helia/libp2p': 1.0.5(react-native@0.83.1(@babel/core@7.28.6)(react@19.2.3))
+      '@helia/utils': 3.0.3
+      '@libp2p/interface': 3.2.4
+      '@libp2p/logger': 6.2.9
+      '@libp2p/peer-collections': 7.0.22
+      '@libp2p/peer-id': 6.0.11
+      '@libp2p/utils': 7.2.3
+      '@multiformats/multiaddr': 13.0.3
+      any-signal: 4.2.0
+      interface-blockstore: 7.0.1
+      it-drain: 3.0.12
+      it-length-prefixed: 11.0.1
+      it-map: 3.1.6
+      it-pushable: 3.2.4
+      it-take: 3.0.11
+      it-to-buffer: 5.0.0
+      multiformats: 14.0.3
+      p-defer: 4.0.1
+      progress-events: 1.1.0
+      protons-runtime: 7.0.0
+      race-event: 1.6.1
+      uint8-varint: 3.0.0
+      uint8arraylist: 3.0.2
+      uint8arrays: 6.1.1
+    transitivePeerDependencies:
+      - bufferutil
+      - react-native
+      - supports-color
+      - utf-8-validate
+
   '@helia/delegated-routing-client@1.0.1':
     dependencies:
       '@helia/delegated-routing-v1-http-api-client': 8.0.1
       '@helia/interface': 7.0.1
+      '@libp2p/interface': 3.2.4
+      it-first: 3.0.11
+      it-map: 3.1.6
+      multiformats: 14.0.3
+      uint8arrays: 6.1.1
+
+  '@helia/delegated-routing-client@1.0.4':
+    dependencies:
+      '@helia/delegated-routing-v1-http-api-client': 9.0.0
+      '@helia/interface': 7.0.3
       '@libp2p/interface': 3.2.4
       it-first: 3.0.11
       it-map: 3.1.6
@@ -4211,9 +4302,30 @@ snapshots:
       multiformats: 14.0.3
       uint8arrays: 6.1.1
 
+  '@helia/delegated-routing-v1-http-api-client@9.0.0':
+    dependencies:
+      '@libp2p/interface': 3.2.4
+      '@libp2p/peer-id': 6.0.11
+      '@libp2p/utils': 7.2.3
+      '@multiformats/multiaddr': 13.0.3
+      any-signal: 4.2.0
+      browser-readablestream-to-it: 2.0.12
+      it-first: 3.0.11
+      it-map: 3.1.6
+      it-ndjson: 2.0.0
+      multiformats: 14.0.3
+      uint8arrays: 6.1.1
+
   '@helia/fallback-router@1.0.1':
     dependencies:
       '@helia/interface': 7.0.1
+      '@multiformats/uri-to-multiaddr': 10.0.0
+      multiformats: 14.0.3
+      uint8arrays: 6.1.1
+
+  '@helia/fallback-router@1.0.3':
+    dependencies:
+      '@helia/interface': 7.0.3
       '@multiformats/uri-to-multiaddr': 10.0.0
       multiformats: 14.0.3
       uint8arrays: 6.1.1
@@ -4225,7 +4337,29 @@ snapshots:
       '@helia/interface': 7.0.1
       '@helia/trustless-gateway-client': 1.0.1
 
+  '@helia/http@4.0.4':
+    dependencies:
+      '@helia/delegated-routing-client': 1.0.4
+      '@helia/fallback-router': 1.0.3
+      '@helia/interface': 7.0.3
+      '@helia/trustless-gateway-client': 1.0.3
+
   '@helia/interface@7.0.1':
+    dependencies:
+      '@ipshipyard/crypto': 1.1.0
+      '@ipshipyard/keychain': 1.0.2
+      '@libp2p/interface': 3.2.4
+      '@multiformats/dns': 1.0.15
+      '@multiformats/multiaddr': 13.0.3
+      abort-error: 1.0.2
+      birnam: 1.0.0
+      interface-blockstore: 7.0.1
+      interface-datastore: 10.0.1
+      main-event: 1.0.4
+      multiformats: 14.0.3
+      progress-events: 1.1.0
+
+  '@helia/interface@7.0.3':
     dependencies:
       '@ipshipyard/crypto': 1.1.0
       '@ipshipyard/keychain': 1.0.2
@@ -4278,6 +4412,46 @@ snapshots:
       - supports-color
       - utf-8-validate
 
+  '@helia/libp2p@1.0.5(react-native@0.83.1(@babel/core@7.28.6)(react@19.2.3))':
+    dependencies:
+      '@chainsafe/libp2p-noise': 17.0.0
+      '@chainsafe/libp2p-yamux': 8.0.1
+      '@helia/delegated-routing-client': 1.0.4
+      '@helia/delegated-routing-v1-http-api-client': 9.0.0
+      '@helia/interface': 7.0.3
+      '@ipshipyard/libp2p-auto-tls': 2.0.2
+      '@libp2p/autonat': 3.0.22
+      '@libp2p/bootstrap': 12.0.25
+      '@libp2p/circuit-relay-v2': 4.2.7
+      '@libp2p/config': 1.1.33
+      '@libp2p/dcutr': 3.0.22
+      '@libp2p/http': 2.0.4
+      '@libp2p/identify': 4.1.8
+      '@libp2p/interface': 3.2.4
+      '@libp2p/kad-dht': 16.3.3
+      '@libp2p/keychain': 6.1.3
+      '@libp2p/mdns': 12.0.25
+      '@libp2p/mplex': 12.0.25
+      '@libp2p/peer-id': 6.0.11
+      '@libp2p/ping': 3.1.7
+      '@libp2p/tcp': 11.0.22
+      '@libp2p/tls': 3.1.4
+      '@libp2p/upnp-nat': 4.0.22
+      '@libp2p/webrtc': 6.0.25(react-native@0.83.1(@babel/core@7.28.6)(react@19.2.3))
+      '@libp2p/websockets': 10.1.15
+      '@multiformats/dns': 1.0.15
+      '@multiformats/multiaddr': 13.0.3
+      it-foreach: 2.1.7
+      it-map: 3.1.6
+      libp2p: 3.3.4
+      multiformats: 14.0.3
+      uint8arrays: 6.1.1
+    transitivePeerDependencies:
+      - bufferutil
+      - react-native
+      - supports-color
+      - utf-8-validate
+
   '@helia/trustless-gateway-client@1.0.1':
     dependencies:
       '@helia/interface': 7.0.1
@@ -4294,9 +4468,38 @@ snapshots:
       uint8arraylist: 3.0.2
       uint8arrays: 6.1.1
 
+  '@helia/trustless-gateway-client@1.0.3':
+    dependencies:
+      '@helia/interface': 7.0.3
+      '@helia/utils': 3.0.3
+      '@libp2p/utils': 7.2.3
+      '@multiformats/multiaddr': 13.0.3
+      '@multiformats/multiaddr-matcher': 3.0.2
+      '@multiformats/multiaddr-to-uri': 12.0.0
+      '@multiformats/uri-to-multiaddr': 10.0.0
+      abort-error: 1.0.2
+      birnam: 1.0.0
+      multiformats: 14.0.3
+      progress-events: 1.1.0
+      uint8arraylist: 3.0.2
+      uint8arrays: 6.1.1
+
   '@helia/utils@3.0.1':
     dependencies:
       '@helia/interface': 7.0.1
+      '@libp2p/interface': 3.2.4
+      '@libp2p/utils': 7.2.3
+      '@multiformats/multiaddr': 13.0.3
+      it-filter: 3.1.6
+      it-to-buffer: 5.0.0
+      multiformats: 14.0.3
+      p-defer: 4.0.1
+      progress-events: 1.1.0
+      race-signal: 2.0.0
+
+  '@helia/utils@3.0.3':
+    dependencies:
+      '@helia/interface': 7.0.3
       '@libp2p/interface': 3.2.4
       '@libp2p/utils': 7.2.3
       '@multiformats/multiaddr': 13.0.3
@@ -4503,7 +4706,7 @@ snapshots:
     dependencies:
       iso-base: '@le-space/iso-base@4.3.0'
 
-  '@le-space/orbitdb-identity-provider-webauthn-did@file:../..(@orbitdb/core@4.0.0)(rollup@4.56.0)(vite@7.3.1(@types/node@25.0.10)(terser@5.46.0)(yaml@2.8.2))':
+  '@le-space/orbitdb-identity-provider-webauthn-did@file:../..(@orbitdb/core@4.0.0)':
     dependencies:
       '@ipld/dag-cbor': 10.0.1
       '@ipld/dag-ucan': 3.4.5
@@ -4516,13 +4719,9 @@ snapshots:
       iso-base: '@le-space/iso-base@4.3.0'
       iso-did: '@le-space/iso-did@2.1.2'
       iso-passkeys: '@le-space/iso-passkeys@0.3.1'
-      iso-web: 2.1.0
+      iso-web: 3.1.2
       iso-webauthn-varsig: '@le-space/iso-webauthn-varsig@0.2.0'
       multiformats: 14.0.3
-      vite-plugin-node-polyfills: 0.24.0(rollup@4.56.0)(vite@7.3.1(@types/node@25.0.10)(terser@5.46.0)(yaml@2.8.2))
-    transitivePeerDependencies:
-      - rollup
-      - vite
 
   '@le-space/ucanto-interface@11.1.1':
     dependencies:
@@ -5942,6 +6141,18 @@ snapshots:
       semver: 7.7.3
       uint8array-extras: 1.5.0
 
+  conf@15.1.0:
+    dependencies:
+      ajv: 8.17.1
+      ajv-formats: 3.0.1(ajv@8.17.1)
+      atomically: 2.1.0
+      debounce-fn: 6.0.0
+      dot-prop: 10.1.0
+      env-paths: 3.0.0
+      json-schema-typed: 8.0.2
+      semver: 7.7.3
+      uint8array-extras: 1.5.0
+
   connect@3.7.0:
     dependencies:
       debug: 2.6.9
@@ -6504,13 +6715,13 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
-  helia@7.0.1(react-native@0.83.1(@babel/core@7.28.6)(react@19.2.3)):
+  helia@7.0.5(react-native@0.83.1(@babel/core@7.28.6)(react@19.2.3)):
     dependencies:
-      '@helia/bitswap': 4.0.1(react-native@0.83.1(@babel/core@7.28.6)(react@19.2.3))
-      '@helia/http': 4.0.1
-      '@helia/interface': 7.0.1
-      '@helia/libp2p': 1.0.1(react-native@0.83.1(@babel/core@7.28.6)(react@19.2.3))
-      '@helia/utils': 3.0.1
+      '@helia/bitswap': 4.0.5(react-native@0.83.1(@babel/core@7.28.6)(react@19.2.3))
+      '@helia/http': 4.0.4
+      '@helia/interface': 7.0.3
+      '@helia/libp2p': 1.0.5(react-native@0.83.1(@babel/core@7.28.6)(react@19.2.3))
+      '@helia/utils': 3.0.3
       '@ipld/dag-cbor': 10.0.1
       '@ipld/dag-json': 11.0.0
       '@ipld/dag-pb': 4.1.7
@@ -6670,6 +6881,8 @@ snapshots:
 
   is-network-error@1.3.0: {}
 
+  is-network-error@1.3.2: {}
+
   is-number@7.0.0: {}
 
   is-plain-obj@2.1.0: {}
@@ -6701,17 +6914,36 @@ snapshots:
 
   isexe@2.0.0: {}
 
+  iso-base@4.4.0:
+    dependencies:
+      bigint-mod-arith: 3.3.1
+
   iso-kv@3.1.1:
     dependencies:
       conf: 15.0.2
       idb-keyval: 6.2.2
       kysely: 0.28.10
 
+  iso-kv@3.2.0:
+    dependencies:
+      conf: 15.1.0
+      idb-keyval: 6.2.2
+      iso-base: 4.4.0
+      kysely: 0.29.3
+
   iso-web@2.1.0:
     dependencies:
       delay: 7.0.0
       iso-kv: 3.1.1
       p-retry: 7.1.1
+
+  iso-web@3.1.2:
+    dependencies:
+      '@standard-schema/spec': 1.1.0
+      delay: 7.0.0
+      is-network-error: 1.3.2
+      iso-kv: 3.2.0
+      p-retry: 8.0.0
 
   isomorphic-timers-promises@1.0.1: {}
 
@@ -6823,7 +7055,7 @@ snapshots:
   it-queue@1.1.1:
     dependencies:
       abort-error: 1.0.2
-      it-pushable: 3.2.3
+      it-pushable: 3.2.4
       main-event: 1.0.4
       race-event: 1.6.1
       race-signal: 2.0.0
@@ -6965,6 +7197,8 @@ snapshots:
   known-css-properties@0.37.0: {}
 
   kysely@0.28.10: {}
+
+  kysely@0.29.3: {}
 
   level-supports@6.2.0: {}
 

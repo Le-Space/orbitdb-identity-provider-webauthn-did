@@ -23,7 +23,7 @@ export default [
       'no-unused-vars': 'warn',
       'no-console': 'off',
       semi: ['error', 'always'],
-      quotes: ['error', 'single'],
+      quotes: ['error', 'single', { avoidEscape: true }],
       // Prettier handles indentation to avoid formatter/linter conflicts.
       indent: 'off',
       'no-trailing-spaces': 'error',
