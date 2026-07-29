@@ -1,0 +1,22 @@
+name: Token check (temporary)
+on: push
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.x'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Who am I on npm
+        run: |
+          echo "token present: ${{ secrets.NPM_TOKEN != '' }}"
+          npm whoami --registry https://registry.npmjs.org
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Can this token publish the package
+        run: npm access list collaborators @le-space/orbitdb-identity-provider-webauthn-did 2>&1 || echo "access-list failed (may be normal for granular tokens)"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
