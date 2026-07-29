@@ -293,51 +293,36 @@ export class WebAuthnDIDProvider {
   }
 
   /**
-   * Extract P-256 public key from WebAuthn credential
-   * Parses the CBOR attestation object to get the real public key
-   */
-  /**
-   * Extract and normalize WebAuthn public key data from a credential response.
+   * Extract and normalize the WebAuthn public key from a credential response.
+   *
+   * Tries getPublicKey() first, then parses the attestation object. Falls back
+   * to a synthetic key derived from the credential ID only if both fail; that
+   * fallback is marked with `synthetic: true` and cannot verify authenticator
+   * signatures.
+   *
    * @param {PublicKeyCredential} credential - WebAuthn credential response.
    * @returns {Promise<Object>} Parsed credential info with public key.
    */
   static async extractPublicKey(credential) {
+    // Preferred path: the browser hands us the SPKI directly (WebAuthn L2).
+    // Available on AuthenticatorAttestationResponse only, i.e. after
+    // navigator.credentials.create() — never after .get().
     try {
-      // Import CBOR decoder for parsing attestation object
-      const cbor = await import('cbor-web');
-      const decode = cbor.decode || cbor.default?.decode || cbor.default;
-
-      if (typeof decode !== 'function') {
-        throw new Error('CBOR decoder not available from cbor-web');
+      const spki = credential?.response?.getPublicKey?.();
+      if (spki) {
+        return await WebAuthnDIDProvider.parseSpkiPublicKey(spki);
       }
-
-      const attestationObject = decode(
-        new Uint8Array(credential.response.attestationObject)
+    } catch (error) {
+      webauthnLog(
+        'getPublicKey() unavailable or unparsable, falling back to attestation parsing: %s',
+        error.message
       );
-      const authData = attestationObject.authData;
+    }
 
-      // Parse authenticator data structure
-      // Skip: rpIdHash (32 bytes) + flags (1 byte) + signCount (4 bytes)
-      const credentialDataStart = 32 + 1 + 4 + 16 + 2; // +16 for AAGUID, +2 for credentialIdLength
-      const credentialIdLength = new DataView(
-        authData.buffer,
-        32 + 1 + 4 + 16,
-        2
-      ).getUint16(0);
-      const publicKeyDataStart = credentialDataStart + credentialIdLength;
-
-      // Extract and decode the public key (CBOR format)
-      const publicKeyData = authData.slice(publicKeyDataStart);
-      const publicKeyObject = decode(publicKeyData);
-
-      // Extract P-256 coordinates (COSE key format)
-      return {
-        algorithm: publicKeyObject[3], // alg parameter
-        x: new Uint8Array(publicKeyObject[-2]), // x coordinate
-        y: new Uint8Array(publicKeyObject[-3]), // y coordinate
-        keyType: publicKeyObject[1], // kty parameter
-        curve: publicKeyObject[-1], // crv parameter
-      };
+    try {
+      return await WebAuthnDIDProvider.parseAttestedCredentialPublicKey(
+        credential.response.attestationObject
+      );
     } catch (error) {
       console.warn(
         'Failed to extract real public key from WebAuthn credential, using fallback:',
@@ -370,10 +355,154 @@ export class WebAuthnDIDProvider {
         y: ySeed.slice(0, 32), // Deterministic y coordinate based on credential
         keyType: 2, // EC2 key type
         curve: 1, // P-256 curve
+        // Marks a key that is NOT the authenticator's key. Signatures made by
+        // the authenticator cannot be verified against it.
+        synthetic: true,
       };
 
       return fallbackKey;
     }
+  }
+
+  /**
+   * Parse a SPKI-encoded (DER) P-256 public key into COSE-style coordinates.
+   * @param {ArrayBuffer|Uint8Array} spki - SPKI bytes from getPublicKey().
+   * @returns {Promise<Object>} Public key with x/y coordinates.
+   */
+  static async parseSpkiPublicKey(spki) {
+    const key = await crypto.subtle.importKey(
+      'spki',
+      spki instanceof Uint8Array ? spki.buffer : spki,
+      { name: 'ECDSA', namedCurve: 'P-256' },
+      true,
+      ['verify']
+    );
+    const jwk = await crypto.subtle.exportKey('jwk', key);
+
+    const x = new Uint8Array(WebAuthnDIDProvider.base64urlToArrayBuffer(jwk.x));
+    const y = new Uint8Array(WebAuthnDIDProvider.base64urlToArrayBuffer(jwk.y));
+
+    if (x.length !== 32 || y.length !== 32) {
+      throw new WebAuthnCredentialError(
+        `Invalid P-256 coordinate length: x=${x.length} y=${y.length}`
+      );
+    }
+
+    return { algorithm: -7, x, y, keyType: 2, curve: 1 };
+  }
+
+  /**
+   * Parse the attested credential public key out of a WebAuthn attestation
+   * object (COSE key inside authenticatorData).
+   *
+   * See WebAuthn L2 §6.5.2 for the attestedCredentialData layout:
+   *   rpIdHash(32) | flags(1) | signCount(4) | aaguid(16) |
+   *   credentialIdLength(2) | credentialId(L) | credentialPublicKey(COSE) |
+   *   extensions(CBOR, optional)
+   *
+   * @param {ArrayBuffer|Uint8Array} attestationObjectBytes - Raw attestation object.
+   * @returns {Promise<Object>} Public key with x/y coordinates.
+   */
+  static async parseAttestedCredentialPublicKey(attestationObjectBytes) {
+    const cbor = await import('cbor-web');
+    const cborApi = cbor.default ?? cbor;
+    const decode = cborApi.decode;
+    const decodeFirstSync = cborApi.decodeFirstSync;
+
+    if (typeof decode !== 'function') {
+      throw new WebAuthnCredentialError(
+        'CBOR decoder not available from cbor-web'
+      );
+    }
+
+    const attestationObject = decode(new Uint8Array(attestationObjectBytes));
+    const rawAuthData =
+      attestationObject instanceof Map
+        ? attestationObject.get('authData')
+        : attestationObject.authData;
+
+    if (!rawAuthData) {
+      throw new WebAuthnCredentialError(
+        'Attestation object contains no authData'
+      );
+    }
+
+    // cbor-web returns byte strings as views into the *enclosing* buffer, so
+    // authData.byteOffset is non-zero. Copy to a standalone buffer, otherwise
+    // every offset below silently reads the wrong bytes.
+    const authData = Uint8Array.from(rawAuthData);
+
+    const AAGUID_END = 32 + 1 + 4 + 16; // 53
+    const CREDENTIAL_DATA_START = AAGUID_END + 2; // 55
+
+    // AT flag (bit 6) must be set, otherwise there is no attested credential data
+    const flags = authData[32];
+    if ((flags & 0x40) === 0) {
+      throw new WebAuthnCredentialError(
+        'authData has no attested credential data (AT flag unset)'
+      );
+    }
+
+    if (authData.length < CREDENTIAL_DATA_START) {
+      throw new WebAuthnCredentialError(
+        `authData too short: ${authData.length} bytes`
+      );
+    }
+
+    const view = new DataView(
+      authData.buffer,
+      authData.byteOffset,
+      authData.byteLength
+    );
+    const credentialIdLength = view.getUint16(AAGUID_END);
+    const publicKeyDataStart = CREDENTIAL_DATA_START + credentialIdLength;
+
+    if (publicKeyDataStart >= authData.length) {
+      throw new WebAuthnCredentialError(
+        `credentialIdLength ${credentialIdLength} exceeds authData (${authData.length} bytes)`
+      );
+    }
+
+    const publicKeyData = authData.slice(publicKeyDataStart);
+
+    // When the ED flag is set, CBOR extension data trails the COSE key.
+    // decode() rejects trailing bytes, so decode only the first item.
+    let publicKeyObject;
+    if (typeof decodeFirstSync === 'function') {
+      publicKeyObject = decodeFirstSync(publicKeyData, {
+        extendedResults: true,
+      }).value;
+    } else {
+      publicKeyObject = decode(publicKeyData);
+    }
+
+    const get = (k) =>
+      publicKeyObject instanceof Map
+        ? publicKeyObject.get(k)
+        : publicKeyObject[k];
+
+    const keyType = get(1);
+    const algorithm = get(3);
+    const curve = get(-1);
+    const x = get(-2);
+    const y = get(-3);
+
+    if (keyType !== 2 || curve !== 1) {
+      throw new WebAuthnCredentialError(
+        `Unsupported COSE key: kty=${keyType} alg=${algorithm} crv=${curve} (expected P-256 EC2)`
+      );
+    }
+
+    const xBytes = new Uint8Array(x);
+    const yBytes = new Uint8Array(y);
+
+    if (xBytes.length !== 32 || yBytes.length !== 32) {
+      throw new WebAuthnCredentialError(
+        `Invalid P-256 coordinate length: x=${xBytes.length} y=${yBytes.length}`
+      );
+    }
+
+    return { algorithm, x: xBytes, y: yBytes, keyType, curve };
   }
 
   /**
