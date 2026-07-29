@@ -5,13 +5,12 @@ const authenticateButton = 'button:has-text("Authenticate with WebAuthn")';
 
 async function openSecurityOptions(page) {
   await page.goto('http://localhost:5173', { waitUntil: 'domcontentloaded' });
-  if (
-    await page
-      .getByText('TODO List')
-      .isVisible({ timeout: 2000 })
-      .catch(() => false)
-  ) {
-    await page.click('button:has-text("Logout")');
+  // Gate on the Logout button itself rather than on the "TODO List" heading.
+  // Against the production build the heading paints before the button is
+  // interactive, so keying off the heading raced and timed out on the click.
+  const logoutButton = page.locator('button:has-text("Logout")');
+  if (await logoutButton.isVisible({ timeout: 5000 }).catch(() => false)) {
+    await logoutButton.click();
     await page.waitForTimeout(300);
   }
   const hasCreateButton = await page
@@ -164,8 +163,11 @@ test.describe('Ed25519 Keystore DID Feature', () => {
     const useKeystoreIdentity = page.getByLabel(
       /Use persistent keystore identity/i
     );
-    const secpKeyOption = page.getByLabel('secp256k1');
-    const ed25519KeyOption = page.getByLabel('Ed25519');
+    // Scope to the radio group: the worker-mode checkbox is labelled
+    // "Use worker-backed Ed25519 keystore", so a plain getByLabel('Ed25519')
+    // matches two controls.
+    const secpKeyOption = page.getByRole('radio', { name: /secp256k1/ });
+    const ed25519KeyOption = page.getByRole('radio', { name: /Ed25519/ });
 
     await expect(secpKeyOption).toBeVisible();
     await expect(ed25519KeyOption).toBeVisible();
