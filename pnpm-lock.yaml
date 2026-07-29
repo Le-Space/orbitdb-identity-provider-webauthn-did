@@ -78,6 +78,9 @@ importers:
       '@libp2p/identify':
         specifier: ^4.1.8
         version: 4.1.8
+      '@libp2p/tcp':
+        specifier: ^11.0.22
+        version: 11.0.22
       '@libp2p/websockets':
         specifier: ^10.1.15
         version: 10.1.15
@@ -90,12 +93,18 @@ importers:
       '@playwright/test':
         specifier: ^1.55.0
         version: 1.58.1
+      blockstore-core:
+        specifier: ^7.0.1
+        version: 7.0.1
       blockstore-level:
         specifier: ^4.0.1
         version: 4.0.1
       chai:
         specifier: ^5.0.0
         version: 5.3.3
+      datastore-core:
+        specifier: ^12.0.1
+        version: 12.0.1
       datastore-level:
         specifier: ^13.0.1
         version: 13.0.1
@@ -2304,9 +2313,6 @@ packages:
   it-length@3.0.9:
     resolution: {integrity: sha512-cPhRPzyulYqyL7x4sX4MOjG/xu3vvEIFAhJ1aCrtrnbfxloCOtejOONib5oC3Bz8tLL6b6ke6+YHu4Bm6HCG7A==}
 
-  it-map@3.1.4:
-    resolution: {integrity: sha512-QB9PYQdE9fUfpVFYfSxBIyvKynUCgblb143c+ktTK6ZuKSKkp7iH58uYFzagqcJ5HcqIfn1xbfaralHWam+3fg==}
-
   it-map@3.1.6:
     resolution: {integrity: sha512-wCix0FXImtIPIxhCnbz35RqWs00e/CReSZX9nZq1j46JcAzBBp57ob9/2l1WnDYEaUURIR8xCyg2NsWbOwBJFQ==}
 
@@ -2355,9 +2361,6 @@ packages:
 
   it-take@3.0.11:
     resolution: {integrity: sha512-zvoeEjLViGFyhYT5KNCgmcIH90Si8lCve4aTMvgej/ZQRfB9YzrcJW3UHIJjbQ9TiAnsT4vsWDImEFQNk5xmnA==}
-
-  it-take@3.0.9:
-    resolution: {integrity: sha512-XMeUbnjOcgrhFXPUqa7H0VIjYSV/BvyxxjCp76QHVAFDJw2LmR1SHxUFiqyGeobgzJr7P2ZwSRRJQGn4D2BVlA==}
 
   it-to-browser-readablestream@2.0.14:
     resolution: {integrity: sha512-YyTLGvX5ufvukf05ZQCBEQO0ZyFmI9gxOEZ5yO1oQCnAL8Zlwmep7ty8RN2qg27oe1eu/qBQG5P79qS59Az8HA==}
@@ -5978,11 +5981,11 @@ snapshots:
       interface-store: 8.0.0
       it-drain: 3.0.12
       it-filter: 3.1.6
-      it-map: 3.1.4
+      it-map: 3.1.6
       it-merge: 3.0.14
       it-pipe: 3.0.1
       it-sort: 3.0.9
-      it-take: 3.0.9
+      it-take: 3.0.11
 
   datastore-level@13.0.1:
     dependencies:
@@ -6725,10 +6728,6 @@ snapshots:
 
   it-length@3.0.9: {}
 
-  it-map@3.1.4:
-    dependencies:
-      it-peekable: 3.0.8
-
   it-map@3.1.6:
     dependencies:
       it-peekable: 3.0.8
@@ -6798,8 +6797,6 @@ snapshots:
   it-stream-types@2.0.2: {}
 
   it-take@3.0.11: {}
-
-  it-take@3.0.9: {}
 
   it-to-browser-readablestream@2.0.14:
     dependencies:
