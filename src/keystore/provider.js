@@ -9,6 +9,11 @@ import { base58btc } from 'multiformats/bases/base58';
 import * as KeystoreEncryption from './encryption.js';
 import { WebAuthnDIDProvider } from '../webauthn/provider.js';
 import {
+  identityProofKey,
+  loadIdentityProof,
+  storeIdentityProof,
+} from '../webauthn/identity-proof-store.js';
+import {
   DID_KEY_PREFIX,
   IDENTITY_TYPES,
   KEYSTORE_ENCRYPTION_METHODS,
@@ -520,10 +525,18 @@ export class OrbitDBWebAuthnIdentityProvider {
 
   /**
    * Sign data for OrbitDB identity operations.
+   *
+   * The result becomes `signatures.publicKey` in the identity document, which
+   * OrbitDB content-addresses. A fresh WebAuthn assertion here would change
+   * the document hash on every page load, and peers reject entries signed
+   * under any document but the first one they verified (issue #18). The proof
+   * is therefore stored under the payload it covers and reused; the assertion
+   * happens once, when the identity is first established.
+   *
    * @param {string|Uint8Array} data - Payload to sign.
    * @returns {Promise<string>} Signature envelope.
    */
-  signIdentity(data) {
+  async signIdentity(data) {
     const dataLength = typeof data === 'string' ? data.length : data.byteLength;
     identityLog('signIdentity() called with data length: %d', dataLength);
     identityLog('Signer context: %o', {
@@ -540,7 +553,19 @@ export class OrbitDBWebAuthnIdentityProvider {
       );
     }
 
-    return this.webauthnProvider.sign(data);
+    const proofKey = await identityProofKey(this.credential.credentialId, data);
+    const stored = loadIdentityProof(proofKey);
+    if (stored) {
+      identityLog(
+        'Reusing stored identity proof, so the identity document stays stable'
+      );
+      return stored;
+    }
+
+    identityLog('No stored identity proof; requesting a WebAuthn assertion');
+    const proof = await this.webauthnProvider.sign(data);
+    storeIdentityProof(proofKey, proof);
+    return proof;
   }
 
   /**

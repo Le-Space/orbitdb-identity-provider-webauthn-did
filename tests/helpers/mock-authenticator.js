@@ -229,6 +229,21 @@ export async function createMockAuthenticator({
 export function installMockAuthenticator(authenticator) {
   const previousNavigator = globalThis.navigator;
   const previousWindow = globalThis.window;
+  const previousLocalStorage = globalThis.localStorage;
+
+  // Browser storage survives a page reload, so this shim has to outlive the
+  // simulated reloads within one test rather than being recreated per load.
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => store.set(k, String(v)),
+    removeItem: (k) => store.delete(k),
+    clear: () => store.clear(),
+    key: (i) => [...store.keys()][i] ?? null,
+    get length() {
+      return store.size;
+    },
+  };
 
   Object.defineProperty(globalThis, 'navigator', {
     value: authenticator.navigator,
@@ -259,6 +274,7 @@ export function installMockAuthenticator(authenticator) {
       writable: true,
     });
     globalThis.window = previousWindow;
+    globalThis.localStorage = previousLocalStorage;
     delete globalThis.PublicKeyCredential;
   };
 }
