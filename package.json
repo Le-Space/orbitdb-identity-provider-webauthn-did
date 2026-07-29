@@ -32,7 +32,7 @@
     "test:unit": "playwright test tests/webauthn-unit.test.js",
     "test:integration": "playwright test tests/webauthn-integration.test.js",
     "test:verification": "playwright test tests/webauthn-verification.test.js --project=chromium",
-    "test:ci": "playwright test tests/webauthn-verification.test.js --project=chromium --reporter=github",
+    "test:ci": "npm run test:node",
     "test:logging": "DEBUG='orbitdb-identity-provider-webauthn-did*' playwright test tests/webauthn-logging-e2e.test.js --project=chromium --reporter=line",
     "test:varsig-e2e": "playwright test tests/webauthn-varsig-e2e.test.js --project=chromium --reporter=line",
     "test:encrypted-keystore": "USE_ENCRYPTED_DEMO=true playwright test tests/ed25519-encrypted-keystore-e2e.test.js --project=chromium --reporter=line",
@@ -51,7 +51,8 @@
     "preversion": "npm run test:ci",
     "version": "git add -A",
     "postversion": "git push && git push --tags",
-    "test:two-peer": "playwright test tests/webauthn-two-peer-replication.test.js --project=chromium --reporter=line"
+    "test:two-peer": "playwright test tests/webauthn-two-peer-replication.test.js --project=chromium --reporter=line",
+    "test:node": "playwright test --config=playwright.node.config.js"
   },
   "keywords": [
     "orbitdb",

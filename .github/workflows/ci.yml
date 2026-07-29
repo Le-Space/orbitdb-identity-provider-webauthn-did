@@ -7,6 +7,8 @@ on:
     branches: [main, develop]
   release:
     types: [created]
+  # Lets release.yml reuse this job instead of duplicating the pipeline.
+  workflow_call:
 
 jobs:
   test:
