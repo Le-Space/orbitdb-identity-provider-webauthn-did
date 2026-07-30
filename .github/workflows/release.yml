@@ -121,3 +121,24 @@ jobs:
         run: npm publish --access public --provenance --ignore-scripts
         env:
           NODE_AUTH_TOKEN: ${{ inputs.auth == 'token' && secrets.NPM_TOKEN || '' }}
+
+  notify:
+    name: Report outcome
+    needs: [publish]
+    if: always() && (github.event_name == 'push' || inputs.mode == 'publish')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Published
+        if: needs.publish.result == 'success'
+        run: |
+          echo "### Published :rocket:" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`@le-space/orbitdb-identity-provider-webauthn-did\` at \`${GITHUB_REF_NAME}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Not published
+        if: needs.publish.result != 'success'
+        run: |
+          echo "### Publish did not run to completion" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "publish job: \`${{ needs.publish.result }}\` — see the job logs." >> "$GITHUB_STEP_SUMMARY"
+          exit 1

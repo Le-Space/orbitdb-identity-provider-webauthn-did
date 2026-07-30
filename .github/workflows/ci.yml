@@ -154,4 +154,97 @@ jobs:
             playwright-report/
           retention-days: 7
 
-  # security-audit, package-validation, publish, and notify jobs temporarily disabled
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - name: Setup Node.js 22.x
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22.x'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Reported, not enforced. The dev tree pulls helia and libp2p, which drag
+      # in ~86 advisories that this package cannot act on. Kept visible so
+      # regressions are noticeable without blocking every release.
+      - name: Audit (full tree, informational)
+        continue-on-error: true
+        run: pnpm audit --audit-level=moderate
+
+      # What consumers actually install. Currently 5 advisories, all via
+      # iso-web > iso-kv > conf > ajv, so the enforced floor is `critical`
+      # until that chain is bumped. Tighten to high, then moderate, as it clears.
+      - name: Audit production dependencies (informational)
+        continue-on-error: true
+        run: pnpm audit --prod --audit-level=moderate
+
+      - name: Audit production dependencies (enforced at critical)
+        run: pnpm audit --prod --audit-level=critical
+
+  package-validation:
+    name: Package Validation
+    runs-on: ubuntu-latest
+    needs: [test]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - name: Setup Node.js 22.x
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22.x'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Package contents
+        run: pnpm pack --pack-destination /tmp/pkg
+
+      - name: Declared entry points are in the tarball
+        run: |
+          cd /tmp/pkg
+          tar tzf *.tgz > files.txt
+          for f in package/src/index.js package/verification.js \
+                   package/src/standalone/index.js package/src/keystore/index.js \
+                   package/types/index.d.ts; do
+            grep -qx "$f" files.txt || { echo "::error::$f missing from tarball"; exit 1; }
+          done
+          echo "all declared entry points present"
+
+      - name: Install the tarball and import its exports
+        # The root export is not imported here: it pulls the @orbitdb/core peer
+        # dependency, and @orbitdb/core@4.0.0 uses it-drain without declaring
+        # it, so a bare install of that tree fails for reasons unrelated to this
+        # package. The subpath exports cover the exports map and the published
+        # files, which is what this job is for.
+        run: |
+          mkdir -p /tmp/pkgtest && cd /tmp/pkgtest
+          npm init -y > /dev/null
+          npm install /tmp/pkg/*.tgz
+          for sub in standalone keystore verification; do
+            node --input-type=module -e "
+              const m = await import('@le-space/orbitdb-identity-provider-webauthn-did/$sub');
+              const n = Object.keys(m).length;
+              if (n === 0) { console.error('::error::./$sub exported nothing'); process.exit(1); }
+              console.log('./$sub — ' + n + ' exports');
+            "
+          done
