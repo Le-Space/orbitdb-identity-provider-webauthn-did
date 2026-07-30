@@ -145,13 +145,33 @@ jobs:
       # shows whether it attempts the OIDC exchange at all.
       - name: Publish
         run: |
+          publish() { npm publish --access public --provenance --ignore-scripts "$@"; }
+
           if [ "${{ inputs.auth }}" = "token" ]; then
-            echo "authenticating with NPM_TOKEN"
+            echo "authenticating with NPM_TOKEN (explicitly requested)"
             npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
-          else
-            echo "authenticating with trusted publishing (OIDC)"
+            publish
+            exit $?
           fi
-          npm publish --access public --provenance --ignore-scripts --loglevel=verbose
+
+          # A tag push cannot pass inputs, so it lands here. Try trusted
+          # publishing first — it needs no long-lived secret — and fall back to
+          # NPM_TOKEN if the registry has no trusted publisher for this package.
+          # npm publish is atomic, so a failed attempt has published nothing and
+          # retrying is safe.
+          echo "attempting trusted publishing (OIDC)"
+          if publish --loglevel=verbose; then
+            exit 0
+          fi
+
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "::error::Trusted publishing failed and no NPM_TOKEN is configured."
+            exit 1
+          fi
+
+          echo "::warning::Trusted publishing did not succeed; falling back to NPM_TOKEN. See the verbose log above for why."
+          npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
+          publish
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
