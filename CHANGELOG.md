@@ -2,6 +2,85 @@
 
 ## Unreleased
 
+## 0.4.0
+
+### Breaking
+
+- WebAuthn credentials now yield the authenticator's actual public key, so the
+  derived `did:key` **changes** for anyone who registered against 0.3.x or
+  earlier. Existing OrbitDB identities keyed on the old DID will not match, and
+  databases gated on it become unwritable under the new DID. `extractPublicKey()`
+  never took its intended path: `cbor-web` returns byte strings as views into
+  the enclosing buffer, so reading `credentialIdLength` through `authData.buffer`
+  without honouring `byteOffset` read bytes from inside `rpIdHash` and yielded
+  43690 for every credential. The COSE slice was then empty, `cbor` threw
+  `Insufficient data`, and the `catch` silently returned a synthetic key derived
+  from `SHA-256(credentialId)`.
+
+### Fixed
+
+- Keep the identity document stable across reloads. `signIdentity()` reuses the
+  proof it already produced instead of running a fresh WebAuthn assertion, which
+  changed `signatures.publicKey` — and therefore the content address of the
+  identity document — on every page load. Peers then dropped entries:
+  `verifiedIdentitiesCache` in `@orbitdb/core` is keyed on the deterministic
+  `signatures.id`, so two documents from one keystore collide on a single cache
+  entry and `isEqual()` rejects whichever was not verified first. The symptom was
+  a database replicating some entries and silently never receiving the rest.
+- Remove the `timestamp` field from the proof envelope and the 24-hour expiry
+  check that read it. Both were wrong for a value embedded in content-addressed,
+  permanent history: the timestamp changed the document hash on every call, and
+  the expiry would have invalidated the identity behind every entry ever signed
+  under it. Compatible in both directions — proofs that still carry a timestamp
+  verify fine, and 0.3.1 verifying a proof without one computes `NaN`, which
+  fails its `> maxAge` test.
+- Prefer `response.getPublicKey()` (WebAuthn L2) over parsing the attestation
+  object, and correct the parser: honour `byteOffset`, validate the AT flag,
+  bounds-check `credentialIdLength`, and decode only the first CBOR item so
+  trailing extension data (the ED flag, set when PRF is requested) no longer
+  throws. The synthetic fallback is now marked `synthetic: true`.
+- Fix an ambiguous locator in `ed25519-keystore-did`: `getByLabel` matches
+  substrings, and the demo's worker toggle is labelled
+  "Use worker-backed Ed25519 keystore".
+
+### Added
+
+- Two-peer OrbitDB replication tests: real libp2p over loopback TCP, Helia with
+  bitswap, gossipsub, two OrbitDB instances, driven by a software WebAuthn
+  authenticator with a real P-256 keypair, an incrementing signature counter and
+  randomised signatures. Covers identity-document stability across reloads,
+  replication of entries written before and after a reload, and that two devices
+  sharing a passkey keep distinct, independently valid identities.
+- Attestation-parsing unit tests: credential ID lengths 16/20/32/64/128,
+  trailing extension data, missing AT flag, non-P-256 COSE keys and truncated
+  coordinates. 13 of the 14 fail against 0.3.1.
+
+### Changed
+
+- CI now runs all eleven test files. Five never ran: `webauthn-unit`,
+  `webauthn-verification`, `standalone-toolkit`, `ed25519-keystore-did` and
+  `simple-encryption-integration`. `webauthn-unit` imports through Vite's `/@fs`
+  endpoint, which only the dev server exposes, so its step runs against `dev`
+  rather than the `preview` build CI otherwise uses.
+- Publishing moves into CI. A `v*` tag runs the full suite and then publishes
+  via npm Trusted Publishing (OIDC), with provenance. A manual run defaults to a
+  check mode that verifies tag/version agreement and packaging without
+  publishing.
+- `test:ci`, which `preversion` and `prepublishOnly` run, now points at the
+  Node-context suites via `playwright.node.config.js` — 32 tests in about ten
+  seconds. It previously ran `webauthn-verification` alone: five tests that check
+  regexes against hardcoded DID literals and one fully mocked database object,
+  none of which creates a credential, touches the keystore or opens an OrbitDB.
+- Restore the `security-audit`, `package-validation` and `notify` jobs. The
+  enforced audit gate is `--prod --audit-level=critical`; auditing the full tree
+  at `moderate` reports 86 advisories from the helia and libp2p dev tree, and
+  even `--prod` reports 5 through `iso-web > iso-kv > conf > ajv`, so both wider
+  audits run informational until that chain is bumped.
+
+### Also shipping in this release
+
+Entries that had accumulated under Unreleased since 0.3.1:
+
 - Add `SECURITY.md` with vulnerability reporting and supported-version policy.
 - Rename `changes.md` to `CHANGELOG.md` and include it in the published package.
 - Add public TypeScript declarations for the root, standalone, verification,
