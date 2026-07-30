@@ -111,6 +111,37 @@ jobs:
         env:
           CI: true
 
+      - name: Run WebAuthn unit tests
+        # This suite imports src/index.js through Vite's /@fs endpoint, which
+        # only the dev server exposes. playwright.config.js starts `preview`
+        # when CI is set, and that build has no such route, so this step has to
+        # run against the dev server — hence the cleared CI variable.
+        run: pnpm exec playwright test tests/webauthn-unit.test.js --project=chromium --reporter=github
+        env:
+          CI: ''
+
+      - name: Run WebAuthn verification tests
+        run: pnpm exec playwright test tests/webauthn-verification.test.js --project=chromium --reporter=github
+        env:
+          CI: true
+
+      - name: Run standalone toolkit tests
+        run: pnpm exec playwright test tests/standalone-toolkit.test.js --project=chromium --reporter=github
+        env:
+          CI: true
+
+      - name: Run Ed25519 keystore DID tests
+        run: pnpm exec playwright test tests/ed25519-keystore-did.test.js --project=chromium --reporter=github
+        env:
+          CI: true
+          USE_ENCRYPTED_DEMO: true
+
+      - name: Run simple encryption integration tests
+        run: pnpm exec playwright test tests/simple-encryption-integration.test.js --project=chromium --reporter=github
+        env:
+          CI: true
+          USE_ENCRYPTED_DEMO: true
+
       - name: Upload test artifacts
         if: failure()
         uses: actions/upload-artifact@v7
