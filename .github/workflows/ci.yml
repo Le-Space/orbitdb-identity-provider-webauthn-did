@@ -176,19 +176,33 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Reported, not enforced. The dev tree pulls helia and libp2p, which drag
-      # in ~86 advisories that this package cannot act on. Kept visible so
-      # regressions are noticeable without blocking every release.
-      - name: Audit (full tree, informational)
-        continue-on-error: true
-        run: pnpm audit --audit-level=moderate
-
-      # What consumers actually install. Currently 5 advisories, all via
-      # iso-web > iso-kv > conf > ajv, so the enforced floor is `critical`
-      # until that chain is bumped. Tighten to high, then moderate, as it clears.
-      - name: Audit production dependencies (informational)
-        continue-on-error: true
-        run: pnpm audit --prod --audit-level=moderate
+      # Informational, and deliberately not `continue-on-error`. That keeps the
+      # job green but still records a red "Process completed with exit code 1"
+      # annotation on the run, which reads like a failure the job is hiding.
+      # Swallowing the status instead means the counts land in the summary and
+      # nothing is annotated as an error.
+      #
+      # Why informational: the dev tree pulls helia and libp2p, worth ~86
+      # advisories this package cannot act on. Even --prod reports 5, all via
+      # iso-web > iso-kv > conf > ajv. The enforced floor below is therefore
+      # `critical`; tighten it to high, then moderate, as that chain clears.
+      - name: Audit (report)
+        run: |
+          {
+            echo "### Dependency audit"
+            echo
+            for scope in "full tree:" "production only:--prod"; do
+              label="${scope%%:*}"; flag="${scope#*:}"
+              echo "<details><summary>$label</summary>"
+              echo
+              echo '```'
+              pnpm audit $flag --audit-level=moderate 2>&1 | tail -5 || true
+              echo '```'
+              echo
+              echo "</details>"
+              echo
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Audit production dependencies (enforced at critical)
         run: pnpm audit --prod --audit-level=critical
