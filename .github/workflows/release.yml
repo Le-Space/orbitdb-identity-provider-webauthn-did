@@ -119,37 +119,30 @@ jobs:
       - name: Use an npm that supports trusted publishing
         run: npm install -g npm@latest
 
-      # npm falls back to token auth and fails with a bare ENEEDAUTH when the
-      # OIDC exchange does not succeed, which says nothing about why. Ask the
-      # registry directly first so a misconfigured trusted publisher is legible.
-      - name: Check the trusted-publishing exchange
+      # Reports the claims npm matches a trusted publisher against, so a
+      # mismatch on npmjs.com can be read off directly. Non-fatal: it is
+      # diagnostics, not a gate.
+      - name: OIDC claims
         if: inputs.auth != 'token'
+        continue-on-error: true
         run: |
           token=$(curl -sf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm:registry.npmjs.org" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).value")
-
-          echo "OIDC claims npm will match against:"
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm:registry.npmjs.org" \
+            | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).value")
           node -e "
             const c = JSON.parse(Buffer.from('$token'.split('.')[1], 'base64url'));
+            console.log('The trusted publisher on npmjs.com must match:');
             console.log('  repository:   ' + c.repository);
             console.log('  workflow_ref: ' + c.workflow_ref);
             console.log('  environment:  ' + (c.environment ?? '(none)'));
           "
 
-          code=$(curl -s -o /tmp/exchange.json -w '%{http_code}' -X POST \
-            -H 'Content-Type: application/json' \
-            -d "{\"id_token\":\"$token\"}" \
-            https://registry.npmjs.org/-/npm/v1/oidc/token/exchange)
-          echo "exchange endpoint HTTP $code"
-          if [ "$code" != "200" ]; then
-            echo "::error::npm rejected the OIDC token — the trusted publisher for this package does not match the claims above."
-            sed -e 's/"token":"[^"]*"/"token":"REDACTED"/' /tmp/exchange.json
-            exit 1
-          fi
-          echo "trusted publishing is configured correctly"
-
       # --ignore-scripts: prepublishOnly would re-run the gate the `test` job
       # just cleared.
+      #
+      # --loglevel=verbose: npm reports a bare ENEEDAUTH when trusted publishing
+      # does not engage, which does not say whether it tried. The verbose log
+      # shows whether it attempts the OIDC exchange at all.
       - name: Publish
         run: |
           if [ "${{ inputs.auth }}" = "token" ]; then
@@ -158,7 +151,7 @@ jobs:
           else
             echo "authenticating with trusted publishing (OIDC)"
           fi
-          npm publish --access public --provenance --ignore-scripts
+          npm publish --access public --provenance --ignore-scripts --loglevel=verbose
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
