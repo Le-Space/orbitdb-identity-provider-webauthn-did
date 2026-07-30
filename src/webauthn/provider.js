@@ -559,13 +559,14 @@ export class WebAuthnDIDProvider {
         signature: WebAuthnDIDProvider.arrayBufferToBase64url(
           assertion.response.signature
         ),
-        timestamp: Date.now(),
+        // Deliberately no timestamp. This envelope ends up in a
+        // content-addressed identity document, so a wall-clock field would
+        // change the document hash on every call for no verification value.
       };
 
       webauthnLog('Proof created successfully: %o', {
         credentialId: webauthnProof.credentialId.substring(0, 16) + '...',
         dataHash: webauthnProof.dataHash.substring(0, 16) + '...',
-        timestamp: webauthnProof.timestamp,
       });
 
       // Return the proof as a base64url encoded string for OrbitDB
@@ -644,18 +645,12 @@ export class WebAuthnDIDProvider {
         throw new WebAuthnVerificationError('Invalid client data');
       }
 
-      // Check if proof is recent (within 24 hours)
-      webauthnLog('Verification step: checking timestamp');
-      const proofAge = Date.now() - proof.timestamp;
-      const maxAge = 24 * 60 * 60 * 1000; // 24 hours
-      if (proofAge > maxAge) {
-        webauthnLog.error('WebAuthn proof is too old: %d ms', proofAge);
-        throw new WebAuthnVerificationError('WebAuthn proof has expired');
-      }
-      webauthnLog(
-        'Verification step: timestamp check PASSED (age: %d ms)',
-        proofAge
-      );
+      // No expiry check. This proof is embedded in an OrbitDB identity
+      // document, and every entry ever signed under that document has to stay
+      // validatable — an expiring proof would silently invalidate history.
+      // The proof attests that this credential signed this payload, which does
+      // not stop being true. Proofs written by earlier versions still carry a
+      // timestamp field; it is simply ignored.
 
       // Verify authenticator data exists
       webauthnLog('Verification step: checking authenticator data');
