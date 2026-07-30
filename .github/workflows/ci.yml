@@ -101,6 +101,11 @@ jobs:
         env:
           CI: true
 
+      - name: Run two-peer replication tests
+        run: pnpm run test:two-peer
+        env:
+          CI: true
+
       - name: Upload test artifacts
         if: failure()
         uses: actions/upload-artifact@v7
