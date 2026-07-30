@@ -102,11 +102,14 @@ jobs:
         with:
           version: 10
 
+      # Deliberately no registry-url here. It makes setup-node write
+      # `_authToken=${NODE_AUTH_TOKEN}` into .npmrc, and an empty value can make
+      # npm attempt token auth and fail instead of falling back to trusted
+      # publishing. registry.npmjs.org is the default anyway.
       - uses: actions/setup-node@v6
         with:
           node-version: '22.x'
           cache: 'pnpm'
-          registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -116,11 +119,19 @@ jobs:
       - name: Use an npm that supports trusted publishing
         run: npm install -g npm@latest
 
-      # prepublishOnly would otherwise re-run the gate the `test` job just ran.
+      # --ignore-scripts: prepublishOnly would re-run the gate the `test` job
+      # just cleared.
       - name: Publish
-        run: npm publish --access public --provenance --ignore-scripts
+        run: |
+          if [ "${{ inputs.auth }}" = "token" ]; then
+            echo "authenticating with NPM_TOKEN"
+            npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
+          else
+            echo "authenticating with trusted publishing (OIDC)"
+          fi
+          npm publish --access public --provenance --ignore-scripts
         env:
-          NODE_AUTH_TOKEN: ${{ inputs.auth == 'token' && secrets.NPM_TOKEN || '' }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   notify:
     name: Report outcome
