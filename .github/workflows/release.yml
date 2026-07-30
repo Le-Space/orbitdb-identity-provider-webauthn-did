@@ -1,0 +1,144 @@
+name: Release
+
+# Publishing moves from a maintainer's laptop into CI.
+#
+# Until now `preversion` and `prepublishOnly` ran `test:ci`, and the release
+# went out from wherever `npm publish` was typed. Here the full suite in
+# ci.yml has to pass before anything is published.
+#
+# Two ways in:
+#   - push a tag `v1.2.3`  -> full suite, then publish
+#   - run manually          -> mode: check (default) verifies without publishing
+#
+# Auth defaults to npm Trusted Publishing (OIDC), which needs no token. It has
+# to be configured once on npmjs.com for the package:
+#   Package settings -> Trusted Publisher -> GitHub Actions
+#     repository:      Le-Space/orbitdb-identity-provider-webauthn-did
+#     workflow:        release.yml
+# Set auth: token to fall back to the NPM_TOKEN secret instead. Note npm is
+# restricting classic 2FA-bypassing tokens for direct publishing, so OIDC is
+# the durable option.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'check = verify only, publish = run tests and publish'
+        type: choice
+        options: [check, publish]
+        default: check
+      auth:
+        description: 'npm authentication method'
+        type: choice
+        options: [oidc, token]
+        default: oidc
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify package and auth
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.x'
+          cache: 'pnpm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Tag and package.json version must agree
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          echo "tag=$TAG package.json=$PKG"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::Tag v$TAG does not match package.json version $PKG"
+            exit 1
+          fi
+
+      - name: Package contents
+        run: npm pack --dry-run
+
+      - name: Check npm token
+        if: inputs.auth == 'token'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm whoami --registry https://registry.npmjs.org
+
+  test:
+    name: Full test suite
+    if: github.event_name == 'push' || inputs.mode == 'publish'
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: Publish to npm
+    needs: [verify, test]
+    if: github.event_name == 'push' || inputs.mode == 'publish'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.x'
+          cache: 'pnpm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Trusted publishing needs a recent npm CLI; the one bundled with Node 22
+      # predates it.
+      - name: Use an npm that supports trusted publishing
+        run: npm install -g npm@latest
+
+      # prepublishOnly would otherwise re-run the gate the `test` job just ran.
+      - name: Publish
+        run: npm publish --access public --provenance --ignore-scripts
+        env:
+          NODE_AUTH_TOKEN: ${{ inputs.auth == 'token' && secrets.NPM_TOKEN || '' }}
+
+  notify:
+    name: Report outcome
+    needs: [publish]
+    if: always() && (github.event_name == 'push' || inputs.mode == 'publish')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Published
+        if: needs.publish.result == 'success'
+        run: |
+          echo "### Published :rocket:" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`@le-space/orbitdb-identity-provider-webauthn-did\` at \`${GITHUB_REF_NAME}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Not published
+        if: needs.publish.result != 'success'
+        run: |
+          echo "### Publish did not run to completion" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "publish job: \`${{ needs.publish.result }}\` — see the job logs." >> "$GITHUB_STEP_SUMMARY"
+          exit 1
