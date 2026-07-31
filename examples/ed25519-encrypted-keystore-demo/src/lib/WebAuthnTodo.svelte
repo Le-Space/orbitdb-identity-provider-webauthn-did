@@ -729,7 +729,7 @@
     <!-- Authentication Section -->
     <Tile light>
       <h2 style="font-size: 1.5rem; font-weight: bold; margin-bottom: 1rem;">
-        OrbitDB WebAuthn Demo DID
+        OrbitDB Encrypted Keystore Demo
       </h2>
 
       {#if !credential}
@@ -1010,7 +1010,7 @@
             <h2
               style="font-size: 1.5rem; font-weight: bold; margin-bottom: 0.5rem;"
             >
-              OrbitDB WebAuthn Demo DID
+              OrbitDB Encrypted Keystore Demo
             </h2>
             {#if orbitdbInstances?.identity?.id}
               <div
@@ -1239,7 +1239,7 @@
     <h3
       style="font-size: 1.125rem; font-weight: 600; color: var(--cds-text-primary); margin-bottom: 0.75rem;"
     >
-      🔐 WebAuthn Security Features
+      🔐 Encrypted Keystore Security Features
     </h3>
     <ul
       style="list-style: none; padding: 0; margin: 0; color: var(--cds-text-secondary);"
