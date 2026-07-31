@@ -1,5 +1,6 @@
 <script>
   import WebAuthnTodo from '$lib/WebAuthnTodo.svelte';
+  import LeSpaceBrand from '$shared/LeSpaceBrand.svelte';
   import { theme } from '$lib/theme.js';
   import {
     Content,
@@ -45,6 +46,7 @@
 
 <Header company="OrbitDB WebAuthn Demo">
   <HeaderUtilities>
+    <LeSpaceBrand />
     <Button
       kind="ghost"
       size="small"

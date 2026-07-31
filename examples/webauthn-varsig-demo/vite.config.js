@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { readFileSync } from 'fs';
 
 // update version in package.json and title
+const repoRootDir = fileURLToPath(new URL('../..', import.meta.url));
 const file = fileURLToPath(new URL('package.json', import.meta.url));
 const json = readFileSync(file, 'utf8');
 const pkg = JSON.parse(json);
@@ -43,6 +44,9 @@ logger.warn = (message, options) => {
 
 export default defineConfig({
   customLogger: logger,
+  // $shared resolves outside the app root, which vite dev blocks by default.
+  // The sibling demos already allow the repo root; match them.
+  server: { fs: { allow: [repoRootDir] } },
   plugins: [
     sveltekit(),
     nodePolyfills({
