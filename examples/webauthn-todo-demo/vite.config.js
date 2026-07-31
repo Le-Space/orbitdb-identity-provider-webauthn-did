@@ -43,6 +43,19 @@ logger.warn = (message, options) => {
 };
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      // $shared/ lives outside this package, so bare imports inside it would
+      // resolve from examples/, which has no node_modules. Point Carbon at this
+      // demo's own copy; there is no workspace to hoist it into.
+      'carbon-components-svelte': fileURLToPath(
+        new URL('node_modules/carbon-components-svelte', import.meta.url)
+      ),
+      'carbon-icons-svelte': fileURLToPath(
+        new URL('node_modules/carbon-icons-svelte', import.meta.url)
+      ),
+    },
+  },
   customLogger: logger,
   plugins: [
     sveltekit(),
