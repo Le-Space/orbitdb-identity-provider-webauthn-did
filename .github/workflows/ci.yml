@@ -204,8 +204,15 @@ jobs:
             done
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Audit production dependencies (enforced at critical)
-        run: pnpm audit --prod --audit-level=critical
+      # What consumers actually install, and it is now clean. The floor used to
+      # be `critical` because iso-web > iso-kv > conf > ajv dragged in five
+      # advisories that could not be acted on from here; overriding ajv and
+      # fast-uri resolves that chain, so this can enforce at moderate.
+      #
+      # The full tree still reports ~80 from the helia and libp2p dev
+      # dependencies, which is why only --prod is a gate.
+      - name: Audit production dependencies (enforced at moderate)
+        run: pnpm audit --prod --audit-level=moderate
 
   package-validation:
     name: Package Validation

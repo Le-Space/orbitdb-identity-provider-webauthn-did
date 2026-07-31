@@ -143,7 +143,9 @@
       "iso-base": "npm:@le-space/iso-base",
       "iso-did": "npm:@le-space/iso-did@2.1.2",
       "iso-web": "^3.1.2",
-      "iso-webauthn-varsig": "npm:@le-space/iso-webauthn-varsig@^0.2.0"
+      "iso-webauthn-varsig": "npm:@le-space/iso-webauthn-varsig@^0.2.0",
+      "conf>ajv": "^8.18.0",
+      "ajv>fast-uri": "^3.1.4"
     },
     "onlyBuiltDependencies": [
       "@ipshipyard/node-datachannel",

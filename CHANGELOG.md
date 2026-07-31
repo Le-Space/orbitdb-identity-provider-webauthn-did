@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+### Fixed
+
+- Restore debug logging in the browser. `weald`, which `@libp2p/logger` uses,
+  does `import { ms as humanize } from 'ms'` — a named export that only exists
+  in `ms@3`+. All three demos pinned `ms` to `2.1.3`, which is CommonJS with no
+  named export, so the import resolved to `undefined` and the first debug call
+  threw `TypeError: (0, import_ms2.ms) is not a function`. Enabling `DEBUG` in a
+  browser therefore crashed credential creation outright. Dropping the pin lets
+  `weald` resolve the version it declares.
+
+  This is why `webauthn-logging-e2e` had been failing continuously: it is the
+  only suite that sets `localStorage.debug`, so it was the only one to reach the
+  broken path.
+
+- Clear the production dependency advisories. `iso-web > iso-kv > conf > ajv`
+  carried four high `fast-uri` advisories and one moderate `ajv` one; the scoped
+  overrides `conf>ajv` and `ajv>fast-uri` resolve it. Scoped deliberately: a
+  blanket `ajv` override also hits ESLint, which needs ajv 6 and dies on the
+  removed `missingRefs` option.
+  `pnpm audit --prod` now reports nothing, so the enforced CI gate moves from
+  `critical` to `moderate`.
+
 ## 0.4.1
 
 ### Added
