@@ -55,7 +55,10 @@
     align-items: center;
     gap: 7px;
     text-decoration: none;
-    color: inherit;
+    /* Carbon's UI-shell header stays dark in every theme, so this cannot
+       inherit — in the light theme it resolved to near-black on near-black and
+       the wordmark disappeared. */
+    color: #f4f4f4;
     opacity: 0.85;
     transition: opacity 0.15s ease;
   }

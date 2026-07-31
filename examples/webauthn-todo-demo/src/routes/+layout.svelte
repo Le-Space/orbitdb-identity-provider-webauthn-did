@@ -4,6 +4,8 @@
   // links, and the theme store's `theme` attribute had nothing to drive.
   // all.css carries every theme and switches on that attribute.
   import 'carbon-components-svelte/css/all.css';
+  // After Carbon, so the same :root[theme=…] selectors win.
+  import '$shared/le-space-theme.css';
   import '../app.css';
   import { theme } from '$lib/theme.js';
   import { onMount } from 'svelte';

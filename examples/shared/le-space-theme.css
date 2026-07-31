@@ -1,0 +1,99 @@
+/*
+ * Le-Space brand tokens mapped onto Carbon.
+ *
+ * Carbon defines its palette as `--cds-*` inside `:root[theme=…]` blocks; this
+ * file repeats those selectors and is imported *after* carbon's all.css, so the
+ * same specificity resolves in our favour. Carbon keeps owning layout, spacing
+ * and component behaviour — only the colours and typefaces become ours.
+ *
+ * Values mirror packages/shared/src/tokens.css in the landing repo. Keep them
+ * in sync by hand; the two repos share no build.
+ *
+ * The store in $lib/theme.js switches between `g100` and `white`, so those are
+ * the two themes that matter. The attribute-less `:root` is Carbon's white
+ * theme and is styled too, otherwise the page flashes IBM blue before the store
+ * runs on first paint.
+ */
+
+:root,
+:root[theme='white'],
+:root[theme='g10'] {
+  --cds-ui-background: #f7f8fb;
+  --cds-ui-01: #ffffff;
+  --cds-ui-02: #eef1f6;
+  --cds-ui-03: #d9dfe9;
+  --cds-ui-04: #7c879b;
+  --cds-field-01: #eef1f6;
+  --cds-field-02: #ffffff;
+
+  --cds-text-01: #10141f;
+  --cds-text-02: #47536b;
+  --cds-text-03: #7c879b;
+  --cds-text-05: #47536b;
+  --cds-icon-01: #10141f;
+  --cds-icon-02: #47536b;
+
+  /* Signal Coral is the primary action; Sync Cyan carries links and focus. */
+  --cds-interactive-01: #d94733;
+  --cds-interactive-04: #0b7fae;
+  --cds-link-01: #0b7fae;
+  --cds-link-primary: #0b7fae;
+  --cds-link-primary-hover: #095f83;
+  --cds-focus: #0b7fae;
+  --cds-support-01: #d94733;
+  --cds-support-02: #12855a;
+  --cds-support-03: #a86a00;
+  --cds-support-04: #0b7fae;
+  --cds-hover-primary: #c03d2b;
+  --cds-active-primary: #a83525;
+}
+
+:root[theme='g100'],
+:root[theme='g90'],
+:root[theme='g80'] {
+  --cds-ui-background: #0b0e15;
+  --cds-ui-01: #141926;
+  --cds-ui-02: #10141f;
+  --cds-ui-03: #232b3d;
+  --cds-ui-04: #5c677a;
+  --cds-field-01: #141926;
+  --cds-field-02: #10141f;
+
+  --cds-text-01: #edf1f8;
+  --cds-text-02: #a8b3c7;
+  --cds-text-03: #5c677a;
+  --cds-text-05: #a8b3c7;
+  --cds-icon-01: #edf1f8;
+  --cds-icon-02: #a8b3c7;
+
+  --cds-interactive-01: #ff6b5b;
+  --cds-interactive-04: #58c7f3;
+  --cds-link-01: #58c7f3;
+  --cds-link-primary: #58c7f3;
+  --cds-link-primary-hover: #8adaf7;
+  --cds-focus: #58c7f3;
+  --cds-support-01: #ff6b5b;
+  --cds-support-02: #3edc97;
+  --cds-support-03: #ffc24b;
+  --cds-support-04: #58c7f3;
+  --cds-hover-primary: #ff8577;
+  --cds-active-primary: #e65a4b;
+}
+
+/*
+ * Typefaces. Carbon ships IBM Plex; the stack matches the landing site instead.
+ * Scoped to body and the Carbon classes that hard-code Plex, rather than a
+ * blanket `* { font-family }` which would also hit the icon fonts.
+ */
+:root body,
+:root .bx--type-mono,
+:root code,
+:root pre {
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+}
+
+:root body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--cds-ui-background);
+  color: var(--cds-text-01);
+}
