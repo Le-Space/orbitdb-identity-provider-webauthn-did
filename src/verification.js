@@ -7,6 +7,10 @@
  * without relying on external network calls or IPFS gateway timeouts.
  */
 
+import { logger } from '@libp2p/logger';
+
+const log = logger('orbitdb-identity-provider-webauthn-did:verification');
+
 /**
  * Verify database update events using pragmatic approach
  * @param {Object} database - The OrbitDB database instance
@@ -19,7 +23,7 @@ export async function verifyDatabaseUpdate(
   identityHash,
   expectedWebAuthnDID
 ) {
-  console.log('🔄 Verifying database update event');
+  log('🔄 Verifying database update event');
 
   // Simple logic: if an update is happening in our database and our database
   // identity matches the expected WebAuthn DID, then the update is from us
@@ -72,7 +76,7 @@ export async function verifyIdentityStorage(
   identity,
   timeoutMs = 5000
 ) {
-  console.log('🔍 Verifying identity storage...');
+  log('🔍 Verifying identity storage...');
 
   try {
     // Try to retrieve the identity from the store with a timeout
@@ -131,10 +135,8 @@ export async function verifyDataEntries(
   const { matchFn, checkLog = true } = options;
   const verificationResults = new Map();
 
-  console.log(
-    `🔍 Starting verification of ${dataEntries.length} data entries...`
-  );
-  console.log(`🎯 Expected WebAuthn DID: ${expectedWebAuthnDID}`);
+  log(`🔍 Starting verification of ${dataEntries.length} data entries...`);
+  log(`🎯 Expected WebAuthn DID: ${expectedWebAuthnDID}`);
 
   try {
     // Check if our database identity matches the expected WebAuthn DID
@@ -142,7 +144,7 @@ export async function verifyDataEntries(
     const databaseIdentityMatches =
       databaseIdentity?.id === expectedWebAuthnDID;
 
-    console.log('🔑 Database identity check:', {
+    log('🔑 Database identity check:', {
       databaseDID: databaseIdentity?.id,
       expectedDID: expectedWebAuthnDID,
       matches: databaseIdentityMatches,
@@ -150,7 +152,7 @@ export async function verifyDataEntries(
 
     for (const entry of dataEntries) {
       try {
-        console.log(`📝 Verifying entry: ${entry.id}`);
+        log(`📝 Verifying entry: ${entry.id}`);
 
         // Method 1: Check if we can access the entry in our database
         const entryInDb = await database.get(entry.id);
@@ -204,7 +206,7 @@ export async function verifyDataEntries(
 
         verificationResults.set(entry.id, result);
 
-        console.log(
+        log(
           `${verificationSuccess ? '✅' : '❌'} Entry ${entry.id}: ${verificationSuccess ? 'VERIFIED' : 'FAILED'}`
         );
       } catch (error) {
@@ -232,7 +234,7 @@ export async function verifyDataEntries(
     }
   }
 
-  console.log(
+  log(
     `✅ Verification completed: ${verificationResults.size} entries processed`
   );
   return verificationResults;

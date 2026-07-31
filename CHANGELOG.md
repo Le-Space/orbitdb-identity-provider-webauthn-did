@@ -23,6 +23,27 @@
   removed `missingRefs` option.
   `pnpm audit --prod` now reports nothing, so the enforced CI gate moves from
   `critical` to `moderate`.
+- Stop writing WebAuthn credentials to the console. `logWebAuthnResponse()` dumped
+  the whole credential — `rawId`, `attestationObject`, `clientDataJSON`,
+  `signature`, `getPublicKey()` and `getClientExtensionResults()` — on every
+  `navigator.credentials.create()` and `.get()`, unconditionally and in
+  production code paths. Two things made that more than noise: extension results
+  can carry the PRF output, which is what both the keystore encryption and (since
+  0.4.1) the OrbitDB signing key derive from, and `rawId` is a stable per-user,
+  per-RP identifier that landed in any console capture or session replay the
+  embedding app happened to run. Replaced by a single shared helper that logs
+  shape only — byte lengths, presence flags and the names of the extensions that
+  returned results — behind the package debug logger, so it is silent unless
+  `DEBUG=orbitdb-identity-provider-webauthn-did*` is set. Closes #22.
+
+### Changed
+
+- Route the remaining informational `console.log` output through the debug
+  logger. A library should not print unconditionally; `console.error` and
+  `console.warn` stay as they are, so genuine failures remain visible. `src/`
+  went from 61 `console.*` calls to 16, none of them `console.log`.
+- Deduplicate three byte-identical copies of the WebAuthn debug helper into
+  `src/webauthn/debug-log.js`.
 
 ## 0.4.1
 

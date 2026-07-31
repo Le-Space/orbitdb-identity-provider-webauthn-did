@@ -27,38 +27,9 @@ import {
   buildAuthenticatorSelection,
   buildCredentialRequestOptions,
 } from './config.js';
+import { logWebAuthnResponse } from './debug-log.js';
 
 const webauthnLog = logger('orbitdb-identity-provider-webauthn-did:webauthn');
-
-function logWebAuthnResponse(label, credential) {
-  const response = credential?.response;
-  const getPublicKeyResult =
-    typeof response?.getPublicKey === 'function'
-      ? response.getPublicKey()
-      : null;
-
-  console.group(`[WebAuthn Debug] ${label}`);
-  console.log('credential', credential);
-  console.log('credential.id', credential?.id);
-  console.log('credential.type', credential?.type);
-  console.log('credential.rawId', credential?.rawId);
-  console.log('credential.response', response);
-  console.log('response.clientDataJSON', response?.clientDataJSON);
-  console.log('response.attestationObject', response?.attestationObject);
-  console.log('response.authenticatorData', response?.authenticatorData);
-  console.log('response.signature', response?.signature);
-  console.log('response.userHandle', response?.userHandle);
-  console.log(
-    'response.getPublicKey exists',
-    typeof response?.getPublicKey === 'function'
-  );
-  console.log('response.getPublicKey()', getPublicKeyResult);
-  console.log(
-    'client extension results',
-    credential?.getClientExtensionResults?.() || null
-  );
-  console.groupEnd();
-}
 
 /**
  * WebAuthn DID Provider Core Implementation
