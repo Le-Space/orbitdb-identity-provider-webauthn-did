@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+## 0.4.1
+
+### Added
+
+- Derive the OrbitDB signing key from the passkey PRF output instead of letting
+  the keystore generate a random one. `Identities.createIdentity` takes
+  `keystore.getKey(id) || keystore.createKey(id)`, and `createKey` is random, so
+  the same passkey previously produced a different `publicKey` and
+  `signatures.id` — and therefore a different identity document — on every
+  device. Seeding the keystore during `getId()`, the last point before OrbitDB
+  asks for the key, makes the whole document reproducible: one block to keep
+  retrievable for a DID instead of one per device, and a device that loses its
+  keystore while keeping the passkey reconstructs the same identity rather than
+  minting another. Needs no change to `@orbitdb/core`.
+- `createCredential()` now requests the PRF extension even when the keystore is
+  not encrypted, and stores the input. Without a stored input the output would
+  differ per call, so a credential registered without one can never get a
+  reproducible identity. Requesting it is harmless where unsupported.
+
+### Notes
+
+- Falls back cleanly. No PRF support, no stored input, or a refused assertion
+  leaves the keystore to generate its own key — 0.4.0 behaviour, stable per
+  device but not across devices. Opt out with
+  `deriveSigningKeyFromPrf: false`.
+- An existing keystore key is never replaced. Swapping it under a device that
+  already has history would mint a second document for the DID, which is what
+  this avoids. Installs upgrading from 0.4.0 keep their key; fresh installs get
+  a reproducible identity.
+- Costs one extra assertion the first time an identity is created on a device.
+  The key is persisted, so later loads do not repeat it.
+
 ## 0.4.0
 
 ### Breaking

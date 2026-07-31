@@ -202,10 +202,10 @@ test.describe('WebAuthn identity across two OrbitDB peers', () => {
     await load2.orbitdb.stop();
   });
 
-  test('two devices sharing a passkey keep distinct, independently valid identities', async () => {
-    // Same passkey, separate OrbitDB keystores — the second-device case.
-    // signatures.id derives from the per-device keystore key, not the passkey,
-    // so these documents differ by design and do not collide in the cache.
+  test('two devices sharing a passkey derive the same identity document', async () => {
+    // The point of deriving the signing key from PRF: separate keystores, one
+    // passkey, and the identity document comes out identical — so there is a
+    // single block to keep retrievable rather than one per device.
     const deviceA = await openAlice('deviceA');
     await deviceA.orbitdb.stop();
 
@@ -218,10 +218,9 @@ test.describe('WebAuthn identity across two OrbitDB peers', () => {
     });
 
     expect(deviceB.identity.id).toBe(deviceA.identity.id);
-    expect(deviceB.identity.publicKey).not.toBe(deviceA.identity.publicKey);
-    expect(deviceB.identity.signatures.id).not.toBe(
-      deviceA.identity.signatures.id
-    );
+    expect(deviceB.identity.publicKey).toBe(deviceA.identity.publicKey);
+    expect(deviceB.identity.signatures.id).toBe(deviceA.identity.signatures.id);
+    expect(deviceB.identity.hash).toBe(deviceA.identity.hash);
 
     const bob2 = await openBob();
     for (const hash of [deviceA.identity.hash, deviceB.identity.hash]) {
@@ -232,5 +231,77 @@ test.describe('WebAuthn identity across two OrbitDB peers', () => {
 
     await bob2.orbitdb.stop();
     await deviceB.orbitdb.stop();
+  });
+
+  test('an authenticator without PRF still works, one identity per device', async () => {
+    // The fallback. No PRF output means no reproducible key, so the keystore
+    // generates its own — 0.4.0 behaviour: stable per device, distinct across
+    // devices, and every document still valid.
+    restoreAuthenticator?.();
+    const noPrf = await createMockAuthenticator({ supportsPrf: false });
+    restoreAuthenticator = installMockAuthenticator(noPrf);
+
+    const { WebAuthnDIDProvider } = await import('../src/webauthn/provider.js');
+    const plainCredential = await WebAuthnDIDProvider.createCredential({
+      userId: 'no-prf-user',
+      displayName: 'No PRF User',
+    });
+
+    const open = (name) =>
+      createOrbitForCredential({
+        helia: alice,
+        credential: plainCredential,
+        keystorePath: scratch.sub(`${name}-keys`),
+        directory: scratch.sub(`${name}-orbit`),
+        id: name,
+      });
+
+    const first = await open('noPrfA');
+    const firstHash = first.identity.hash;
+    await first.orbitdb.stop();
+
+    // Reloading the same device is still stable — that is 0.4.0's fix.
+    const reloaded = await open('noPrfA');
+    expect(reloaded.identity.hash).toBe(firstHash);
+    await reloaded.orbitdb.stop();
+
+    // A second device diverges, which is the cost of having no PRF.
+    const second = await open('noPrfB');
+    expect(second.identity.id).toBe(first.identity.id);
+    expect(second.identity.publicKey).not.toBe(first.identity.publicKey);
+
+    const b = await openBob();
+    for (const hash of [firstHash, second.identity.hash]) {
+      const doc = await b.identities.getIdentity(hash);
+      expect(doc).toBeTruthy();
+      expect(await b.identities.verifyIdentity(doc)).toBe(true);
+    }
+
+    await b.orbitdb.stop();
+    await second.orbitdb.stop();
+  });
+
+  test('an existing keystore key is never replaced', async () => {
+    // Upgrading from 0.4.0 must not swap the signing key underneath a device
+    // that already has history: that would mint a second document for the DID.
+    const { KeyStore } = await import('@orbitdb/core');
+    const { ensureDerivedSigningKey } =
+      await import('../src/keystore/derived-signing-key.js');
+    const { WebAuthnDIDProvider } = await import('../src/webauthn/provider.js');
+
+    const did = await WebAuthnDIDProvider.createDID(credential);
+    const keystore = await KeyStore({ path: scratch.sub('preexisting-keys') });
+    await keystore.createKey(did); // whatever 0.4.0 left behind
+    const before = keystore.getPublic(await keystore.getKey(did));
+
+    const outcome = await ensureDerivedSigningKey({
+      keystore,
+      did,
+      credential,
+    });
+
+    expect(outcome).toBe('existing');
+    expect(keystore.getPublic(await keystore.getKey(did))).toBe(before);
+    await keystore.close();
   });
 });

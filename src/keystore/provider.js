@@ -7,6 +7,7 @@ import { generateKeyPair } from '@libp2p/crypto/keys';
 import { varint } from 'multiformats';
 import { base58btc } from 'multiformats/bases/base58';
 import * as KeystoreEncryption from './encryption.js';
+import { ensureDerivedSigningKey } from './derived-signing-key.js';
 import { WebAuthnDIDProvider } from '../webauthn/provider.js';
 import {
   identityProofKey,
@@ -56,8 +57,12 @@ export class OrbitDBWebAuthnIdentityProvider {
     keystoreKeyType = KEY_TYPES.SECP256K1,
     encryptKeystore = false,
     keystoreEncryptionMethod = KEYSTORE_ENCRYPTION_METHODS.PRF,
+    deriveSigningKeyFromPrf = true,
   }) {
     this.credential = webauthnCredential;
+    // Costs one extra assertion the first time an identity is created on a
+    // device. Set false to keep a keystore-generated key instead.
+    this.deriveSigningKeyFromPrf = deriveSigningKeyFromPrf;
     this.webauthnProvider = new WebAuthnDIDProvider(webauthnCredential);
     this.type = IDENTITY_TYPES.WEBAUTHN; // Set instance property
     this.useKeystoreDID = useKeystoreDID; // Flag to use Ed25519 DID from keystore
@@ -76,7 +81,17 @@ export class OrbitDBWebAuthnIdentityProvider {
    * Resolve the identity DID.
    * @returns {Promise<string>} DID string.
    */
-  async getId() {
+  /**
+   * Resolve the identity DID.
+   *
+   * OrbitDB passes its own keystore in `options` and calls this before
+   * `keystore.getKey(id)`, which is the only window in which the signing key
+   * can be seeded deterministically. See derived-signing-key.js.
+   *
+   * @param {Object} [options] - Options supplied by OrbitDB.
+   * @returns {Promise<string>} DID string.
+   */
+  async getId(options = {}) {
     identityLog('getId() called');
 
     // If useKeystoreDID flag is set, create Ed25519 DID from keystore
@@ -95,6 +110,22 @@ export class OrbitDBWebAuthnIdentityProvider {
 
     // Default: Return P-256 DID from WebAuthn credential
     const did = await WebAuthnDIDProvider.createDID(this.credential);
+
+    // Seed the signing key before OrbitDB reaches for it. Never fatal: without
+    // PRF the keystore generates its own key and the identity stays stable per
+    // device, just not reproducible across them.
+    if (this.deriveSigningKeyFromPrf !== false) {
+      const keystore = options.keystore ?? this.keystore;
+      if (keystore) {
+        const outcome = await ensureDerivedSigningKey({
+          keystore,
+          did,
+          credential: this.credential,
+        });
+        identityLog('Derived signing key: %s', outcome);
+      }
+    }
+
     identityLog(
       'getId() returning P-256 DID: %s',
       did.substring(0, 32) + '...'

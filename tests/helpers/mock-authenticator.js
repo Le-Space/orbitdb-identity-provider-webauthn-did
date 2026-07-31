@@ -54,6 +54,13 @@ export async function createMockAuthenticator({
   rpId = 'localhost',
   exposeGetPublicKey = true,
   credentialIdLength = 32,
+  // Real authenticators derive PRF from a per-credential secret, so the output
+  // is stable for a given input and identical on any device holding the same
+  // synced passkey. `prfSecret` models exactly that: pass the same value to two
+  // authenticators to represent one passkey on two devices. Set supportsPrf
+  // false to model an authenticator without the extension.
+  supportsPrf = true,
+  prfSecret = null,
 } = {}) {
   const keypair = await crypto.subtle.generateKey(
     { name: 'ECDSA', namedCurve: 'P-256' },
@@ -73,7 +80,20 @@ export async function createMockAuthenticator({
   );
   const rpIdHash = await sha256(new TextEncoder().encode(rpId));
 
-  const state = { signCount: 0, assertions: 0, creations: 0 };
+  const state = { signCount: 0, assertions: 0, creations: 0, prfEvals: 0 };
+
+  // Per-credential secret the PRF output is derived from.
+  const prfKey = prfSecret ?? crypto.getRandomValues(new Uint8Array(32));
+
+  const evaluatePrf = async (input) => {
+    state.prfEvals += 1;
+    const material = concatBytes([
+      prfKey,
+      new TextEncoder().encode('prf'),
+      new Uint8Array(input),
+    ]);
+    return sha256(material);
+  };
 
   const coseKey = new Uint8Array(
     encode(
@@ -182,6 +202,16 @@ export async function createMockAuthenticator({
         const clientDataJSON = buildClientDataJSON('webauthn.get', challenge);
         const clientDataHash = await sha256(clientDataJSON);
 
+        // PRF: deterministic in the input, so the same passkey always yields
+        // the same output. Absent entirely when the authenticator has no PRF.
+        const prfEval = options?.publicKey?.extensions?.prf?.eval;
+        const extensionResults = {};
+        if (supportsPrf && prfEval?.first) {
+          extensionResults.prf = {
+            results: { first: (await evaluatePrf(prfEval.first)).buffer },
+          };
+        }
+
         // ECDSA signatures are randomised: identical input, different output
         const signature = new Uint8Array(
           await crypto.subtle.sign(
@@ -207,7 +237,7 @@ export async function createMockAuthenticator({
             signature: signature.buffer,
             userHandle: null,
           },
-          getClientExtensionResults: () => ({}),
+          getClientExtensionResults: () => extensionResults,
         };
       },
     },
