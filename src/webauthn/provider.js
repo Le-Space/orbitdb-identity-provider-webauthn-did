@@ -199,6 +199,19 @@ export class WebAuthnDIDProvider {
       // Note: largeBlob write happens after credential creation
     }
 
+    // Request PRF even when the keystore is not encrypted. The stored input is
+    // what lets the OrbitDB signing key be derived reproducibly later, so a
+    // credential registered without it can never get a reproducible identity.
+    // Requesting the extension is harmless where it is unsupported: the
+    // authenticator simply returns no PRF results.
+    if (!prfInput) {
+      const prfConfig = KeystoreEncryption.addPRFToCredentialOptions(
+        credentialOptions.publicKey
+      );
+      credentialOptions.publicKey = prfConfig.credentialOptions;
+      prfInput = prfConfig.prfInput;
+    }
+
     try {
       const credential = await navigator.credentials.create(credentialOptions);
 
