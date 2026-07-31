@@ -79,10 +79,6 @@ export class OrbitDBWebAuthnIdentityProvider {
 
   /**
    * Resolve the identity DID.
-   * @returns {Promise<string>} DID string.
-   */
-  /**
-   * Resolve the identity DID.
    *
    * OrbitDB passes its own keystore in `options` and calls this before
    * `keystore.getKey(id)`, which is the only window in which the signing key
@@ -352,11 +348,11 @@ export class OrbitDBWebAuthnIdentityProvider {
    */
   async createEncryptedKeystore() {
     if (!this.encryptKeystore) {
-      console.log('ℹ️ Keystore encryption not enabled, skipping');
+      identityLog('ℹ️ Keystore encryption not enabled, skipping');
       return;
     }
 
-    console.log(
+    identityLog(
       '🔐 Creating encrypted keystore with method:',
       this.keystoreEncryptionMethod
     );
@@ -448,7 +444,7 @@ export class OrbitDBWebAuthnIdentityProvider {
       }
 
       // Store encrypted keystore
-      console.log(
+      identityLog(
         '💾 Storing encrypted keystore with credentialId:',
         this.credential.credentialId?.substring(0, 16) + '...'
       );
@@ -461,7 +457,7 @@ export class OrbitDBWebAuthnIdentityProvider {
         publicKey: publicKeyBytes,
         keyType,
       };
-      console.log('✅ Encrypted keystore stored successfully');
+      identityLog('✅ Encrypted keystore stored successfully');
 
       identityLog('Encrypted keystore created and stored successfully');
     } catch (error) {
@@ -649,15 +645,15 @@ export class OrbitDBWebAuthnIdentityProvider {
     // If encryption is enabled, create and unlock encrypted keystore
     if (encryptKeystore && keystore) {
       try {
-        console.log(
+        identityLog(
           '🔐 Creating encrypted keystore with',
           keystoreEncryptionMethod,
           '...'
         );
         await provider.createEncryptedKeystore();
-        console.log('🔓 Unlocking encrypted keystore...');
+        identityLog('🔓 Unlocking encrypted keystore...');
         await provider.unlockEncryptedKeystore();
-        console.log('✅ Encrypted keystore created and unlocked successfully');
+        identityLog('✅ Encrypted keystore created and unlocked successfully');
         identityLog('Encrypted keystore created and unlocked');
       } catch (error) {
         // Log error visibly so users know encryption failed
