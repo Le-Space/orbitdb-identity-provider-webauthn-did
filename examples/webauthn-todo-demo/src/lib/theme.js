@@ -4,6 +4,11 @@ import { writable } from 'svelte/store';
 function createThemeStore() {
   // Initialize theme based on system preference or localStorage
   const getInitialTheme = () => {
+    // Runs at module import, which during prerendering happens in Node where
+    // neither localStorage nor window exists. Without this guard the whole page
+    // renders as a 500 and the build emits an empty shell — no title, no
+    // description, nothing for a crawler or a link preview.
+    if (typeof localStorage === 'undefined') return 'g100';
     const stored = localStorage.getItem('carbon-theme');
     if (stored) return stored;
 
@@ -20,6 +25,7 @@ function createThemeStore() {
   return {
     subscribe,
     set: (newTheme) => {
+      if (typeof document === 'undefined') return set(newTheme);
       localStorage.setItem('carbon-theme', newTheme);
       document.documentElement.setAttribute('theme', newTheme);
       document.documentElement.style.setProperty(
