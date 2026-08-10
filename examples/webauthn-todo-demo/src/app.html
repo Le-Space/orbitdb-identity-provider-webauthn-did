@@ -2,6 +2,21 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <script>
+      // Set Carbon's theme before first paint. The page is prerendered without a
+      // theme attribute, so a visitor who prefers dark would otherwise see the
+      // light theme flash before $lib/theme.js runs. Kept in sync with the
+      // getInitialTheme() there — deliberately duplicated, because an imported
+      // module would already be too late.
+      try {
+        var t = localStorage.getItem('carbon-theme');
+        if (t !== 'g100' && t !== 'white') {
+          t = matchMedia('(prefers-color-scheme: dark)').matches ? 'g100' : 'white';
+        }
+        document.documentElement.setAttribute('theme', t);
+        document.documentElement.style.setProperty('color-scheme', t === 'g100' ? 'dark' : 'light');
+      } catch (e) {}
+    </script>
     <link rel="icon" href="%sveltekit.assets%/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     %sveltekit.head%
