@@ -305,6 +305,56 @@ Practical implication:
 
 - If you create a passkey on one browser profile and later open the app in a fresh profile, the passkey may still exist in the platform passkey manager, but the app can only reconstruct the OrbitDB identity if it can recover metadata from `largeBlob` or some other persisted mapping.
 
+## Upstream Packages and Temporary Forks
+
+This package builds on the [`iso-repo`](https://github.com/hugomrdias/iso-repo)
+toolkit by **[Hugo Dias](https://github.com/hugomrdias)** — `iso-base`,
+`iso-did` and `iso-passkeys` do the WebAuthn parsing, DID encoding and base
+conversion that this provider is built on top of. It is excellent work and this
+package would be considerably larger without it. Thank you.
+
+Four of the dependencies resolve to `@le-space` builds rather than the
+published originals. Two different reasons, and they should not be confused:
+
+### Temporary forks
+
+Published only to unblock this package, and meant to disappear. Each carries a
+small delta that belongs upstream.
+
+| Dependency     | Upstream                                                                               | Why it is forked                                                                                                              |
+| -------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `iso-passkeys` | [iso-passkeys](https://github.com/hugomrdias/iso-repo/tree/main/packages/iso-passkeys) | Re-exports `parseAttestationObject` and `unwrapEC2Signature`, which already exist upstream but are not part of the public API |
+| `iso-base`     | [iso-base](https://github.com/hugomrdias/iso-repo/tree/main/packages/iso-base)         | Kept in step with the forks above                                                                                             |
+| `iso-did`      | [iso-did](https://github.com/hugomrdias/iso-repo/tree/main/packages/iso-did)           | Kept in step with the forks above                                                                                             |
+
+The `iso-passkeys` delta is two lines and purely additive — nothing is changed
+or removed, two existing internal functions are simply exported. Once that lands
+upstream these forks can go away, and the `pnpm.overrides` block in
+`package.json` with them.
+
+### Not a fork
+
+`iso-webauthn-varsig` is a **new** package rather than a modified copy of an
+existing one. It implements WebAuthn varsig signing for OrbitDB oplog entries
+and has no upstream equivalent. It follows `iso-repo` conventions and lives in
+the same lineage, which is why it is named the way it is.
+
+Its format is still moving: see
+[#11](https://github.com/Le-Space/orbitdb-identity-provider-webauthn-did/issues/11)
+and [iso-repo#1](https://github.com/NiKrause/iso-repo/issues/1) for the
+non-recursive varsig layout it will follow.
+
+### Not forked at all
+
+`iso-web` appears in `pnpm.overrides` but resolves to the genuine upstream
+package. The entry only pins a version.
+
+### Licensing
+
+All `iso-repo` packages are MIT, © Hugo Dias. The forks keep the original
+`license` and `author` fields, so authorship travels with them; only the
+package name changes.
+
 ## License
 
 MIT. See `LICENSE`.
