@@ -12,7 +12,12 @@ import {
   verifyP256Signature,
   verifyWebAuthnAssertion,
 } from 'iso-webauthn-varsig';
-import { buildChallengeBytes, toArrayBuffer, toBytes } from './utils.js';
+import {
+  bindContext,
+  buildChallengeBytes,
+  toArrayBuffer,
+  toBytes,
+} from './utils.js';
 import { buildCredentialRequestOptions } from '../webauthn/config.js';
 import { KEY_TYPES, WEBAUTHN_CLIENT_DATA_TYPES } from '../constants.js';
 import {
@@ -44,7 +49,10 @@ async function runWebAuthnAssertionForPayload(
 ) {
   const rpId = window.location.hostname;
   const origin = window.location.origin;
-  const challengeBytes = await buildChallengeBytes(domainLabel, payloadBytes);
+  // The context is framed into the signed bytes, not into the challenge
+  // preimage, so the challenge stays a plain hash of what was signed.
+  const signedBytes = bindContext(domainLabel, payloadBytes);
+  const challengeBytes = await buildChallengeBytes(signedBytes);
 
   if (isTestMode()) {
     return {
@@ -208,8 +216,7 @@ async function verifyVarsigForPayload(
   }
   const clientData = parseClientDataJSON(decoded.clientDataJSON);
   const expectedChallenge = await buildChallengeBytes(
-    domainLabel,
-    payloadBytes
+    bindContext(domainLabel, payloadBytes)
   );
   const expectedChallengeEncoded = bytesToBase64url(expectedChallenge);
 

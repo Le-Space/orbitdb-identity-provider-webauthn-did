@@ -18,6 +18,7 @@ export default defineConfig({
   testMatch: [
     'standalone-toolkit.test.js',
     'webauthn-debug-log.test.js',
+    'webauthn-varsig-challenge.test.js',
     'webauthn-attestation-parsing.test.js',
     'webauthn-two-peer-replication.test.js',
   ],
