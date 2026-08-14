@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.2
+
 ### Fixed
 
 - Restore debug logging in the browser. `weald`, which `@libp2p/logger` uses,
@@ -35,6 +37,13 @@
   shape only — byte lengths, presence flags and the names of the extensions that
   returned results — behind the package debug logger, so it is silent unless
   `DEBUG=orbitdb-identity-provider-webauthn-did*` is set. Closes #22.
+- Keep the demos' P2P component out of the server render. Turning on `ssr`
+  so prerendering emitted real content also meant `+page.svelte` was evaluated
+  in Node, and it imported the libp2p stack at module scope — reaching
+  `@libp2p/webrtc` and its native `node-datachannel` binding, which the demos
+  do not build. The dev server returned 500 for every request. The component is
+  loaded in the browser only now; the shared shell still renders server-side, so
+  prerendering keeps producing a real title and description.
 
 ### Changed
 
