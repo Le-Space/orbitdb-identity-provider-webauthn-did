@@ -408,15 +408,24 @@ export class OrbitDBWebAuthnIdentityProvider {
       } else if (
         this.keystoreEncryptionMethod === KEYSTORE_ENCRYPTION_METHODS.LARGE_BLOB
       ) {
-        // For largeBlob, we need to store SK during next authentication
-        // Store it temporarily for wrapping
+        // Write the key into the authenticator before recording anything.
+        // This used to be `secretKey: sk, // Will be moved to largeBlob` — and
+        // nothing ever moved it: the field was dropped at serialization, so
+        // the key survived only in memory and the keystore could never be
+        // unlocked again. Throws if the authenticator refuses, which is better
+        // than persisting a record that cannot be opened.
+        await KeystoreEncryption.writeSKToLargeBlob(
+          this.credential.rawCredentialId,
+          sk,
+          window.location.hostname
+        );
+
         encryptedData = {
           ciphertext,
           iv,
           credentialId: this.credential.credentialId,
           publicKey: publicKeyBytes,
           keyType,
-          secretKey: sk, // Will be moved to largeBlob
           encryptionMethod: KEYSTORE_ENCRYPTION_METHODS.LARGE_BLOB,
         };
       } else if (

@@ -4,6 +4,23 @@
 
 ### Fixed
 
+- Actually write the secret key into `largeBlob`. The keystore record carried
+  `secretKey: sk, // Will be moved to largeBlob` — and nothing ever moved it.
+  That was the only occurrence of the field in `src/`, and
+  `storeEncryptedKeystore()` serialises a fixed whitelist that does not include
+  it, so the key was dropped at persist time. Choosing largeBlob therefore
+  produced a keystore that worked for the session that created it and could
+  never be unlocked again: on the next load `retrieveSKFromLargeBlob()` read a
+  blob nobody had written and failed with "No largeBlob data found in
+  credential".
+
+  The key never reached disk in the clear — the whitelist saw to that — but the
+  feature was inert. `writeSKToLargeBlob()` now performs the assertion that
+  stores it (a blob can only be written during an assertion, never at
+  registration, so this costs one extra prompt) and **throws unless the
+  authenticator reports `written: true`**. Failing there beats persisting a
+  record that cannot be opened.
+
 - Carry the authenticator's own answer on the credential. `createCredential()`
   now records `extensionSupport` — what the authenticator agreed to during the
   ceremony — because the raw `PublicKeyCredential` does not survive past that

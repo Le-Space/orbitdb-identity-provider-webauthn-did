@@ -14,7 +14,45 @@ import { test, expect } from '@playwright/test';
 import {
   checkExtensionSupport,
   extensionSupportFromCredential,
+  writeSKToLargeBlob,
 } from '../src/keystore/encryption.js';
+
+const CREDENTIAL_ID = new Uint8Array(32).fill(0x11);
+const SECRET_KEY = new Uint8Array(32).fill(0x22);
+
+// Node defines globalThis.navigator as a getter-only accessor, so a plain
+// assignment throws. Swap the property descriptor and put the original back.
+const ORIGINAL_NAVIGATOR = Object.getOwnPropertyDescriptor(
+  globalThis,
+  'navigator'
+);
+
+/**
+ * Stand in for navigator.credentials.get, answering with whatever the
+ * authenticator is meant to have reported back.
+ */
+function installCredentialsGet(extensionResults, { rejectWith } = {}) {
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    writable: true,
+    value: {
+      credentials: {
+        get: async () => {
+          if (rejectWith) throw rejectWith;
+          return { getClientExtensionResults: () => extensionResults };
+        },
+      },
+    },
+  });
+}
+
+function restoreNavigator() {
+  if (ORIGINAL_NAVIGATOR) {
+    Object.defineProperty(globalThis, 'navigator', ORIGINAL_NAVIGATOR);
+  } else {
+    delete globalThis.navigator;
+  }
+}
 
 /**
  * The real interface: extensions do not appear here, only these six members.
@@ -235,5 +273,53 @@ test.describe('per-credential extension support', () => {
       prf: false,
       hmacSecret: false,
     });
+  });
+});
+
+test.describe('writing the secret key to largeBlob', () => {
+  test.afterEach(() => {
+    restoreNavigator();
+  });
+
+  test('resolves when the authenticator confirms the write', async () => {
+    installCredentialsGet({ largeBlob: { written: true } });
+
+    await expect(
+      writeSKToLargeBlob(CREDENTIAL_ID, SECRET_KEY, 'example.com')
+    ).resolves.toBeUndefined();
+  });
+
+  test('throws when the authenticator declines the write', async () => {
+    // The regression this exists for. Ignoring `written` leaves a keystore
+    // whose key lives only in memory: usable this session, unopenable after.
+    installCredentialsGet({ largeBlob: { written: false } });
+
+    await expect(
+      writeSKToLargeBlob(CREDENTIAL_ID, SECRET_KEY, 'example.com')
+    ).rejects.toThrow(/did not store the secret key/i);
+  });
+
+  test('throws when there is no largeBlob result at all', async () => {
+    installCredentialsGet({});
+
+    await expect(
+      writeSKToLargeBlob(CREDENTIAL_ID, SECRET_KEY, 'example.com')
+    ).rejects.toThrow(/did not store the secret key/i);
+  });
+
+  test('does not accept a truthy non-true value as a write', async () => {
+    installCredentialsGet({ largeBlob: { written: 'yes' } });
+
+    await expect(
+      writeSKToLargeBlob(CREDENTIAL_ID, SECRET_KEY, 'example.com')
+    ).rejects.toThrow(/did not store the secret key/i);
+  });
+
+  test('surfaces a refused or failed assertion', async () => {
+    installCredentialsGet(null, { rejectWith: new Error('user cancelled') });
+
+    await expect(
+      writeSKToLargeBlob(CREDENTIAL_ID, SECRET_KEY, 'example.com')
+    ).rejects.toThrow(/Failed to write secret key to largeBlob/i);
   });
 });
