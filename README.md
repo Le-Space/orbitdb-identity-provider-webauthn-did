@@ -290,6 +290,27 @@ Mermaid sequences for scripts:
 - `SECURITY.md`
 - `CODE_OF_CONDUCT.md`
 
+## Cross-Project Verification
+
+This repo's own suite covers the units and runs two OrbitDB peers in-process. The strongest evidence that a release actually works, though, comes from outside it: the replication mode matrix in [`orbitdb-relay`](https://github.com/NiKrause/orbitdb-relay), at `mocha/relay-replication-mode-matrix.mjs`.
+
+It drives six alice/bob pairings through a real relay:
+
+| Mode                                          | Pairing                                    |
+| --------------------------------------------- | ------------------------------------------ |
+| `alice-worker-bob-hardware-ed25519`           | worker keystore ↔ hardware Ed25519         |
+| `alice-worker-bob-hardware-p256`              | worker keystore ↔ hardware P-256           |
+| `alice-hardware-ed25519-bob-hardware-p256`    | the two hardware curves against each other |
+| `alice-worker-ed25519-bob-worker-ed25519`     | worker keystore, both sides                |
+| `alice-hardware-ed25519-bob-hardware-ed25519` | hardware Ed25519, both sides               |
+| `alice-hardware-p256-bob-hardware-p256`       | hardware P-256, both sides                 |
+
+Three things make it worth more than an in-repo test. It runs **out of process and across repos**, against the published package rather than the working tree. It exercises **identity verification between two distinct peers** — different keystores, different identity documents — instead of one instance talking to itself. And the relay **verifies identities itself**, so a third independent verifier sits in the path.
+
+That is exactly the surface a change to the signing format breaks. The 0.5.0 signing-context change was validated here before the consumers moved: all six pairings replicate under the new format.
+
+If you change anything that touches signing, identity documents or verification, run that matrix — not just this repo's tests.
+
 ## Identity Recovery Summary
 
 Current identity recovery behavior in this repo:
