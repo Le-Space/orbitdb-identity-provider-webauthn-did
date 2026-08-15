@@ -38,7 +38,7 @@
 
 - `iso-webauthn-varsig` moves to 0.3.0, which corrects the Ed25519 curve code in
   the varsig header from `0xed01` to `0xed`. `0xed01` is how the multicodec
-  `ed25519-pub` is written in prose — but that is its *varint encoding*, and
+  `ed25519-pub` is written in prose — but that is its _varint encoding_, and
   using it as the code meant emitting 60673, which no other implementation reads
   as Ed25519. Ed25519 varsigs written by earlier versions do not decode.
   **P-256 bytes are unchanged by this second break**, so P-256 deployments are
