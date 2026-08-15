@@ -4,6 +4,24 @@
 
 ### Fixed
 
+- Carry the authenticator's own answer on the credential. `createCredential()`
+  now records `extensionSupport` — what the authenticator agreed to during the
+  ceremony — because the raw `PublicKeyCredential` does not survive past that
+  function, so the answer is read there or lost. Client support is not
+  authenticator support: measured on a macOS platform authenticator in Brave,
+  the client advertises `hmacCreateSecret` while the authenticator refuses it
+  and PRF works. Reading only the client is what left the demo offering
+  hmac-secret and then failing at the ceremony, which is the failure originally
+  reported in #9.
+
+  The encrypted-keystore demo consumes it: methods the authenticator refused
+  read "Browser yes, this passkey no" rather than "Supported", become
+  unselectable, and a selection it cannot honour falls back automatically. It
+  also no longer logs `encrypted: Yes (largeBlob)` off the back of the
+  _requested_ options — that line reported intent as though it were outcome, so
+  a failed write looked identical to a successful one. It now names the request
+  and the authenticator's capability separately, so a mismatch is visible.
+
 - Detect WebAuthn extensions by asking the browser instead of inspecting a
   prototype. `checkExtensionSupport()` tested
   `'largeBlob' in PublicKeyCredential.prototype` — but extensions are never

@@ -206,9 +206,15 @@ export async function setupOrbitDB(credential, options = {}) {
     didType: options.useKeystoreDID
       ? `${options.keystoreKeyType} (from keystore)`
       : 'P-256 (from WebAuthn)',
-    encrypted: options.encryptKeystore
-      ? `Yes (${options.encryptionMethod})`
-      : 'No',
+    // Deliberately worded as a request, not a result. This line used to read
+    // "Yes (largeBlob)" whether or not the authenticator had honoured
+    // largeBlob, which made a failed write look like a success in the console.
+    // The second field is what the authenticator actually agreed to, so a
+    // mismatch between the two is visible rather than hidden.
+    encryptionRequested: options.encryptKeystore
+      ? options.encryptionMethod
+      : 'none',
+    authenticatorSupports: credential?.extensionSupport ?? 'not recorded',
   });
 
   // Try to verify our identity is in the identities store

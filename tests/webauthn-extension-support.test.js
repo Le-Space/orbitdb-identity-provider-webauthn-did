@@ -198,6 +198,31 @@ test.describe('per-credential extension support', () => {
     });
   });
 
+  test('the two questions can disagree, which is the point', () => {
+    // Measured on a real macOS platform authenticator in Brave: the client
+    // advertises hmacCreateSecret, the authenticator refuses it, and PRF works.
+    // Reading only the client is what left the demo offering hmac-secret and
+    // failing at the ceremony.
+    const clientSaysYesToEverything = {
+      largeBlob: true,
+      prf: true,
+      hmacSecret: true,
+    };
+    const credential = {
+      getClientExtensionResults: () => ({
+        largeBlob: { supported: true },
+        prf: { enabled: true },
+        // no hmacCreateSecret at all
+      }),
+    };
+
+    const authenticator = extensionSupportFromCredential(credential);
+
+    expect(clientSaysYesToEverything.hmacSecret).toBe(true);
+    expect(authenticator.hmacSecret).toBe(false);
+    expect(authenticator.prf).toBe(true);
+  });
+
   test('survives getClientExtensionResults throwing', () => {
     const credential = {
       getClientExtensionResults: () => {

@@ -64,6 +64,11 @@
     hmacSecret: false,
     known: false,
   };
+  // What the authenticator agreed to during registration, which is a different
+  // question from what the browser can negotiate. Null until a credential
+  // exists. A platform authenticator commonly answers yes to PRF and no to
+  // hmac-secret on a browser that advertises both.
+  let credentialSupport = null;
   let useWorkerKeystore = false;
   let workerAvailable = false;
   let workerClient = null;
@@ -148,19 +153,77 @@
       };
     }
 
-    await initializeWebAuthn();
+    // Client capabilities first, then the credential. The order matters:
+    // initializeWebAuthn() loads a stored credential and lets its recorded
+    // answer refine the choice, and checkEncryptionSupport() picks a method
+    // from the browser's view alone — running it second would undo that.
     await checkEncryptionSupport();
+    await initializeWebAuthn();
   });
 
   onDestroy(() => {
     resetWorkerClient();
   });
 
-  // Three states, not two: an extension we know is missing reads differently
-  // from one the browser would not tell us about.
-  function supportLabel(flag) {
-    if (flag) return '✅ Supported';
+  // The method values and the support-object keys do not spell the extension
+  // the same way; keep the translation in one place rather than at each use.
+  const SUPPORT_KEY = {
+    prf: 'prf',
+    largeBlob: 'largeBlob',
+    'hmac-secret': 'hmacSecret',
+  };
+  const METHOD_PREFERENCE = ['prf', 'largeBlob', 'hmac-secret'];
+
+  // Four states. Once a credential exists its answer overrules the browser's:
+  // the browser saying yes only means it would pass the request along.
+  function supportLabel(name) {
+    if (credentialSupport) {
+      if (credentialSupport[name]) return '✅ Supported';
+      if (extensionSupport[name]) return '⚠️ Browser yes, this passkey no';
+      return '❌ Not supported';
+    }
+    if (extensionSupport[name]) return '✅ Supported';
     return extensionSupport.known ? '❌ Not supported' : '❓ Unknown';
+  }
+
+  // May the method be offered at all? Before a credential exists we go by the
+  // browser and keep anything it cannot vouch for selectable. Afterwards the
+  // authenticator decides, because it is the one that has to deliver.
+  function methodAvailable(method) {
+    const name = SUPPORT_KEY[method];
+    if (credentialSupport) return credentialSupport[name] === true;
+    return !extensionSupport.known || extensionSupport[name] === true;
+  }
+
+  /**
+   * Adopt what the authenticator agreed to, and step off a method it refused.
+   *
+   * Without this the UI keeps promising a method the ceremony will not honour —
+   * which is how "hmac-secret ✅ Supported" ends in "No hmac-secret output from
+   * credential" (issue #9).
+   */
+  function applyCredentialSupport(support) {
+    if (!support) return;
+    credentialSupport = support;
+    console.log('Authenticator extension support:', support);
+
+    if (methodAvailable(encryptionMethod)) return;
+
+    const fallback = METHOD_PREFERENCE.find((method) =>
+      methodAvailable(method)
+    );
+
+    if (fallback) {
+      console.warn(
+        `Authenticator does not support ${encryptionMethod}; falling back to ${fallback}`
+      );
+      encryptionMethod = fallback;
+    } else {
+      console.warn(
+        'Authenticator supports none of the encryption extensions; keystore encryption disabled'
+      );
+      useEncryption = false;
+    }
   }
 
   async function checkEncryptionSupport() {
@@ -211,6 +274,9 @@
       // Load stored credential
       credential = loadStoredCredential();
       if (credential) {
+        // Credentials registered before this was recorded carry no answer, so
+        // the browser's view stands until the next registration.
+        applyCredentialSupport(credential.extensionSupport);
         status = 'Credential found, ready to authenticate!';
       }
     } catch (error) {
@@ -375,6 +441,9 @@
         encryptKeystore: useEncryption,
         keystoreEncryptionMethod: encryptionMethod,
       });
+
+      // The ceremony has now answered what the browser could only guess at.
+      applyCredentialSupport(credential.extensionSupport);
 
       // Store credential for future use
       storeCredential(credential);
@@ -935,8 +1004,7 @@
                     type="radio"
                     bind:group={encryptionMethod}
                     value="prf"
-                    disabled={loading ||
-                      (extensionSupport.known && !extensionSupport.prf)}
+                    disabled={loading || !methodAvailable('prf')}
                     style="cursor: pointer;"
                   />
                   <span style="color: var(--cds-text-primary);">PRF</span>
@@ -953,8 +1021,7 @@
                     type="radio"
                     bind:group={encryptionMethod}
                     value="largeBlob"
-                    disabled={loading ||
-                      (extensionSupport.known && !extensionSupport.largeBlob)}
+                    disabled={loading || !methodAvailable('largeBlob')}
                     style="cursor: pointer;"
                   />
                   <span style="color: var(--cds-text-primary);">largeBlob</span>
@@ -971,8 +1038,7 @@
                     type="radio"
                     bind:group={encryptionMethod}
                     value="hmac-secret"
-                    disabled={loading ||
-                      (extensionSupport.known && !extensionSupport.hmacSecret)}
+                    disabled={loading || !methodAvailable('hmac-secret')}
                     style="cursor: pointer;"
                   />
                   <span style="color: var(--cds-text-primary);"
