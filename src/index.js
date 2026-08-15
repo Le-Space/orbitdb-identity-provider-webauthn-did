@@ -287,6 +287,7 @@ export {
   loadEncryptedKeystore,
   clearEncryptedKeystore,
   checkExtensionSupport,
+  extensionSupportFromCredential,
 } from './keystore/encryption.js';
 
 export default {

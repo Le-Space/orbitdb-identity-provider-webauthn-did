@@ -2,6 +2,47 @@
 
 ## Unreleased
 
+### Fixed
+
+- Detect WebAuthn extensions by asking the browser instead of inspecting a
+  prototype. `checkExtensionSupport()` tested
+  `'largeBlob' in PublicKeyCredential.prototype` — but extensions are never
+  properties of that interface, they arrive through
+  `getClientExtensionResults()`. The test therefore returned `false` in every
+  browser ever shipped, including those with complete support, and `hmacSecret`
+  was hard-coded `false` beside it. Both together meant the encrypted-keystore
+  demo disabled its own headline feature everywhere and could not be switched
+  on at all.
+
+  Measured on Chrome 148: the prototype probe answered `false` for `largeBlob`,
+  `prf` and `hmacCreateSecret` while `getClientCapabilities()` reported all
+  three `true`. Every extension name behaves the same way, so no browser could
+  ever have passed. Closes #9.
+
+  `checkExtensionSupport()` now reads `getClientCapabilities()` and reports
+  `prf` alongside the other two. It also returns `known`, distinguishing "the
+  browser says no" from "the browser cannot say" — callers must not treat the
+  second as a refusal, or they disable a feature that may well work.
+
+### Added
+
+- `extensionSupportFromCredential(credential)` reads what the authenticator
+  actually agreed to, from the registration response. This is the authoritative
+  answer and the one worth persisting: a browser may support `largeBlob` while
+  the security key in front of it does not, and only the ceremony settles that.
+  `addLargeBlobToCredentialOptions()` takes an optional support level for the
+  same reason — it stays `'required'` by default, because under `'preferred'`
+  an unsupported authenticator yields a credential whose secret was silently
+  never written.
+
+### Changed
+
+- The encrypted-keystore demo offers PRF as a keystore encryption method and
+  prefers it, matching the library's own default since 0.4.0. It had hard-coded
+  `largeBlob`, so it overrode that default and never exercised PRF at all.
+  Methods the browser cannot vouch for are now labelled "Unknown" rather than
+  "Not supported", and stay selectable.
+
 ## 0.5.0
 
 ### Breaking

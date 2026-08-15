@@ -53,10 +53,17 @@
 
   // NEW: Encryption options
   let useEncryption = true; // Enable encryption by default
-  let encryptionMethod = 'largeBlob'; // or 'hmac-secret'
+  let encryptionMethod = 'prf'; // 'prf', 'largeBlob' or 'hmac-secret'
   let useKeystoreDID = true; // Use persistent DID from OrbitDB keystore (instead of WebAuthn P-256)
   let keystoreKeyType = 'Ed25519'; // Key type: 'secp256k1' or 'Ed25519' (default: Ed25519)
-  let extensionSupport = { largeBlob: false, hmacSecret: false };
+  // `known: false` means the browser could not tell us, which is not the same
+  // as "unsupported" — see checkEncryptionSupport().
+  let extensionSupport = {
+    prf: false,
+    largeBlob: false,
+    hmacSecret: false,
+    known: false,
+  };
   let useWorkerKeystore = false;
   let workerAvailable = false;
   let workerClient = null;
@@ -149,19 +156,38 @@
     resetWorkerClient();
   });
 
+  // Three states, not two: an extension we know is missing reads differently
+  // from one the browser would not tell us about.
+  function supportLabel(flag) {
+    if (flag) return '✅ Supported';
+    return extensionSupport.known ? '❌ Not supported' : '❓ Unknown';
+  }
+
   async function checkEncryptionSupport() {
     try {
       extensionSupport = await KeystoreEncryption.checkExtensionSupport();
       console.log('Encryption extension support:', extensionSupport);
 
-      // Auto-select best encryption method
-      if (extensionSupport.largeBlob) {
+      // Auto-select best encryption method. PRF first: it is what the library
+      // itself defaults to, and it derives the key from the authenticator
+      // instead of storing a wrapped one.
+      if (extensionSupport.prf) {
+        encryptionMethod = 'prf';
+      } else if (extensionSupport.largeBlob) {
         encryptionMethod = 'largeBlob';
       } else if (extensionSupport.hmacSecret) {
         encryptionMethod = 'hmac-secret';
-      } else {
-        useEncryption = false; // Disable if no support
+      } else if (extensionSupport.known) {
+        useEncryption = false; // The browser told us it supports none of them.
         console.warn('No encryption extensions supported');
+      } else {
+        // The browser has no getClientCapabilities(), so it cannot say in
+        // advance. Attempting the ceremony is the only way to find out, and
+        // it is better than refusing a feature that may well work.
+        encryptionMethod = 'prf';
+        console.warn(
+          'Extension support could not be determined; attempting PRF anyway'
+        );
       }
     } catch (error) {
       console.error('Failed to check encryption support:', error);
@@ -852,7 +878,10 @@
                 type="checkbox"
                 bind:checked={useEncryption}
                 disabled={loading ||
-                  (!extensionSupport.largeBlob && !extensionSupport.hmacSecret)}
+                  (extensionSupport.known &&
+                    !extensionSupport.prf &&
+                    !extensionSupport.largeBlob &&
+                    !extensionSupport.hmacSecret)}
                 style="cursor: pointer;"
               />
               <span style="color: var(--cds-text-primary);"
@@ -905,17 +934,34 @@
                   <input
                     type="radio"
                     bind:group={encryptionMethod}
+                    value="prf"
+                    disabled={loading ||
+                      (extensionSupport.known && !extensionSupport.prf)}
+                    style="cursor: pointer;"
+                  />
+                  <span style="color: var(--cds-text-primary);">PRF</span>
+                  <span
+                    style="font-size: 0.75rem; color: var(--cds-text-secondary);"
+                  >
+                    {supportLabel(extensionSupport.prf)}
+                  </span>
+                </label>
+                <label
+                  style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;"
+                >
+                  <input
+                    type="radio"
+                    bind:group={encryptionMethod}
                     value="largeBlob"
-                    disabled={loading || !extensionSupport.largeBlob}
+                    disabled={loading ||
+                      (extensionSupport.known && !extensionSupport.largeBlob)}
                     style="cursor: pointer;"
                   />
                   <span style="color: var(--cds-text-primary);">largeBlob</span>
                   <span
                     style="font-size: 0.75rem; color: var(--cds-text-secondary);"
                   >
-                    {extensionSupport.largeBlob
-                      ? '✅ Supported'
-                      : '❌ Not supported'}
+                    {supportLabel(extensionSupport.largeBlob)}
                   </span>
                 </label>
                 <label
@@ -925,7 +971,8 @@
                     type="radio"
                     bind:group={encryptionMethod}
                     value="hmac-secret"
-                    disabled={loading || !extensionSupport.hmacSecret}
+                    disabled={loading ||
+                      (extensionSupport.known && !extensionSupport.hmacSecret)}
                     style="cursor: pointer;"
                   />
                   <span style="color: var(--cds-text-primary);"
@@ -934,9 +981,7 @@
                   <span
                     style="font-size: 0.75rem; color: var(--cds-text-secondary);"
                   >
-                    {extensionSupport.hmacSecret
-                      ? '✅ Supported'
-                      : '❌ Not supported'}
+                    {supportLabel(extensionSupport.hmacSecret)}
                   </span>
                 </label>
               </div>
