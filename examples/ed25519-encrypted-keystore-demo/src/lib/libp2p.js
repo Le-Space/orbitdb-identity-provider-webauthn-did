@@ -125,7 +125,7 @@ export async function createIdentitiesInstance() {
  * @param {boolean} options.useKeystoreDID - Use persistent DID from OrbitDB keystore (instead of WebAuthn P-256)
  * @param {string} options.keystoreKeyType - Key type: 'secp256k1' or 'Ed25519'
  * @param {boolean} options.encryptKeystore - Enable keystore encryption
- * @param {string} options.encryptionMethod - Encryption method ('largeBlob' or 'hmac-secret')
+ * @param {string} options.encryptionMethod - Encryption method ('prf', 'largeBlob' or 'hmac-secret')
  */
 export async function createWebAuthnIdentity(
   identities,
@@ -137,7 +137,9 @@ export async function createWebAuthnIdentity(
     useKeystoreDID = false,
     keystoreKeyType = 'secp256k1',
     encryptKeystore = false,
-    encryptionMethod = 'largeBlob',
+    // Matches the library's own default since 0.4.0. Hard-coding 'largeBlob'
+    // here meant the demo silently overrode it and never exercised PRF.
+    encryptionMethod = 'prf',
   } = options;
 
   return await identities.createIdentity({

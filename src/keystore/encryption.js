@@ -150,19 +150,37 @@ export async function decryptWithAESGCM(ciphertext, sk, iv) {
 
 /**
  * Store secret key in WebAuthn credential using largeBlob extension
+ *
+ * Defaults to `support: 'required'` so an authenticator that cannot hold a
+ * blob fails the ceremony outright. That is the safe default here: under
+ * `'preferred'` the credential is created successfully and the secret is
+ * simply never written, which loses the keystore silently.
+ *
+ * Pass `'preferred'` only when the caller reads the outcome back with
+ * {@link extensionSupportFromCredential} and handles an unsupported
+ * authenticator itself — probing for capability, for instance.
+ *
  * @param {Object} credentialOptions - WebAuthn credential creation options
  * @param {Uint8Array} sk - Secret key to store
- * @returns {Promise<Object>} Enhanced credential options with largeBlob
+ * @param {'required'|'preferred'} [support] - largeBlob support level
+ * @returns {Object} Enhanced credential options with largeBlob
  */
-export function addLargeBlobToCredentialOptions(credentialOptions, sk) {
-  log('Adding largeBlob extension to credential options');
+export function addLargeBlobToCredentialOptions(
+  credentialOptions,
+  sk,
+  support = 'required'
+) {
+  log(
+    'Adding largeBlob extension to credential options (support: %s)',
+    support
+  );
 
   return {
     ...credentialOptions,
     extensions: {
       ...credentialOptions.extensions,
       largeBlob: {
-        support: 'required',
+        support,
         write: sk,
       },
     },
@@ -620,39 +638,95 @@ export async function clearEncryptedKeystore(credentialId) {
 }
 
 /**
- * Check if browser supports WebAuthn extensions
- * @returns {Promise<Object>} Support status for largeBlob and hmac-secret
+ * Which WebAuthn extensions is this *client* willing to negotiate?
+ *
+ * Answers one question only: would the browser pass the extension through. It
+ * cannot tell you whether the authenticator behind it will honour the request —
+ * that is settled during a ceremony, by
+ * {@link extensionSupportFromCredential}, and belongs to the credential rather
+ * than to the browser.
+ *
+ * `known: false` means the browser is too old to say. That is **not** the same
+ * as unsupported: callers should attempt the ceremony and let its result
+ * decide, rather than disabling the feature outright.
+ *
+ * @returns {Promise<{largeBlob: boolean, prf: boolean, hmacSecret: boolean, known: boolean}>}
  */
 export async function checkExtensionSupport() {
   const support = {
     largeBlob: false,
+    prf: false,
     hmacSecret: false,
+    known: false,
   };
 
-  if (!window.PublicKeyCredential) {
+  if (typeof globalThis.PublicKeyCredential !== 'function') {
+    return support;
+  }
+
+  // getClientCapabilities is the only pre-flight answer that means anything.
+  // The previous check asked `'largeBlob' in PublicKeyCredential.prototype`,
+  // which tests whether the extension is a property of the credential
+  // interface. Extensions never are — they arrive through
+  // getClientExtensionResults() — so it returned false in every browser ever
+  // shipped, including those with complete support, and silently disabled
+  // keystore encryption everywhere.
+  if (typeof PublicKeyCredential.getClientCapabilities !== 'function') {
+    log('getClientCapabilities unavailable; extension support is unknown');
     return support;
   }
 
   try {
-    // Check largeBlob support
-    if (
-      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable
-    ) {
-      const available =
-        await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
-      // largeBlob is available in Chrome 106+, Edge 106+
-      support.largeBlob =
-        available && 'largeBlob' in PublicKeyCredential.prototype;
-    }
-
-    // hmac-secret support cannot be reliably detected without a real credential.
-    // Keep it false by default and let users opt-in explicitly.
-    support.hmacSecret = false;
+    const capabilities = await PublicKeyCredential.getClientCapabilities();
+    return {
+      largeBlob: capabilities['extension:largeBlob'] === true,
+      prf: capabilities['extension:prf'] === true,
+      hmacSecret: capabilities['extension:hmacCreateSecret'] === true,
+      known: true,
+    };
   } catch (error) {
     log.error('Failed to check extension support: %s', error.message);
+    return support;
+  }
+}
+
+/**
+ * What did the authenticator actually agree to, for this credential?
+ *
+ * The authoritative answer, and the only one worth persisting: a browser may
+ * support largeBlob while the security key in front of it does not. Read this
+ * from the registration response and store it next to the credential.
+ *
+ * Requires the ceremony to have asked with `support: 'preferred'` — see
+ * {@link addLargeBlobToCredentialOptions}. Asking with `'required'` makes
+ * creation fail outright instead of reporting back.
+ *
+ * @param {PublicKeyCredential} credential - The result of navigator.credentials.create().
+ * @returns {{largeBlob: boolean, prf: boolean, hmacSecret: boolean}}
+ */
+export function extensionSupportFromCredential(credential) {
+  const support = { largeBlob: false, prf: false, hmacSecret: false };
+
+  if (typeof credential?.getClientExtensionResults !== 'function') {
+    return support;
   }
 
-  return support;
+  try {
+    const results = credential.getClientExtensionResults() ?? {};
+    return {
+      largeBlob: results.largeBlob?.supported === true,
+      // PRF reports either an explicit `enabled` flag or, when the ceremony
+      // evaluated a salt straight away, the results themselves.
+      prf: results.prf?.enabled === true || results.prf?.results != null,
+      hmacSecret: results.hmacCreateSecret === true,
+    };
+  } catch (error) {
+    log.error(
+      'Failed to read extension results from credential: %s',
+      error.message
+    );
+    return support;
+  }
 }
 
 export default {
@@ -668,4 +742,5 @@ export default {
   loadEncryptedKeystore,
   clearEncryptedKeystore,
   checkExtensionSupport,
+  extensionSupportFromCredential,
 };

@@ -1,0 +1,214 @@
+/**
+ * Guards WebAuthn extension detection.
+ *
+ * The check this replaced asked `'largeBlob' in PublicKeyCredential.prototype`.
+ * Extensions are never properties of that interface — they arrive through
+ * getClientExtensionResults() — so it answered `false` in every browser ever
+ * shipped, including those with complete support, and permanently disabled
+ * keystore encryption in the demo. Measured on Chrome 148: the prototype probe
+ * said false for largeBlob, prf and hmacCreateSecret while
+ * getClientCapabilities() reported all three true. See issue #9.
+ */
+import { test, expect } from '@playwright/test';
+
+import {
+  checkExtensionSupport,
+  extensionSupportFromCredential,
+} from '../src/keystore/encryption.js';
+
+/**
+ * The real interface: extensions do not appear here, only these six members.
+ */
+const REAL_PROTOTYPE_MEMBERS = [
+  'rawId',
+  'response',
+  'authenticatorAttachment',
+  'getClientExtensionResults',
+  'toJSON',
+  'constructor',
+];
+
+function installPublicKeyCredential({ capabilities, throws } = {}) {
+  function PublicKeyCredential() {}
+
+  for (const name of REAL_PROTOTYPE_MEMBERS) {
+    if (name === 'constructor') continue;
+    Object.defineProperty(PublicKeyCredential.prototype, name, {
+      value: undefined,
+      configurable: true,
+    });
+  }
+
+  if (capabilities !== undefined) {
+    PublicKeyCredential.getClientCapabilities = async () => {
+      if (throws) throw new Error('capability query refused');
+      return capabilities;
+    };
+  }
+
+  globalThis.PublicKeyCredential = PublicKeyCredential;
+  return PublicKeyCredential;
+}
+
+function clearPublicKeyCredential() {
+  delete globalThis.PublicKeyCredential;
+}
+
+test.afterEach(() => clearPublicKeyCredential());
+
+test.describe('client extension support', () => {
+  test('reads capabilities instead of probing the prototype', async () => {
+    const PKC = installPublicKeyCredential({
+      capabilities: {
+        'extension:largeBlob': true,
+        'extension:prf': true,
+        'extension:hmacCreateSecret': true,
+      },
+    });
+
+    // The old check, kept here so the regression cannot come back unnoticed.
+    expect('largeBlob' in PKC.prototype).toBe(false);
+    expect('prf' in PKC.prototype).toBe(false);
+
+    expect(await checkExtensionSupport()).toEqual({
+      largeBlob: true,
+      prf: true,
+      hmacSecret: true,
+      known: true,
+    });
+  });
+
+  test('a client that answers "none of them" is still a known answer', async () => {
+    installPublicKeyCredential({
+      capabilities: { 'extension:credProps': true },
+    });
+
+    expect(await checkExtensionSupport()).toEqual({
+      largeBlob: false,
+      prf: false,
+      hmacSecret: false,
+      known: true,
+    });
+  });
+
+  test('distinguishes "cannot say" from "unsupported"', async () => {
+    // No getClientCapabilities at all — an older or minimal browser.
+    installPublicKeyCredential();
+
+    const support = await checkExtensionSupport();
+    expect(support.known).toBe(false);
+    expect(support.largeBlob).toBe(false);
+
+    // The distinction is the whole point: callers must not read known:false as
+    // a refusal, or they disable a feature that may well work.
+    expect(support).toEqual({
+      largeBlob: false,
+      prf: false,
+      hmacSecret: false,
+      known: false,
+    });
+  });
+
+  test('treats a throwing capability query as unknown, not unsupported', async () => {
+    installPublicKeyCredential({ capabilities: {}, throws: true });
+
+    const support = await checkExtensionSupport();
+    expect(support.known).toBe(false);
+  });
+
+  test('survives a browser with no WebAuthn at all', async () => {
+    clearPublicKeyCredential();
+
+    expect(await checkExtensionSupport()).toEqual({
+      largeBlob: false,
+      prf: false,
+      hmacSecret: false,
+      known: false,
+    });
+  });
+
+  test('does not treat a missing capability key as supported', async () => {
+    installPublicKeyCredential({
+      capabilities: { 'extension:largeBlob': true },
+    });
+
+    const support = await checkExtensionSupport();
+    expect(support.largeBlob).toBe(true);
+    expect(support.prf).toBe(false);
+    expect(support.hmacSecret).toBe(false);
+  });
+});
+
+test.describe('per-credential extension support', () => {
+  test('reads what the authenticator actually agreed to', () => {
+    const credential = {
+      getClientExtensionResults: () => ({
+        largeBlob: { supported: true },
+        prf: { enabled: true },
+        hmacCreateSecret: true,
+      }),
+    };
+
+    expect(extensionSupportFromCredential(credential)).toEqual({
+      largeBlob: true,
+      prf: true,
+      hmacSecret: true,
+    });
+  });
+
+  test('a client that supports largeBlob does not mean the authenticator does', () => {
+    // The reason this function exists: the browser said yes, the key said no.
+    const credential = {
+      getClientExtensionResults: () => ({ largeBlob: { supported: false } }),
+    };
+
+    expect(extensionSupportFromCredential(credential).largeBlob).toBe(false);
+  });
+
+  test('counts PRF as available when the ceremony returned results', () => {
+    const credential = {
+      getClientExtensionResults: () => ({
+        prf: { results: { first: new Uint8Array(32) } },
+      }),
+    };
+
+    expect(extensionSupportFromCredential(credential).prf).toBe(true);
+  });
+
+  test('an absent largeBlob result is not support', () => {
+    const credential = { getClientExtensionResults: () => ({}) };
+
+    expect(extensionSupportFromCredential(credential)).toEqual({
+      largeBlob: false,
+      prf: false,
+      hmacSecret: false,
+    });
+  });
+
+  test('handles a credential that cannot report extensions', () => {
+    expect(extensionSupportFromCredential(null)).toEqual({
+      largeBlob: false,
+      prf: false,
+      hmacSecret: false,
+    });
+    expect(extensionSupportFromCredential({})).toEqual({
+      largeBlob: false,
+      prf: false,
+      hmacSecret: false,
+    });
+  });
+
+  test('survives getClientExtensionResults throwing', () => {
+    const credential = {
+      getClientExtensionResults: () => {
+        throw new Error('no extension results available');
+      },
+    };
+
+    expect(extensionSupportFromCredential(credential)).toEqual({
+      largeBlob: false,
+      prf: false,
+      hmacSecret: false,
+    });
+  });
+});
