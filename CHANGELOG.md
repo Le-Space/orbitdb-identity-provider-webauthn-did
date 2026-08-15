@@ -2,6 +2,54 @@
 
 ## Unreleased
 
+## 0.5.0
+
+### Breaking
+
+- The varsig signing context moves into the signed payload, which **changes the
+  bytes a credential signs**. Entries and identities produced by 0.4.x and
+  earlier no longer verify, and peers running different major versions cannot
+  replicate with each other — the whole set has to move together.
+
+  The challenge used to be `SHA-256(label ‖ payload)`. That separated the three
+  signing contexts, but it meant the challenge was no longer the hash of the
+  payload, and the varsig WebAuthn draft has a verifier re-hash the payload and
+  compare it against the challenge (step 5). Nothing outside this package could
+  reproduce that value.
+
+  The label itself is not the problem: one credential signs an identity, a public
+  key and an oplog entry, and a signature over one must not be replayable as a
+  signature over another. That separation cannot live in the varsig header
+  either, because a WebAuthn signature only covers
+  `authenticatorData ‖ SHA-256(clientDataJSON)` — anything carried beside the
+  challenge is unauthenticated. So the context moves into the signed bytes:
+  `bindContext()` frames it length-prefixed ahead of the payload, and the
+  challenge becomes a plain SHA-256 multihash of those bytes. Both properties
+  now hold — the three contexts still yield different challenges, and a spec
+  verifier can reproduce the digest.
+
+  The length prefix is load-bearing. Without it, context `a` with payload `bc`
+  and context `ab` with payload `c` are the same bytes, so a chosen payload
+  could absorb the label and sidestep the separation.
+
+  This is a bet on a draft: ChainAgnostic/varsig#11 is still open with
+  `webauthn-varsig-header = TODO`. If the draft settles differently, the wire
+  format changes again.
+
+- `iso-webauthn-varsig` moves to 0.3.0, which corrects the Ed25519 curve code in
+  the varsig header from `0xed01` to `0xed`. `0xed01` is how the multicodec
+  `ed25519-pub` is written in prose — but that is its _varint encoding_, and
+  using it as the code meant emitting 60673, which no other implementation reads
+  as Ed25519. Ed25519 varsigs written by earlier versions do not decode.
+  **P-256 bytes are unchanged by this second break**, so P-256 deployments are
+  affected only by the challenge change above.
+
+### Migration
+
+Nothing carries over automatically. Re-register credentials and re-create any
+database whose entries were signed under 0.4.x, and upgrade every peer —
+including relays that verify identities — in one step rather than gradually.
+
 ## 0.4.2
 
 ### Fixed
