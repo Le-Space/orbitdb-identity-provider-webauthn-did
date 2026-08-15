@@ -2,7 +2,6 @@
 
 Status: Implemented (initial public surface)
 Issue: #13
-Depends on: #11 (chainagnostik varsig 1.0 alignment)
 
 ## Objective
 
