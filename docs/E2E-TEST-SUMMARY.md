@@ -1,55 +1,58 @@
-# E2E Test Summary
+# Test Summary
 
-## Scope
+## Two configurations
 
-This repository runs Playwright tests against demo apps selected by `playwright.config.js`:
+`playwright.config.js` runs everything against a demo app. It declares a
+`webServer`, so every run there — including the suites that never open a page —
+installs and builds one of:
 
 - `examples/webauthn-todo-demo`
 - `examples/ed25519-encrypted-keystore-demo`
 - `examples/webauthn-varsig-demo`
 
-The selector uses test filename patterns and the env flags `USE_ENCRYPTED_DEMO` / `USE_VARSIG_DEMO`.
+Which one is picked comes from the test filename and the `USE_ENCRYPTED_DEMO` /
+`USE_VARSIG_DEMO` env flags.
 
-## Current Test Files (Chromium)
+`playwright.node.config.js` selects only the Node-context suites. They import
+the package directly and need neither a browser nor a demo server, so they run
+in seconds. `test:ci` — what `preversion` and `prepublishOnly` invoke — points
+here.
 
-- `tests/webauthn-focused.test.js`
-- `tests/webauthn-integration.test.js`
-- `tests/webauthn-logging-e2e.test.js`
-- `tests/webauthn-varsig-e2e.test.js`
-- `tests/ed25519-encrypted-keystore-e2e.test.js` (11 tests + 1 skipped)
-- `tests/ed25519-keystore-did.test.js` (7 tests)
-- `tests/encrypted-keystore.test.js` (17 tests)
-- `tests/simple-encryption-integration.test.js` (4 tests)
+## Counting the tests
 
-## Latest Local Verification
-
-The latest step-by-step Chromium runs completed green for the encrypted/worker-related path:
-
-- `tests/ed25519-encrypted-keystore-e2e.test.js`: `11 passed`, `1 skipped`
-- `tests/ed25519-keystore-did.test.js`: `6 passed`
-- `tests/encrypted-keystore.test.js`: `17 passed`
-- `tests/simple-encryption-integration.test.js`: `4 passed`
-
-## CI Workflow
-
-Tests are executed from:
-
-- `.github/workflows/ci.yml`
-
-This workflow builds all three demo apps and runs the relevant Playwright test groups in Chromium.
-
-## Useful Commands
+Numbers written into a document go stale silently, so ask the runner:
 
 ```bash
-# Main lint check
-npm run lint
+# every suite, every browser project
+pnpm exec playwright test --list
 
-# Full Playwright suite (all configured projects)
-npm test
+# what CI actually runs
+pnpm exec playwright test --list --project=chromium
 
-# Chromium-only example
-npx playwright test tests/encrypted-keystore.test.js --project=chromium --reporter=line
+# the fast Node-context subset
+pnpm exec playwright test --list --config=playwright.node.config.js
+```
 
-# Force encrypted demo routing
-USE_ENCRYPTED_DEMO=true npx playwright test tests/ed25519-encrypted-keystore-e2e.test.js --project=chromium --reporter=line
+## CI
+
+`.github/workflows/ci.yml` runs each test file as its own step, in Chromium.
+Two details worth knowing:
+
+- `webauthn-unit` runs with `CI` cleared. It loads the package through Vite's
+  `/@fs` endpoint, which only the dev server exposes; CI otherwise starts
+  `preview`, whose static build has no such route.
+- The encrypted-demo suites get `USE_ENCRYPTED_DEMO: true`.
+
+## Useful commands
+
+```bash
+pnpm run lint
+pnpm run test:node          # Node-context suites, no browser
+pnpm run test:all           # everything
+
+# a single suite in Chromium
+pnpm exec playwright test tests/encrypted-keystore.test.js --project=chromium --reporter=line
+
+# force the encrypted demo
+USE_ENCRYPTED_DEMO=true pnpm exec playwright test tests/ed25519-encrypted-keystore-e2e.test.js --project=chromium --reporter=line
 ```
