@@ -8,7 +8,7 @@ overrides:
   iso-base: npm:@le-space/iso-base
   iso-did: npm:@le-space/iso-did@2.1.2
   iso-web: ^3.1.2
-  iso-webauthn-varsig: npm:@le-space/iso-webauthn-varsig@^0.2.0
+  iso-webauthn-varsig: npm:@le-space/iso-webauthn-varsig@^0.3.0
   conf>ajv: ^8.18.0
   ajv>fast-uri: ^3.1.4
 
@@ -50,8 +50,8 @@ importers:
         specifier: ^3.1.2
         version: 3.1.2
       iso-webauthn-varsig:
-        specifier: npm:@le-space/iso-webauthn-varsig@^0.2.0
-        version: '@le-space/iso-webauthn-varsig@0.2.0'
+        specifier: npm:@le-space/iso-webauthn-varsig@^0.3.0
+        version: '@le-space/iso-webauthn-varsig@0.3.0'
       multiformats:
         specifier: ^14.0.0
         version: 14.0.3
@@ -707,8 +707,8 @@ packages:
   '@le-space/iso-passkeys@0.3.1':
     resolution: {integrity: sha512-/sgAJxcCkPfylWb3RNmy4wY5QaHBJP02lKnoLu8OC8YGSh9mOKhZ0g2+rkwMrqCIa7/J/Q81UA8k3NQ/24m3mw==}
 
-  '@le-space/iso-webauthn-varsig@0.2.0':
-    resolution: {integrity: sha512-8sVwcu5yvSKkGZhaXzCA8eSim+TKwMBvz25sNkqGZsUkRIh1s5/PszyjO3C/CZasowHLIouaaLb/xd5VQUNzNw==}
+  '@le-space/iso-webauthn-varsig@0.3.0':
+    resolution: {integrity: sha512-qU3ptOP8ew2ZVr506N8joGsDXQNGjRq7VYBkmNdQKuFmbpDtjYyaSH2qyy0x3M8heghVzbB6SxhQM7o3U06w6Q==}
 
   '@le-space/ucanto-interface@11.1.1':
     resolution: {integrity: sha512-K7f/itvJMeeYyylR9D1TD83IBBW9OWrhdjEGT6vFcsjaResVL1zFVte3kt+8opyGhqgSNJ8cLotEfIbDcKyrkw==}
@@ -4533,7 +4533,7 @@ snapshots:
       iso-base: '@le-space/iso-base@4.3.0'
       iso-did: '@le-space/iso-did@2.1.2'
 
-  '@le-space/iso-webauthn-varsig@0.2.0':
+  '@le-space/iso-webauthn-varsig@0.3.0':
     dependencies:
       iso-base: '@le-space/iso-base@4.3.0'
 
