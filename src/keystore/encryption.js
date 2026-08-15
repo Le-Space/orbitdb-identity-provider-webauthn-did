@@ -214,6 +214,67 @@ export function addPRFToCredentialOptions(
 }
 
 /**
+ * Write the secret key into the credential's largeBlob.
+ *
+ * A blob can only be written during an assertion, never at registration — so
+ * this costs one extra WebAuthn prompt after the credential exists. That is
+ * why `addLargeBlobToCredentialOptions()` alone does not persist anything.
+ *
+ * Throws unless the authenticator reports `written: true`. Silence here would
+ * leave a keystore whose key exists only in memory: it works for the current
+ * session and can never be unlocked again, because
+ * {@link retrieveSKFromLargeBlob} would read a blob nobody wrote.
+ *
+ * @param {Uint8Array} credentialId - WebAuthn credential ID (raw bytes).
+ * @param {Uint8Array} sk - Secret key to store.
+ * @param {string} rpId - Relying party ID (domain).
+ * @returns {Promise<void>}
+ */
+export async function writeSKToLargeBlob(credentialId, sk, rpId) {
+  log('Writing secret key to largeBlob');
+
+  let assertion;
+  try {
+    assertion = await navigator.credentials.get(
+      buildCredentialRequestOptions({
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        credentialId,
+        rpId,
+        userVerification: 'required',
+        extensions: {
+          largeBlob: {
+            write: sk,
+          },
+        },
+      })
+    );
+  } catch (error) {
+    log.error('largeBlob write assertion failed: %s', error.message);
+    throw new KeystoreEncryptionError(
+      `Failed to write secret key to largeBlob: ${error.message}`,
+      { cause: error }
+    );
+  }
+
+  // The authenticator answers whether it took the blob. Accepting the
+  // assertion without reading this is how a write that never happened passes
+  // for a success.
+  const written = assertion?.getClientExtensionResults?.()?.largeBlob?.written;
+
+  if (written !== true) {
+    log.error(
+      'Authenticator did not write the largeBlob (written: %o)',
+      written
+    );
+    throw new KeystoreEncryptionError(
+      'Authenticator did not store the secret key in largeBlob'
+    );
+  }
+
+  log('Secret key written to largeBlob');
+}
+
+/**
  * Retrieve secret key from WebAuthn credential using largeBlob extension
  * @param {Uint8Array} credentialId - WebAuthn credential ID
  * @param {string} rpId - Relying party ID (domain)
@@ -734,6 +795,7 @@ export default {
   encryptWithAESGCM,
   decryptWithAESGCM,
   addLargeBlobToCredentialOptions,
+  writeSKToLargeBlob,
   retrieveSKFromLargeBlob,
   addHmacSecretToCredentialOptions,
   wrapSKWithHmacSecret,

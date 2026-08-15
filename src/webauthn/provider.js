@@ -228,6 +228,17 @@ export class WebAuthnDIDProvider {
         hasY: !!publicKey.y,
       });
 
+      // What the authenticator actually agreed to, as opposed to what the
+      // browser said it could negotiate. Only the ceremony settles this, and
+      // the raw PublicKeyCredential does not survive past this function — so
+      // read it here or lose the answer. Callers that offer a choice of
+      // keystore encryption method need it: a client can support largeBlob
+      // while the key in front of it does not.
+      const extensionSupport =
+        KeystoreEncryption.extensionSupportFromCredential(credential);
+
+      webauthnLog('Authenticator extension support: %o', extensionSupport);
+
       const result = {
         credentialId: WebAuthnDIDProvider.arrayBufferToBase64url(
           credential.rawId
@@ -240,6 +251,7 @@ export class WebAuthnDIDProvider {
           credential.response.attestationObject
         ),
         prfInput: prfInput || undefined,
+        extensionSupport,
       };
 
       webauthnLog('Credential creation completed successfully');

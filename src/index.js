@@ -277,6 +277,7 @@ export {
   decryptWithAESGCM,
   addLargeBlobToCredentialOptions,
   addPRFToCredentialOptions,
+  writeSKToLargeBlob,
   retrieveSKFromLargeBlob,
   addHmacSecretToCredentialOptions,
   wrapSKWithPRF,
