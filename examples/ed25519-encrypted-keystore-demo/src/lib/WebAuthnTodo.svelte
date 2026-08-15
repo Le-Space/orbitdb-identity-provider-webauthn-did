@@ -176,7 +176,14 @@
 
   // Four states. Once a credential exists its answer overrules the browser's:
   // the browser saying yes only means it would pass the request along.
-  function supportLabel(name) {
+  //
+  // Takes a method value ('prf', 'largeBlob', 'hmac-secret'), the same
+  // vocabulary as methodAvailable() and the radio bindings. It briefly took a
+  // boolean instead, and the call sites kept passing `extensionSupport.prf` —
+  // so the lookup became `extensionSupport[true]`, undefined, and every method
+  // rendered "Not supported" on a browser that supported all three.
+  function supportLabel(method) {
+    const name = SUPPORT_KEY[method];
     if (credentialSupport) {
       if (credentialSupport[name]) return '✅ Supported';
       if (extensionSupport[name]) return '⚠️ Browser yes, this passkey no';
@@ -1011,7 +1018,7 @@
                   <span
                     style="font-size: 0.75rem; color: var(--cds-text-secondary);"
                   >
-                    {supportLabel(extensionSupport.prf)}
+                    {supportLabel('prf')}
                   </span>
                 </label>
                 <label
@@ -1028,7 +1035,7 @@
                   <span
                     style="font-size: 0.75rem; color: var(--cds-text-secondary);"
                   >
-                    {supportLabel(extensionSupport.largeBlob)}
+                    {supportLabel('largeBlob')}
                   </span>
                 </label>
                 <label
@@ -1047,7 +1054,7 @@
                   <span
                     style="font-size: 0.75rem; color: var(--cds-text-secondary);"
                   >
-                    {supportLabel(extensionSupport.hmacSecret)}
+                    {supportLabel('hmac-secret')}
                   </span>
                 </label>
               </div>
