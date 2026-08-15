@@ -328,9 +328,12 @@ small delta that belongs upstream.
 | `iso-did`      | [iso-did](https://github.com/hugomrdias/iso-repo/tree/main/packages/iso-did)           | Kept in step with the forks above                                                                                             |
 
 The `iso-passkeys` delta is two lines and purely additive — nothing is changed
-or removed, two existing internal functions are simply exported. Once that lands
-upstream these forks can go away, and the `pnpm.overrides` block in
-`package.json` with them.
+or removed, two existing internal functions are simply exported. It is proposed
+upstream as
+[hugomrdias/iso-repo#543](https://github.com/hugomrdias/iso-repo/pull/543); once
+that lands, these three forks and their entries in `pnpm.overrides` can go. The
+remaining entries in that block — `iso-web`, `conf>ajv`, `ajv>fast-uri` — are
+unrelated and stay.
 
 ### Not a fork
 
@@ -339,10 +342,14 @@ existing one. It implements WebAuthn varsig signing for OrbitDB oplog entries
 and has no upstream equivalent. It follows `iso-repo` conventions and lives in
 the same lineage, which is why it is named the way it is.
 
-Its format is still moving: see
-[#11](https://github.com/Le-Space/orbitdb-identity-provider-webauthn-did/issues/11)
-and [iso-repo#1](https://github.com/NiKrause/iso-repo/issues/1) for the
-non-recursive varsig layout it will follow.
+It follows the non-recursive varsig layout, which shipped in 0.2.0.
+
+One thing is still open, and it is on the spec side rather than here: the
+WebAuthn varsig header. `webauthn-varsig-header` is `TODO` in
+[ChainAgnostic/varsig#11](https://github.com/ChainAgnostic/varsig/pull/11), so
+the `0x300001` marker this package writes is a private-use codepoint chosen
+here rather than an allocated one. Expect the wire format to change once that
+is settled.
 
 ### Not forked at all
 
