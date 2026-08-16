@@ -21,6 +21,7 @@ export default defineConfig({
     'webauthn-extension-support.test.js',
     'webauthn-varsig-challenge.test.js',
     'webauthn-attestation-parsing.test.js',
+    'webauthn-user-handle.test.js',
     'webauthn-two-peer-replication.test.js',
   ],
   fullyParallel: false,

@@ -82,7 +82,11 @@ export class WebAuthnDIDProvider {
    * Create a WebAuthn credential for OrbitDB identity
    * This triggers biometric authentication (Face ID, Touch ID, Windows Hello, etc.)
    * @param {Object} options - Credential options
-   * @param {string} options.userId - User ID
+   * @param {string} options.userId - Account label shown in the credential
+   *   picker (`user.name`). A label only: it does not identify the credential,
+   *   two credentials may carry the same one, and it is never used to look one
+   *   up. The handle the authenticator files the credential under is generated
+   *   here and returned as `userHandle`.
    * @param {string} options.displayName - Display name
    * @param {string} options.domain - Domain/RP ID
    * @param {boolean} options.encryptKeystore - Enable keystore encryption
@@ -117,7 +121,19 @@ export class WebAuthnDIDProvider {
 
     // Generate challenge for credential creation
     const challenge = crypto.getRandomValues(new Uint8Array(32));
-    const userIdBytes = new TextEncoder().encode(userId);
+
+    // The user handle is an opaque key, not a label. An authenticator stores
+    // one discoverable credential per (rp.id, user.id) pair and *replaces* the
+    // previous one when both match — silently, with no prompt and nothing to
+    // undo. Deriving the handle from a typed name therefore meant two people
+    // registering as "anna" on a shared device destroyed each other's passkey,
+    // and with it the DID and everything written under it (#45).
+    //
+    // 64 random bytes, as WebAuthn L2 §5.4.3 recommends. The same section
+    // forbids putting personally identifying information here, which a typed
+    // name or e-mail address plainly is. The name keeps its rightful place in
+    // `user.name` below, where the credential picker shows it.
+    const userHandle = crypto.getRandomValues(new Uint8Array(64));
 
     webauthnLog('Calling navigator.credentials.create() for user: %s', userId);
 
@@ -130,7 +146,7 @@ export class WebAuthnDIDProvider {
           id: domain,
         },
         user: {
-          id: userIdBytes,
+          id: userHandle,
           name: userId,
           displayName,
         },
@@ -247,6 +263,13 @@ export class WebAuthnDIDProvider {
         publicKey,
         userId,
         displayName,
+        // Nothing in this package looks a credential up by handle — recovery
+        // goes through discoverable credentials, or through an explicit
+        // credential ID when those are switched off. It is surfaced anyway
+        // because it is the only copy the caller will ever see, and a flow
+        // that one day passes `allowCredentials` needs it. Decode with
+        // `WebAuthnDIDProvider.base64urlToArrayBuffer()`.
+        userHandle: WebAuthnDIDProvider.arrayBufferToBase64url(userHandle),
         attestationObject: new Uint8Array(
           credential.response.attestationObject
         ),

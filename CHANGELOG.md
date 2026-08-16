@@ -4,6 +4,37 @@
 
 ### Fixed
 
+- The WebAuthn user handle is 64 random bytes instead of the UTF-8 of whatever
+  the caller passes as `userId`. An authenticator keeps one discoverable
+  credential per `(rp.id, user.id)` and **replaces** the previous one when both
+  match — silently, with no prompt and nothing to undo. Deriving the handle from
+  a typed name therefore meant two people registering as "anna" on a shared
+  device destroyed each other's passkey, and with it the DID and every entry
+  signed under it. The same happened to one person re-entering their usual name
+  after clearing storage. WebAuthn L2 §5.4.3 also forbids putting personally
+  identifying information in the handle, which a name or e-mail plainly is, and
+  the handle is stored in the authenticator indefinitely.
+
+  `userId` keeps its rightful place as `user.name`, the label the credential
+  picker shows. It is a label only: it identifies nothing, two credentials may
+  carry the same one, and nothing in this package looks a credential up by it.
+  Closes #45.
+
+  Nothing needs migrating. Recovery goes through discoverable credentials
+  (`readLargeBlobMetadata` calls `get()` with no `allowCredentials`), or through
+  an explicit credential ID where those are switched off — no path resolves a
+  credential by handle, so credentials registered under the old scheme keep
+  working untouched. The derived `did:key` comes from the credential's public
+  key and does not change.
+
+  Consumers should expect a behavioural difference: re-registering under a name
+  that was used before now **adds** a passkey instead of replacing one. That is
+  the point — a replaced passkey is data loss, a second entry is a choice — but
+  it means the picker can show several, so `user.name` and `displayName` should
+  be distinguishing enough to pick from. The new random handle is returned as
+  `credential.userHandle` (base64url); the authenticator keeps its own copy, so
+  storing it is optional.
+
 - Actually write the secret key into `largeBlob`. The keystore record carried
   `secretKey: sk, // Will be moved to largeBlob` — and nothing ever moved it.
   That was the only occurrence of the field in `src/`, and
