@@ -75,12 +75,23 @@ export async function createMockAuthenticator({
     await crypto.subtle.exportKey('spki', keypair.publicKey)
   );
 
-  const credentialId = crypto.getRandomValues(
+  // One resident credential per (rpId, user.id), keyed by the handle — the rule
+  // that makes a name-derived handle destructive (#45). A registration whose
+  // handle is already present replaces what was there; a new handle adds to it.
+  const residentByHandle = new Map();
+  let activeCredentialId = crypto.getRandomValues(
     new Uint8Array(credentialIdLength)
   );
   const rpIdHash = await sha256(new TextEncoder().encode(rpId));
 
-  const state = { signCount: 0, assertions: 0, creations: 0, prfEvals: 0 };
+  const state = {
+    signCount: 0,
+    assertions: 0,
+    creations: 0,
+    prfEvals: 0,
+    /** Every `user` dictionary passed to create(), in order. */
+    createdUsers: [],
+  };
 
   // Per-credential secret the PRF output is derived from.
   const prfKey = prfSecret ?? crypto.getRandomValues(new Uint8Array(32));
@@ -107,7 +118,10 @@ export async function createMockAuthenticator({
     )
   );
 
-  const buildAuthData = ({ includeAttestedCredential }) => {
+  const buildAuthData = ({
+    includeAttestedCredential,
+    credentialId = activeCredentialId,
+  }) => {
     const flagByte = includeAttestedCredential
       ? 0x01 | 0x04 | 0x40 // UP | UV | AT
       : 0x01 | 0x04; // UP | UV
@@ -152,8 +166,23 @@ export async function createMockAuthenticator({
         state.creations += 1;
         state.signCount += 1;
 
+        const user = options?.publicKey?.user ?? {};
+        state.createdUsers.push(user);
+
+        const handleKey = bytesToBase64url(new Uint8Array(user.id ?? []));
+        const credentialId = crypto.getRandomValues(
+          new Uint8Array(credentialIdLength)
+        );
+        // set(), not a guard: a repeat handle silently drops the credential
+        // that was stored under it, exactly as an authenticator does.
+        residentByHandle.set(handleKey, credentialId);
+        activeCredentialId = credentialId;
+
         const challenge = options?.publicKey?.challenge ?? new Uint8Array(32);
-        const authData = buildAuthData({ includeAttestedCredential: true });
+        const authData = buildAuthData({
+          includeAttestedCredential: true,
+          credentialId,
+        });
         const attestationObject = new Uint8Array(
           encode(
             new Map([
@@ -222,10 +251,10 @@ export async function createMockAuthenticator({
         );
 
         return {
-          id: bytesToBase64url(credentialId),
-          rawId: credentialId.buffer.slice(
-            credentialId.byteOffset,
-            credentialId.byteOffset + credentialId.byteLength
+          id: bytesToBase64url(activeCredentialId),
+          rawId: activeCredentialId.buffer.slice(
+            activeCredentialId.byteOffset,
+            activeCredentialId.byteOffset + activeCredentialId.byteLength
           ),
           type: 'public-key',
           response: {
@@ -246,7 +275,16 @@ export async function createMockAuthenticator({
   return {
     navigator: navigatorShim,
     publicKey: { algorithm: -7, x, y, keyType: 2, curve: 1 },
-    credentialId,
+    /** The credential an assertion would use: the most recently created one. */
+    get credentialId() {
+      return activeCredentialId;
+    },
+    /** What the authenticator still holds, one entry per distinct handle. */
+    residentCredentials: () =>
+      [...residentByHandle.entries()].map(([handle, id]) => ({
+        handle,
+        credentialId: bytesToBase64url(id),
+      })),
     state,
   };
 }

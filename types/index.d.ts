@@ -91,6 +91,8 @@ export interface WebAuthnCredentialInfo {
   publicKey: WebAuthnPublicKey | Uint8Array;
   userId?: string;
   displayName?: string;
+  /** Random 64-byte WebAuthn user handle, base64url. Not derived from userId. */
+  userHandle?: string;
   attestationObject?: Uint8Array;
   prfInput?: Uint8Array;
   did?: string;
@@ -99,6 +101,7 @@ export interface WebAuthnCredentialInfo {
 }
 
 export interface CreateCredentialOptions {
+  /** Account label for the credential picker. Not an identifier. */
   userId?: string;
   displayName?: string;
   domain?: string;
