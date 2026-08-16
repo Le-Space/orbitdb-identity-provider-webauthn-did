@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.1
+
 ### Fixed
 
 - The WebAuthn user handle is 64 random bytes instead of the UTF-8 of whatever
