@@ -65,6 +65,11 @@ jobs:
         env:
           CI: true
 
+      - name: Run default-path tests
+        run: pnpm exec playwright test tests/webauthn-default-path.test.js --project=chromium --reporter=github
+        env:
+          CI: true
+
       - name: Run WebAuthn varsig E2E tests
         run: pnpm run test:varsig-e2e
         env:

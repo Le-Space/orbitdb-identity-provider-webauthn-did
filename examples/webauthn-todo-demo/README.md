@@ -1,10 +1,13 @@
 # WebAuthn Todo Demo — the default path
 
 The DID is the passkey's own P-256 public key. OrbitDB entries are signed by a
-**secp256k1 key derived from the passkey**: the provider asks the authenticator
+**key derived from the passkey** — secp256k1 by default, Ed25519 if you pick it
+before authenticating (`signingKeyType`): the provider asks the authenticator
 for its PRF output once and runs it through HKDF-SHA256, domain-separated by
-the DID, before OrbitDB reaches for a signing key. The same passkey therefore
-yields the same identity document on every device.
+the DID and the key type, before OrbitDB reaches for a signing key. The same
+passkey therefore yields the same identity document on every device. The choice
+only matters the first time this device derives a key; a keystore that already
+holds one for the DID keeps it, and the panel shows which is in use.
 
 The passkey itself signs exactly once: the identity document
 (`signatures.publicKey` is a WebAuthn assertion). That assertion is stored and
@@ -20,17 +23,34 @@ OrbitDB keystore for signing.
 
 | When                     | Prompts | Why                                                          |
 | ------------------------ | ------- | ------------------------------------------------------------ |
-| Create credential        | 1       | registration                                                 |
+| Create credential        | 1–2     | registration, plus a largeBlob write where supported         |
 | First authenticate       | 2       | PRF output for the derived key, then the identity assertion  |
 | Later sessions           | 0       | the derived key and the stored assertion are reused          |
 | Each write               | 0       | OrbitDB signs with the derived key                           |
 | Use Existing Passkey     | 1       | a discoverable assertion that also reads largeBlob           |
+| After Reset DB           | 1       | the PRF assertion that re-derives the key                    |
 
 At rest, in this browser's IndexedDB (`./orbitdb/identities`): the derived
 signing key, **unencrypted**. `encryptKeystore` does not apply to this path —
 see the [encrypted keystore demo](../ed25519-encrypted-keystore-demo/) for the
 option that seals the signing key. Without PRF support, the keystore
 generates a key instead; that identity works, but stays on one device.
+
+## What the panel shows
+
+After authenticating, next to the DID: the identity document's hash, the
+signing key's type and where it came from, and how many times the page asked
+the authenticator this session (every `create()` and `get()`, whatever it was
+for). Two things to try:
+
+- **Reset DB** wipes IndexedDB, keystore included. Authenticate again: one
+  PRF assertion re-derives the key, the stored identity assertion is reused,
+  and the document hash is the same one.
+- **Logout** ends the session and keeps the credential metadata, so the next
+  visit authenticates straight away. **Forget identity** (two clicks) removes
+  everything this device holds — metadata, stored assertion, keystore. The
+  passkey stays in the authenticator; "Use Existing Passkey" brings the
+  identity back from largeBlob, PRF input included, and derives the key again.
 
 ## What the badges mean
 

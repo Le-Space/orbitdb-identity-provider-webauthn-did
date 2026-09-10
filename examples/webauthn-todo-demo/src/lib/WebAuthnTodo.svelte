@@ -4,6 +4,10 @@
     WebAuthnDIDProvider,
     checkWebAuthnSupport,
     checkExtensionSupport,
+    storeWebAuthnCredential,
+    loadWebAuthnCredential,
+    clearWebAuthnCredential,
+    clearIdentityProofs,
   } from '@le-space/orbitdb-identity-provider-webauthn-did';
   import { getWebAuthnConfig } from '../../../../src/webauthn/config.js';
   import {
@@ -27,11 +31,17 @@
     Tile,
     InlineNotification,
     Loading,
+    RadioButtonGroup,
+    RadioButton,
   } from 'carbon-components-svelte';
   import { Checkmark, Warning } from 'carbon-icons-svelte';
   import IdentityVerificationBadge from '$shared/IdentityVerificationBadge.svelte';
   import ForgeryCheck from '$shared/ForgeryCheck.svelte';
   import { verifyDatabase } from '$shared/lib/verification.js';
+  import {
+    installPromptCounter,
+    promptCounts,
+  } from '$shared/lib/prompt-counter.js';
 
   // Core instances
   let orbitdbInstances = null; // Will contain { orbitdb, ipfs, identity, identities }
@@ -54,6 +64,14 @@
     mediation: null,
     rpId: null,
   };
+
+  // What signs, and the document it signs under. Read back from the keystore
+  // after authenticating rather than assumed from the option: a keystore that
+  // already holds a key for this DID keeps it whatever the radio says.
+  let signingKeyType = 'secp256k1';
+  let signingKey = null; // { type }
+  let identityHash = null;
+  let confirmForget = false;
 
   // Identity verification tracking (not stored in database)
   let todoVerifications = new Map(); // Map<todoId, verifyEntry result> — see $shared/lib/verification.js
@@ -85,6 +103,7 @@
   }
 
   onMount(async () => {
+    installPromptCounter();
     currentRpId = window.location.hostname;
     installAssertionDiagnostics();
     await initializeWebAuthn();
@@ -150,28 +169,12 @@
     }
   }
 
+  // The library's store/load carry `prfInput` as an array. The copy that
+  // stood here spread the credential into JSON, which turned the Uint8Array
+  // into {"0":…}; after a reload the browser refused it as a PRF input and
+  // the derived key silently became a generated one.
   function loadStoredCredential() {
-    try {
-      const storedCredential = localStorage.getItem('webauthn-credential');
-      if (storedCredential) {
-        const parsed = JSON.parse(storedCredential);
-        // Properly deserialize Uint8Arrays for credential data AND public key coordinates
-        return {
-          ...parsed,
-          rawCredentialId: new Uint8Array(parsed.rawCredentialId),
-          attestationObject: new Uint8Array(parsed.attestationObject),
-          publicKey: {
-            ...parsed.publicKey,
-            x: new Uint8Array(parsed.publicKey.x),
-            y: new Uint8Array(parsed.publicKey.y),
-          },
-        };
-      }
-    } catch (error) {
-      console.warn('Failed to load credential from localStorage:', error);
-      localStorage.removeItem('webauthn-credential');
-    }
-    return null;
+    return loadWebAuthnCredential();
   }
 
   function bytesEqual(left, right) {
@@ -416,20 +419,7 @@
   }
 
   function storeCredential(credential) {
-    const serializedCredential = {
-      ...credential,
-      rawCredentialId: Array.from(credential.rawCredentialId),
-      attestationObject: Array.from(credential.attestationObject),
-      publicKey: {
-        ...credential.publicKey,
-        x: Array.from(credential.publicKey.x),
-        y: Array.from(credential.publicKey.y),
-      },
-    };
-    localStorage.setItem(
-      'webauthn-credential',
-      JSON.stringify(serializedCredential)
-    );
+    storeWebAuthnCredential(credential);
   }
 
   async function authenticate() {
@@ -438,7 +428,12 @@
 
       status = 'Setting up OrbitDB...';
       // Use the extracted setupOrbitDB function
-      orbitdbInstances = await setupOrbitDB(credential);
+      orbitdbInstances = await setupOrbitDB(credential, { signingKeyType });
+      identityHash = orbitdbInstances.identity.hash;
+      const key = await orbitdbInstances.identities.keystore.getKey(
+        orbitdbInstances.identity.id
+      );
+      signingKey = key ? { type: key.type } : null;
 
       status = 'Opening TODO database...';
       // Use the extracted openTodoDatabase function
@@ -609,33 +604,64 @@
     }
   }
 
+  function clearSession() {
+    todos = [];
+    todoVerifications.clear();
+    isAuthenticated = false;
+    database = null;
+    orbitdbInstances = null;
+    signingKey = null;
+    identityHash = null;
+    confirmForget = false;
+  }
+
+  // Logout ends the session and nothing else: the credential metadata stays,
+  // so the next visit authenticates straight away. It used to delete the
+  // metadata — on an authenticator without largeBlob that was the only copy
+  // of the public key, and the DID was gone for good, while the derived key
+  // stayed behind in IndexedDB.
   async function handleLogout() {
     try {
-      // Clean up connections
       if (orbitdbInstances) {
         await cleanup({ ...orbitdbInstances, database });
       }
-
-      // Clear all state
-      todos = [];
-      todoVerifications.clear();
-      isAuthenticated = false;
-      credential = null;
-      database = null;
-      orbitdbInstances = null;
-      localStorage.removeItem('webauthn-credential');
+      clearSession();
       status = 'Logged out successfully';
     } catch (error) {
       console.error('Error during logout:', error);
-      // Force clear state even if cleanup fails
-      todos = [];
-      todoVerifications.clear();
-      isAuthenticated = false;
-      credential = null;
-      database = null;
-      orbitdbInstances = null;
-      localStorage.removeItem('webauthn-credential');
+      clearSession();
       status = 'Logged out (with cleanup errors)';
+    }
+  }
+
+  // Forgetting removes everything this device holds for the identity: the
+  // credential metadata, the stored identity assertion, and the keystore with
+  // the derived key (IndexedDB). The passkey itself stays in the
+  // authenticator; "Use Existing Passkey" can bring the identity back from
+  // largeBlob, or derive the key again from PRF.
+  async function handleForgetIdentity() {
+    if (!confirmForget) {
+      confirmForget = true;
+      status = 'Forget this identity on this device? Click again to confirm.';
+      return;
+    }
+    try {
+      loading = true;
+      if (orbitdbInstances) {
+        await cleanup({ ...orbitdbInstances, database });
+      }
+      clearWebAuthnCredential();
+      clearIdentityProofs();
+      await resetDatabaseState();
+      clearSession();
+      credential = null;
+      status =
+        'Identity forgotten on this device. The passkey itself is still in your authenticator.';
+    } catch (error) {
+      console.error('Error while forgetting the identity:', error);
+      status = `Could not forget the identity: ${error.message}`;
+    } finally {
+      loading = false;
     }
   }
 </script>
@@ -745,9 +771,29 @@
           {loading ? 'Checking...' : 'Use Existing Passkey'}
         </Button>
       {:else}
-        <p style="margin-bottom: 1.5rem;">
+        <p style="margin-bottom: 1rem;">
           Use your biometric authentication to access your secure TODO list.
         </p>
+        <div
+          style="margin-bottom: 1.25rem;"
+          data-testid="signing-key-type-choice"
+        >
+          <RadioButtonGroup
+            legendText="Signing key derived from the passkey"
+            bind:selected={signingKeyType}
+            disabled={loading}
+          >
+            <RadioButton labelText="secp256k1 (default)" value="secp256k1" />
+            <RadioButton labelText="Ed25519" value="Ed25519" />
+          </RadioButtonGroup>
+          <p
+            style="margin: 0.5rem 0 0; font-size: 0.8rem; color: var(--cds-text-secondary);"
+          >
+            Decides the key this device derives the first time. A keystore that
+            already holds a key for this DID keeps it — the panel after
+            authenticating shows which one is in use.
+          </p>
+        </div>
         <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
           <Button on:click={authenticate} disabled={loading} kind="primary">
             {loading ? 'Authenticating...' : 'Authenticate with WebAuthn'}
@@ -818,6 +864,23 @@
                 >
                   {orbitdbInstances.identity.id}
                 </code>
+                <dl class="identity-facts">
+                  <dt>Identity document</dt>
+                  <dd data-testid="identity-hash">{identityHash}</dd>
+                  <dt>Signing key</dt>
+                  <dd data-testid="signing-key-type">
+                    {signingKey?.type ?? '—'}
+                    {#if extensionSupport.prf}
+                      — derived from the passkey (PRF), the same on every device
+                    {:else}
+                      — generated for this device (no PRF)
+                    {/if}
+                  </dd>
+                  <dt>WebAuthn prompts this session</dt>
+                  <dd data-testid="prompt-count">
+                    create {$promptCounts.create} · get {$promptCounts.get}
+                  </dd>
+                </dl>
               </div>
             {/if}
           </div>
@@ -840,6 +903,15 @@
             </Button>
             <Button on:click={handleLogout} kind="ghost" size="small">
               Logout
+            </Button>
+            <Button
+              on:click={handleForgetIdentity}
+              kind="danger-ghost"
+              size="small"
+              disabled={loading}
+              data-testid="forget-identity"
+            >
+              {confirmForget ? 'Confirm: forget identity' : 'Forget identity'}
             </Button>
           </div>
           <ForgeryCheck
@@ -985,3 +1057,23 @@
     </ul>
   </Tile>
 </div>
+
+<style>
+  .identity-facts {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.25rem 1rem;
+    margin: 0.75rem 0 0;
+    font-size: 0.8rem;
+  }
+  .identity-facts dt {
+    color: var(--cds-text-secondary);
+  }
+  .identity-facts dd {
+    margin: 0;
+    word-break: break-all;
+    font-family:
+      'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas,
+      'Courier New', monospace;
+  }
+</style>
