@@ -28,6 +28,7 @@ export {
 
 export {
   createWorkerKeystoreClient,
+  createWorkerSigner,
   isWorkerKeystoreAvailable,
   createEd25519DidFromPublicKey,
   getDefaultWorkerKeystoreClient,

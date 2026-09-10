@@ -52,12 +52,25 @@ export interface OrbitDBWebAuthnIdentityProviderOptions {
   deriveSigningKeyFromPrf?: boolean;
   /** Type of that derived key (default 'secp256k1'). */
   signingKeyType?: 'secp256k1' | 'Ed25519';
+  /** A key that signs elsewhere (e.g. a Web Worker): the identity is its DID. Pair with `createSessionKeystore({ signer })`. */
+  signer?: ExternalSigner;
   [key: string]: unknown;
 }
 
 export type KeystoreEncryptionState =
   | { enabled: true; method: KeystoreEncryptionMethod }
-  | { enabled: false; reason: 'not-requested' | 'prf-unavailable' };
+  | {
+      enabled: false;
+      reason: 'not-requested' | 'prf-unavailable' | 'external-signer';
+    };
+
+/** A key OrbitDB can sign with while the private half stays elsewhere. */
+export interface ExternalSigner {
+  did: string;
+  type: 'Ed25519';
+  publicKey: Uint8Array;
+  sign(data: Uint8Array): Promise<Uint8Array>;
+}
 
 export class OrbitDBWebAuthnIdentityProvider {
   constructor(options?: OrbitDBWebAuthnIdentityProviderOptions);
@@ -76,8 +89,11 @@ export function OrbitDBWebAuthnIdentityProviderFunction(
 ): OrbitDBWebAuthnIdentityProvider;
 
 /** An OrbitDB keystore on memory storage; required for `encryptKeystore` to mean anything at rest. */
-export function createSessionKeystore(): Promise<unknown>;
+export function createSessionKeystore(options?: {
+  signer?: ExternalSigner;
+}): Promise<unknown>;
 export function isSessionKeystore(keystore: unknown): boolean;
+export function assertSigner(signer: unknown): void;
 
 /** The authenticator returned no PRF output; nothing stands in for it. */
 export class PrfUnavailableError extends Error {

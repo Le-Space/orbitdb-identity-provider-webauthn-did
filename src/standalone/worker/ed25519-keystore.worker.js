@@ -1,21 +1,33 @@
 /**
  * Ed25519 keystore web worker.
  *
- * Responsibilities:
- * - Derive and hold AES-GCM key from PRF seed
- * - Generate and hold Ed25519 keypair
- * - Load keypair archive back into worker memory
- * - Encrypt/decrypt bytes
- * - Sign/verify bytes
+ * Two things live here and nowhere else:
+ *
+ * - A signer: an Ed25519 key derived from the passkey's PRF output
+ *   (`deriveSigner`). It is derived again every session, never exported,
+ *   never written anywhere, and the page only ever gets `sign()`. The same
+ *   passkey yields the same key on every device.
+ * - The older archive flow (`generateKeypair` / `loadKeypair` /
+ *   `encrypt` / `decrypt`): a random key, sealed with an AES key from the
+ *   PRF seed. Its archive crosses to the page in clear on the way to and
+ *   from storage, which is why the demos moved to the signer.
  */
+import { generateKeyPairFromSeed } from '@libp2p/crypto/keys';
 
 const WORKER_KDF_INFO = new TextEncoder().encode(
   'orbitdb/standalone-ed25519-keystore'
+);
+// Its own info string: the signer and the AES key must never share bytes.
+// Bumping it rotates every derived signer, so treat it as a breaking change.
+const SIGNER_KDF_INFO = new TextEncoder().encode(
+  'orbitdb-identity-provider-webauthn-did:worker-signer:v1'
 );
 
 let ed25519KeyPair = null;
 let aesKey = null;
 let edSigner = null;
+/** @type {import('@libp2p/interface').PrivateKey|null} The derived signer. */
+let signerKey = null;
 
 function asUint8Array(value) {
   if (value instanceof Uint8Array) return value;
@@ -65,6 +77,36 @@ async function deriveAesKeyFromPrfSeed(prfSeedBuffer) {
     false,
     ['encrypt', 'decrypt']
   );
+}
+
+/**
+ * HKDF-SHA256 the PRF seed into an Ed25519 seed and keep the key pair.
+ * Returns only the public key.
+ */
+async function deriveSigner(prfSeedBuffer) {
+  const seedBytes = asUint8Array(prfSeedBuffer);
+  if (seedBytes.length === 0) {
+    throw new Error('PRF seed must not be empty');
+  }
+  const baseKey = await crypto.subtle.importKey(
+    'raw',
+    seedBytes,
+    'HKDF',
+    false,
+    ['deriveBits']
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: new Uint8Array(0),
+      info: SIGNER_KDF_INFO,
+    },
+    baseKey,
+    256
+  );
+  signerKey = await generateKeyPairFromSeed('Ed25519', new Uint8Array(bits));
+  return { publicKey: new Uint8Array(signerKey.publicKey.raw) };
 }
 
 async function generateEd25519KeypairArchive() {
@@ -177,6 +219,9 @@ async function decrypt(ciphertextBuffer, ivBuffer) {
 }
 
 async function sign(dataBuffer) {
+  if (signerKey) {
+    return { signature: await signerKey.sign(asUint8Array(dataBuffer)) };
+  }
   if (!ed25519KeyPair && !edSigner) {
     throw new Error('Ed25519 keypair not generated');
   }
@@ -200,6 +245,14 @@ async function sign(dataBuffer) {
 }
 
 async function verify(dataBuffer, signatureBuffer) {
+  if (signerKey) {
+    return {
+      valid: await signerKey.publicKey.verify(
+        asUint8Array(dataBuffer),
+        asUint8Array(signatureBuffer)
+      ),
+    };
+  }
   if (!ed25519KeyPair && !edSigner) {
     throw new Error('Ed25519 keypair not generated');
   }
@@ -245,6 +298,12 @@ self.onmessage = async (event) => {
       case 'init': {
         aesKey = await deriveAesKeyFromPrfSeed(msg.prfSeed);
         postSuccess(id, { initialized: true });
+        break;
+      }
+      case 'deriveSigner': {
+        const { publicKey } = await deriveSigner(msg.prfSeed);
+        const publicKeyBuffer = toDetachedBuffer(publicKey);
+        postSuccess(id, { publicKey: publicKeyBuffer }, [publicKeyBuffer]);
         break;
       }
       case 'generateKeypair': {

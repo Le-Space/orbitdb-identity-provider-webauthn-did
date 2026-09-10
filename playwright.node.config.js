@@ -25,6 +25,7 @@ export default defineConfig({
     'webauthn-two-peer-replication.test.js',
     'identity-forgery.test.js',
     'session-keystore.test.js',
+    'worker-signer.test.js',
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
