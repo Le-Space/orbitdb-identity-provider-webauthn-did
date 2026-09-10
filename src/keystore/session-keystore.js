@@ -16,13 +16,16 @@
  *     const keystore = await createSessionKeystore();
  *     const identities = await Identities({ ipfs, keystore });
  */
-import { KeyStore, MemoryStorage } from '@orbitdb/core';
 
 /**
  * @returns {Promise<Object>} An OrbitDB keystore on memory storage, marked
  *   `sessionOnly` so the provider can tell it apart from a persistent one.
  */
 export async function createSessionKeystore() {
+  // Loaded here, not at module scope: `@orbitdb/core` is a peer dependency,
+  // and the package's main entry must stay importable where it is absent
+  // (the tarball check in CI imports every entry in an empty project).
+  const { KeyStore, MemoryStorage } = await import('@orbitdb/core');
   const keystore = await KeyStore({ storage: await MemoryStorage() });
   keystore.sessionOnly = true;
   return keystore;
