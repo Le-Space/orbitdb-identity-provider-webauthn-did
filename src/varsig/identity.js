@@ -10,7 +10,7 @@ import { DIDKey } from 'iso-did';
 import { concat } from 'iso-webauthn-varsig';
 import { DEFAULT_DOMAIN_LABELS } from './domain.js';
 import { encoder, toBytes } from './utils.js';
-import { verifyVarsigForPayload } from './assertion.js';
+import { verifyVarsigForPayload, algorithmFromPublicKey } from './assertion.js';
 import { WebAuthnVarsigProvider } from './provider.js';
 
 const IDENTITY_CODEC = dagCbor;
@@ -330,6 +330,21 @@ export async function decodeVarsigIdentityFromBytes(bytes, domainLabels = {}) {
  */
 export async function verifyVarsigIdentity(identity, domainLabels = {}) {
   if (!identity || !identity.publicKey || !identity.signatures) return false;
+
+  // The id has to be the DID of the key that signs for it. Both signatures
+  // below are checked against `identity.publicKey`, so without this anyone
+  // with a passkey on the same origin could sign a stranger's DID with their
+  // own key and pass.
+  let expectedDid;
+  try {
+    expectedDid = DIDKey.fromPublicKey(
+      algorithmFromPublicKey(identity.publicKey),
+      identity.publicKey
+    ).did;
+  } catch {
+    return false;
+  }
+  if (identity.id !== expectedDid) return false;
   const labels = { ...DEFAULT_DOMAIN_LABELS, ...domainLabels };
 
   const idBytes = encoder.encode(identity.id);

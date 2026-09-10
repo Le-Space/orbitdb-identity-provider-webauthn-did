@@ -1,4 +1,8 @@
 import { test, expect } from '@playwright/test';
+import {
+  addVirtualAuthenticator,
+  requireChromium,
+} from './helpers/virtual-authenticator.js';
 
 /**
  * E2E Logging Test for WebAuthn Identity Provider
@@ -18,113 +22,30 @@ import { test, expect } from '@playwright/test';
 test.describe('WebAuthn Logging E2E Test', () => {
   let capturedLogs = [];
 
-  test.beforeEach(async ({ page, context }) => {
+  test.beforeEach(async ({ page, browserName }) => {
     // Reset captured logs
     capturedLogs = [];
 
     // Set up WebAuthn mocks and enable DEBUG logging
-    await context.addInitScript(() => {
-      // Enable @libp2p/logger debug output in browser
-      // @libp2p/logger uses localStorage for debug configuration
+    // A real authenticator: the zero-signature mock that stood here only passed
+    // while nothing verified a WebAuthn signature (GHSA-326j-4cc3-4rrg).
+    requireChromium(test, browserName);
+    await addVirtualAuthenticator(page);
+
+    // The one part of the old init script that was not a mock: the provider
+    // logs through @libp2p/logger, which in a browser reads its filter from
+    // localStorage rather than from DEBUG. Without it the page logs nothing
+    // for the analysis below to count.
+    await page.addInitScript(() => {
       window.localStorage.setItem(
         'debug',
         'orbitdb-identity-provider-webauthn-did*'
       );
-
-      // Also intercept console.debug to capture @libp2p/logger output
       const originalDebug = console.debug;
       console.debug = function (...args) {
-        // Convert to regular console.log so Playwright captures it
-        console.log('[DEBUG]', ...args);
         originalDebug.apply(console, args);
+        console.log('[DEBUG]', ...args);
       };
-
-      console.log('🔧 Setting up WebAuthn mocks and debug logging...');
-      console.log(
-        '🔧 DEBUG localStorage set to: ' + window.localStorage.getItem('debug')
-      );
-
-      if (!window.PublicKeyCredential) {
-        window.PublicKeyCredential = {};
-      }
-
-      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable =
-        async () => {
-          return true;
-        };
-
-      window.PublicKeyCredential.isConditionalMediationAvailable = async () => {
-        return true;
-      };
-
-      const mockCredentialId = new Uint8Array([
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-      ]);
-
-      if (!window.navigator.credentials) {
-        window.navigator.credentials = {};
-      }
-
-      window.navigator.credentials.create = async () => {
-        console.log('🔐 WEBAUTHN_MOCK: navigator.credentials.create() called');
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        const mockAttestation = new Uint8Array(300);
-        mockAttestation.set([
-          0xa3, 0x63, 0x66, 0x6d, 0x74, 0x66, 0x70, 0x61, 0x63, 0x6b, 0x65,
-          0x64, 0x67, 0x61, 0x74, 0x74, 0x53, 0x74, 0x6d, 0x74, 0xa0, 0x68,
-          0x61, 0x75, 0x74, 0x68, 0x44, 0x61, 0x74, 0x61,
-        ]);
-
-        return {
-          id: 'mock-credential-id-' + Date.now(),
-          rawId: mockCredentialId,
-          type: 'public-key',
-          response: {
-            attestationObject: mockAttestation,
-            clientDataJSON: new TextEncoder().encode(
-              JSON.stringify({
-                type: 'webauthn.create',
-                challenge: 'mock-challenge',
-                origin: window.location.origin,
-                crossOrigin: false,
-              })
-            ),
-            getPublicKey: () => new Uint8Array(65),
-            getPublicKeyAlgorithm: () => -7,
-          },
-          getClientExtensionResults: () => ({}),
-        };
-      };
-
-      window.navigator.credentials.get = async () => {
-        console.log(
-          '🔐 WEBAUTHN_MOCK: navigator.credentials.get() called - BIOMETRIC PROMPT WOULD APPEAR'
-        );
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        return {
-          id: 'mock-credential-id',
-          rawId: mockCredentialId,
-          type: 'public-key',
-          response: {
-            authenticatorData: new Uint8Array(37),
-            clientDataJSON: new TextEncoder().encode(
-              JSON.stringify({
-                type: 'webauthn.get',
-                challenge: 'mock-challenge',
-                origin: window.location.origin,
-                crossOrigin: false,
-              })
-            ),
-            signature: new Uint8Array(64),
-            userHandle: null,
-          },
-          getClientExtensionResults: () => ({}),
-        };
-      };
-
-      console.log('✅ WebAuthn mocks setup complete');
     });
 
     // Capture console logs from the page
@@ -316,8 +237,13 @@ function analyzeLogsForAuthenticationBehavior(logs) {
 
     // Count navigator.credentials.get() calls (actual biometric prompts)
     if (
-      text.includes('navigator.credentials.get() called') ||
-      text.includes('BIOMETRIC PROMPT WOULD APPEAR')
+      // The provider's own line, written just before it calls
+
+      // navigator.credentials.get(). This used to count lines the mock
+
+      // printed about itself, which proved only that the mock was loaded.
+
+      text.includes('Calling navigator.credentials.get()')
     ) {
       analysis.credentialsGetCallCount++;
       analysis.detailedFlow.push({

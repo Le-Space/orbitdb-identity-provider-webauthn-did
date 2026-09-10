@@ -7,9 +7,6 @@ import { toArrayBuffer } from './utils.js';
 import { buildAuthenticatorSelection } from '../webauthn/config.js';
 import { logWebAuthnResponse } from '../webauthn/debug-log.js';
 
-const isTestMode = () =>
-  typeof window !== 'undefined' && window.__PLAYWRIGHT__ === true;
-
 /**
  * Extract public key info from a WebAuthn attestation object.
  * @param {Uint8Array} attestationObject - Raw attestation object bytes.
@@ -80,23 +77,6 @@ async function createWebAuthnVarsigCredential(options = {}) {
     domain: window.location.hostname,
     ...options,
   };
-
-  if (isTestMode()) {
-    const credentialId = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
-    const publicKey = new Uint8Array(32);
-    for (let i = 0; i < publicKey.length; i++) {
-      publicKey[i] = i + 1;
-    }
-    const algorithm = 'Ed25519';
-    const did = DIDKey.fromPublicKey(algorithm, publicKey).did;
-    return {
-      credentialId,
-      publicKey,
-      did,
-      algorithm,
-      cose: { kty: 1, alg: -8, crv: 6 },
-    };
-  }
 
   const publicKey = {
     rp: { name: 'OrbitDB Varsig Identity', id: domain },

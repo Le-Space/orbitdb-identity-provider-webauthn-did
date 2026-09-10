@@ -1,4 +1,8 @@
 import { test, expect } from '@playwright/test';
+import {
+  addVirtualAuthenticator,
+  requireChromium,
+} from './helpers/virtual-authenticator.js';
 
 /**
  * E2E Tests for Ed25519 DID with WebAuthn-Encrypted Keystore Demo
@@ -36,124 +40,17 @@ async function authenticateAndWait(page) {
 test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
   test.describe.configure({ mode: 'serial' });
 
-  test.beforeEach(async ({ page, context }) => {
+  test.beforeEach(async ({ page, context, browserName }) => {
     // Clear localStorage before each test
     await context.clearCookies();
 
     // Set up WebAuthn mocks with extension support
-    await context.addInitScript(() => {
-      console.log('🔧 Setting up WebAuthn mocks with extension support...');
-
-      if (!window.PublicKeyCredential) {
-        window.PublicKeyCredential = function PublicKeyCredential() {};
-      }
-      if (!window.PublicKeyCredential.prototype) {
-        window.PublicKeyCredential.prototype = {};
-      }
-
-      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable =
-        async () => {
-          return true;
-        };
-
-      window.PublicKeyCredential.isConditionalMediationAvailable = async () => {
-        return true;
-      };
-
-      const mockCredentialId = new Uint8Array([
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-      ]);
-
-      if (!window.navigator.credentials) {
-        window.navigator.credentials = {};
-      }
-
-      window.navigator.credentials.create = async (options) => {
-        console.log('🔐 WEBAUTHN_MOCK: navigator.credentials.create() called');
-        console.log('🔐 Extensions requested:', options?.publicKey?.extensions);
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        const mockAttestation = new Uint8Array(300);
-        mockAttestation.set([
-          0xa3, 0x63, 0x66, 0x6d, 0x74, 0x66, 0x70, 0x61, 0x63, 0x6b, 0x65,
-          0x64, 0x67, 0x61, 0x74, 0x74, 0x53, 0x74, 0x6d, 0x74, 0xa0, 0x68,
-          0x61, 0x75, 0x74, 0x68, 0x44, 0x61, 0x74, 0x61,
-        ]);
-
-        // Mock extension results - simulate hmac-secret support
-        const extensionResults = {};
-        if (options?.publicKey?.extensions?.hmacCreateSecret) {
-          extensionResults.hmacCreateSecret = true;
-          console.log('🔐 WEBAUTHN_MOCK: hmac-secret extension SUPPORTED');
-        }
-        if (options?.publicKey?.extensions?.largeBlob) {
-          extensionResults.largeBlob = { supported: false }; // Simulate browser not supporting largeBlob
-          console.log('🔐 WEBAUTHN_MOCK: largeBlob extension NOT SUPPORTED');
-        }
-
-        return {
-          id: 'mock-credential-id-' + Date.now(),
-          rawId: mockCredentialId,
-          type: 'public-key',
-          response: {
-            attestationObject: mockAttestation,
-            clientDataJSON: new TextEncoder().encode(
-              JSON.stringify({
-                type: 'webauthn.create',
-                challenge: 'mock-challenge',
-                origin: window.location.origin,
-                crossOrigin: false,
-              })
-            ),
-            getPublicKey: () => new Uint8Array(65),
-            getPublicKeyAlgorithm: () => -7,
-          },
-          getClientExtensionResults: () => extensionResults,
-        };
-      };
-
-      window.navigator.credentials.get = async (options) => {
-        console.log('🔐 WEBAUTHN_MOCK: navigator.credentials.get() called');
-        console.log('🔐 Extensions requested:', options?.publicKey?.extensions);
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        // Mock extension results for authentication
-        const extensionResults = {};
-        if (options?.publicKey?.extensions?.hmacGetSecret) {
-          // Generate mock HMAC secret (32 bytes)
-          extensionResults.hmacGetSecret = {
-            output1: new Uint8Array(32).fill(42), // Mock secret
-          };
-          console.log('🔐 WEBAUTHN_MOCK: hmac-secret output returned');
-        }
-        if (options?.publicKey?.extensions?.largeBlob) {
-          extensionResults.largeBlob = { blob: null }; // No blob stored
-          console.log('🔐 WEBAUTHN_MOCK: largeBlob read returned null');
-        }
-
-        return {
-          id: 'mock-credential-id',
-          rawId: mockCredentialId,
-          type: 'public-key',
-          response: {
-            authenticatorData: new Uint8Array(37),
-            clientDataJSON: new TextEncoder().encode(
-              JSON.stringify({
-                type: 'webauthn.get',
-                challenge: 'mock-challenge',
-                origin: window.location.origin,
-                crossOrigin: false,
-              })
-            ),
-            signature: new Uint8Array(64),
-            userHandle: null,
-          },
-          getClientExtensionResults: () => extensionResults,
-        };
-      };
-
-      console.log('✅ WebAuthn mocks setup complete with extension support');
-    });
+    // A real authenticator: the zero-signature mock that stood here only passed
+    // while nothing verified a WebAuthn signature (GHSA-326j-4cc3-4rrg). Its
+    // extension results were invented too — hmac-secret on, largeBlob off —
+    // so the support checks below now see what Chromium actually offers.
+    requireChromium(test, browserName);
+    await addVirtualAuthenticator(page);
 
     // Navigate to the demo
     await page.goto('http://localhost:5173', { waitUntil: 'domcontentloaded' });

@@ -1,127 +1,16 @@
 import { test, expect } from '@playwright/test';
+import {
+  addVirtualAuthenticator,
+  requireChromium,
+} from './helpers/virtual-authenticator.js';
 
 test.describe('WebAuthn Credential Creation Test', () => {
-  test.beforeEach(async ({ page, context }) => {
+  test.beforeEach(async ({ page, browserName }) => {
     // Enhanced WebAuthn mocking
-    await context.addInitScript(() => {
-      console.log('🔧 Setting up WebAuthn mocks...');
-
-      // Ensure PublicKeyCredential exists
-      if (!window.PublicKeyCredential) {
-        window.PublicKeyCredential = {};
-      }
-
-      // Mock the support detection methods
-      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable =
-        async () => {
-          console.log('🔍 Mock: Platform authenticator available');
-          return true;
-        };
-
-      window.PublicKeyCredential.isConditionalMediationAvailable = async () => {
-        console.log('🔍 Mock: Conditional mediation available');
-        return true;
-      };
-
-      // Create a consistent mock credential ID
-      const mockCredentialId = new Uint8Array([
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-      ]);
-
-      // Mock navigator.credentials
-      if (!window.navigator.credentials) {
-        window.navigator.credentials = {};
-      }
-
-      window.navigator.credentials.create = async (options) => {
-        console.log(
-          '🔐 Mock: Creating WebAuthn credential with options:',
-          options
-        );
-
-        // Simulate slight delay like real WebAuthn
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        // Create a realistic mock attestation object (300 bytes)
-        const mockAttestation = new Uint8Array(300);
-        // Fill with some realistic-looking data
-        mockAttestation.set([
-          // CBOR map indicator and some mock data
-          0xa3, 0x63, 0x66, 0x6d, 0x74, 0x66, 0x70, 0x61, 0x63, 0x6b, 0x65,
-          0x64, 0x67, 0x61, 0x74, 0x74, 0x53, 0x74, 0x6d, 0x74, 0xa0, 0x68,
-          0x61, 0x75, 0x74, 0x68, 0x44, 0x61, 0x74, 0x61,
-        ]);
-
-        const mockCredential = {
-          id: 'mock-credential-id-' + Date.now(),
-          rawId: mockCredentialId,
-          type: 'public-key',
-          response: {
-            attestationObject: mockAttestation,
-            clientDataJSON: new TextEncoder().encode(
-              JSON.stringify({
-                type: 'webauthn.create',
-                challenge: 'mock-challenge',
-                origin: window.location.origin,
-                crossOrigin: false,
-              })
-            ),
-            getPublicKey: () => {
-              console.log('🔑 Mock: Getting public key');
-              return new Uint8Array(65); // Mock P-256 public key
-            },
-            getPublicKeyAlgorithm: () => -7, // ES256
-          },
-          getClientExtensionResults: () => ({}),
-        };
-
-        console.log('✅ Mock: WebAuthn credential created successfully');
-        return mockCredential;
-      };
-
-      window.navigator.credentials.get = async (options) => {
-        console.log(
-          '🔐 Mock: Getting WebAuthn credential with options:',
-          options
-        );
-
-        // Simulate slight delay
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        const mockAssertion = {
-          id: 'mock-credential-id',
-          rawId: mockCredentialId,
-          type: 'public-key',
-          response: {
-            authenticatorData: new Uint8Array(37), // Standard length
-            clientDataJSON: new TextEncoder().encode(
-              JSON.stringify({
-                type: 'webauthn.get',
-                challenge: 'mock-challenge',
-                origin: window.location.origin,
-                crossOrigin: false,
-              })
-            ),
-            signature: new Uint8Array(64), // Mock signature
-            userHandle: null,
-          },
-          getClientExtensionResults: () => ({}),
-        };
-
-        console.log('✅ Mock: WebAuthn assertion created successfully');
-        return mockAssertion;
-      };
-
-      // Also ensure other required globals exist
-      if (!window.TextEncoder) {
-        window.TextEncoder = TextEncoder;
-      }
-      if (!window.TextDecoder) {
-        window.TextDecoder = TextDecoder;
-      }
-
-      console.log('✅ WebAuthn mocks setup complete');
-    });
+    // A real authenticator: the zero-signature mock that stood here only passed
+    // while nothing verified a WebAuthn signature (GHSA-326j-4cc3-4rrg).
+    requireChromium(test, browserName);
+    await addVirtualAuthenticator(page);
 
     // Navigate to the demo
     console.log('🌐 Navigating to demo app...');

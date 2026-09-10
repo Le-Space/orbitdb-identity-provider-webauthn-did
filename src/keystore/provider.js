@@ -9,6 +9,7 @@ import { base58btc } from 'multiformats/bases/base58';
 import * as KeystoreEncryption from './encryption.js';
 import { ensureDerivedSigningKey } from './derived-signing-key.js';
 import { WebAuthnDIDProvider } from '../webauthn/provider.js';
+import { verifyWebAuthnIdentityBinding } from '../webauthn/proof-verification.js';
 import {
   identityProofKey,
   loadIdentityProof,
@@ -171,12 +172,24 @@ export class OrbitDBWebAuthnIdentityProvider {
         const publicKeyBytes = normalizeByteArray(encryptedData.publicKey);
         const keyType = encryptedData.keyType || this.keystoreKeyType;
 
-        return this.createDIDFromKeystorePublicKey(
+        const did = this.createDIDFromKeystorePublicKey(
           publicKeyBytes,
           keyType,
           varint,
           base58btc
         );
+        // OrbitDB signs with whatever key it finds under the id, and creates a
+        // secp256k1 one when there is none — so without this the DID said
+        // Ed25519 and the entries were signed by an unrelated key.
+        if (
+          this.unlockedKeypair?.privateKey &&
+          !(await this.keystore.getKey(did))
+        ) {
+          await this.keystore.addKey(did, {
+            privateKey: this.unlockedKeypair.privateKey,
+          });
+        }
+        return did;
       }
 
       // Get the keystore's identity ID (this will be used to retrieve the key)
@@ -293,12 +306,18 @@ export class OrbitDBWebAuthnIdentityProvider {
         keystoreKey.type
       );
 
-      return this.createDIDFromKeystorePublicKey(
+      const did = this.createDIDFromKeystorePublicKey(
         publicKeyBytes,
         keystoreKey.type,
         varint,
         base58btc
       );
+      // Stored above under the credential's P-256 DID; OrbitDB looks it up under
+      // the DID returned here, found nothing, and generated a secp256k1 key.
+      if (!(await this.keystore.getKey(did))) {
+        await this.keystore.addKey(did, { privateKey: keystoreKey.raw });
+      }
+      return did;
     } catch (error) {
       identityLog.error(
         'Failed to create Ed25519 DID from keystore: %s',
@@ -734,27 +753,10 @@ OrbitDBWebAuthnIdentityProviderFunction.type = IDENTITY_TYPES.WEBAUTHN;
 OrbitDBWebAuthnIdentityProviderFunction.verifyIdentity = async function (
   identity
 ) {
-  try {
-    // For WebAuthn identities, we need to store the credential info in the identity
-    // Since WebAuthn verification requires the original credential, not just the public key,
-    // we'll create a simplified verification that checks the proof structure
-
-    // For WebAuthn, the identity should have been created with our provider,
-    // so we can trust it if it has the right structure
-    // Accept both DID format (did:key:...) and hash format (hex string) for backward compatibility
-    const isValidDID = identity.id && identity.id.startsWith(DID_KEY_PREFIX);
-    const isValidHash = identity.id && /^[a-f0-9]{64}$/.test(identity.id); // 64-char hex string (legacy)
-
-    if (
-      identity.type === IDENTITY_TYPES.WEBAUTHN &&
-      (isValidDID || isValidHash)
-    ) {
-      return true;
-    }
-
-    return false;
-  } catch (error) {
-    console.error('WebAuthn static identity verification failed:', error);
-    return false;
-  }
+  // The check OrbitDB relies on to decide whether this identity may speak for
+  // its DID. It used to accept any `did:key:` of type `webauthn`, so a peer
+  // holding only its own key could write as anyone in a write list
+  // (GHSA-326j-4cc3-4rrg). See ../webauthn/proof-verification.js.
+  if (identity?.type !== IDENTITY_TYPES.WEBAUTHN) return false;
+  return verifyWebAuthnIdentityBinding(identity);
 };

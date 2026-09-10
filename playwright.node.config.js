@@ -23,6 +23,7 @@ export default defineConfig({
     'webauthn-attestation-parsing.test.js',
     'webauthn-user-handle.test.js',
     'webauthn-two-peer-replication.test.js',
+    'identity-forgery.test.js',
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,

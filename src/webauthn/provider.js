@@ -14,20 +14,22 @@ import {
   DID_KEY_PREFIX,
   IDENTITY_TYPES,
   KEYSTORE_ENCRYPTION_METHODS,
-  WEBAUTHN_CLIENT_DATA_TYPES,
 } from '../constants.js';
 import {
   WebAuthnIdentityError,
   WebAuthnAuthenticationError,
   WebAuthnCredentialError,
   WebAuthnNotSupportedError,
-  WebAuthnVerificationError,
 } from '../errors.js';
 import {
   buildAuthenticatorSelection,
   buildCredentialRequestOptions,
 } from './config.js';
 import { logWebAuthnResponse } from './debug-log.js';
+import {
+  p256PublicKeyBytes,
+  verifyWebAuthnProof,
+} from './proof-verification.js';
 
 const webauthnLog = logger('orbitdb-identity-provider-webauthn-did:webauthn');
 
@@ -751,77 +753,27 @@ export class WebAuthnDIDProvider {
    * @param {string} signatureData - Base64url signature envelope.
    * @returns {Promise<boolean>} True if verification succeeds.
    */
-  async verify(signatureData) {
-    webauthnLog(
-      'verify() called with signature length: %d',
-      signatureData.length
-    );
-
-    try {
-      // Decode the WebAuthn proof object
-      const proofBytes =
-        WebAuthnDIDProvider.base64urlToArrayBuffer(signatureData);
-      const proofText = new TextDecoder().decode(proofBytes);
-      const proof = JSON.parse(proofText);
-
-      // Verify the proof structure
-      if (!proof.credentialId || !proof.dataHash || !proof.signature) {
-        throw new WebAuthnVerificationError('Invalid WebAuthn proof structure');
-      }
-
-      // Check if credential ID matches
-      webauthnLog('Verification step: checking credential ID');
-      if (proof.credentialId !== this.credentialId) {
-        webauthnLog.error(
-          'Credential ID mismatch in WebAuthn proof verification'
-        );
-        throw new WebAuthnVerificationError('Credential ID mismatch');
-      }
-      webauthnLog('Verification step: credential ID check PASSED');
-
-      // Verify client data JSON
-      webauthnLog('Verification step: checking client data');
-      if (proof.clientDataJSON) {
-        const clientData = JSON.parse(proof.clientDataJSON);
-        if (clientData.type !== WEBAUTHN_CLIENT_DATA_TYPES.GET) {
-          webauthnLog.error('Invalid WebAuthn proof type: %s', clientData.type);
-          throw new WebAuthnVerificationError('Invalid WebAuthn proof type');
-        }
-        webauthnLog('Verification step: client data check PASSED');
-      } else {
-        webauthnLog.error('Invalid client data in WebAuthn proof');
-        throw new WebAuthnVerificationError('Invalid client data');
-      }
-
-      // No expiry check. This proof is embedded in an OrbitDB identity
-      // document, and every entry ever signed under that document has to stay
-      // validatable — an expiring proof would silently invalidate history.
-      // The proof attests that this credential signed this payload, which does
-      // not stop being true. Proofs written by earlier versions still carry a
-      // timestamp field; it is simply ignored.
-
-      // Verify authenticator data exists
-      webauthnLog('Verification step: checking authenticator data');
-      if (!proof.authenticatorData) {
-        webauthnLog.error('Missing authenticator data in WebAuthn proof');
-        throw new WebAuthnVerificationError('Missing authenticator data');
-      }
-      webauthnLog('Verification step: authenticator data check PASSED');
-
-      webauthnLog('Verification result: SUCCESS');
-      return true;
-    } catch (error) {
-      webauthnLog.error(
-        'WebAuthn proof verification failed: %s',
-        error.message
-      );
+  /**
+   * Verify a proof from `sign(data)` against a P-256 key.
+   *
+   * This used to check that the proof had the right fields and return true —
+   * no signature, no challenge — so any proof-shaped JSON passed
+   * (GHSA-326j-4cc3-4rrg).
+   *
+   * @param {string} signatureData base64url proof from `sign()`
+   * @param {string|Uint8Array} data the signed data
+   * @param {Uint8Array|{x: ArrayLike<number>, y: ArrayLike<number>}} publicKey P-256 key
+   * @returns {Promise<boolean>}
+   */
+  async verify(signatureData, data, publicKey) {
+    const keyBytes = p256PublicKeyBytes(publicKey);
+    if (!keyBytes || data === undefined) {
+      webauthnLog('verify() needs the signed data and a P-256 public key');
       return false;
     }
+    return verifyWebAuthnProof(signatureData, data, keyBytes);
   }
 
-  /**
-   * Utility: Convert ArrayBuffer to base64url
-   */
   static arrayBufferToBase64url(buffer) {
     const bytes = new Uint8Array(buffer);
     let binary = '';

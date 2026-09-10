@@ -19,15 +19,12 @@ import {
   toBytes,
 } from './utils.js';
 import { buildCredentialRequestOptions } from '../webauthn/config.js';
-import { KEY_TYPES, WEBAUTHN_CLIENT_DATA_TYPES } from '../constants.js';
+import { KEY_TYPES } from '../constants.js';
 import {
   VarsigVerificationError,
   WebAuthnAuthenticationError,
 } from '../errors.js';
 import { logWebAuthnResponse } from '../webauthn/debug-log.js';
-
-const isTestMode = () =>
-  typeof window !== 'undefined' && window.__PLAYWRIGHT__ === true;
 
 /**
  * Run a WebAuthn assertion for a payload.
@@ -53,27 +50,6 @@ async function runWebAuthnAssertionForPayload(
   // preimage, so the challenge stays a plain hash of what was signed.
   const signedBytes = bindContext(domainLabel, payloadBytes);
   const challengeBytes = await buildChallengeBytes(signedBytes);
-
-  if (isTestMode()) {
-    return {
-      rpId,
-      origin,
-      challengeBytes,
-      algorithm: credential.algorithm,
-      publicKey: credential.publicKey,
-      assertion: {
-        authenticatorData: new Uint8Array(37),
-        clientDataJSON: new TextEncoder().encode(
-          JSON.stringify({
-            type: WEBAUTHN_CLIENT_DATA_TYPES.GET,
-            challenge: 'test',
-            origin,
-          })
-        ),
-        signature: new Uint8Array(64),
-      },
-    };
-  }
 
   const assertion = await navigator.credentials.get(
     buildCredentialRequestOptions({
@@ -114,15 +90,6 @@ async function runWebAuthnAssertionForPayload(
  * @returns {Promise<{varsig: Uint8Array, clientData: Object, verification: Object, signatureValid: boolean}>}
  */
 async function buildVarsigOutput(assertionData) {
-  if (isTestMode()) {
-    return {
-      varsig: new Uint8Array([1, 2, 3]),
-      clientData: {},
-      verification: { valid: true },
-      signatureValid: true,
-    };
-  }
-
   const { assertion, algorithm, origin, rpId, challengeBytes, publicKey } =
     assertionData;
 
@@ -200,10 +167,6 @@ async function verifyVarsigForPayload(
   payloadBytes,
   domainLabel
 ) {
-  if (isTestMode()) {
-    return true;
-  }
-
   let decoded;
   try {
     decoded = decodeWebAuthnVarsigV1(signature);
@@ -252,6 +215,7 @@ async function verifyVarsigForPayload(
 }
 
 export {
+  algorithmFromPublicKey,
   buildVarsigOutput,
   runWebAuthnAssertionForPayload,
   verifyVarsigForPayload,

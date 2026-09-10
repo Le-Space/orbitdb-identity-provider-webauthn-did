@@ -302,6 +302,19 @@
           ...parsed,
           rawCredentialId: new Uint8Array(parsed.rawCredentialId),
           attestationObject: new Uint8Array(parsed.attestationObject),
+          // Without this the reloaded prfInput stayed a plain object; the
+          // browser refused it as a PRF input, the library fell back to the
+          // credential ID as the seed without a word, and the worker archive
+          // sealed under the real PRF seed could no longer be opened.
+          ...(parsed.prfInput
+            ? {
+                prfInput: Uint8Array.from(
+                  Array.isArray(parsed.prfInput)
+                    ? parsed.prfInput
+                    : Object.values(parsed.prfInput)
+                ),
+              }
+            : {}),
           publicKey: {
             ...parsed.publicKey,
             x: new Uint8Array(parsed.publicKey.x),
@@ -469,6 +482,11 @@
       ...credential,
       rawCredentialId: Array.from(credential.rawCredentialId),
       attestationObject: Array.from(credential.attestationObject),
+      // The PRF input decides the worker's seed. JSON.stringify turns a
+      // Uint8Array into {"0": …}, which the load below did not turn back.
+      ...(credential.prfInput
+        ? { prfInput: Array.from(credential.prfInput) }
+        : {}),
       publicKey: {
         ...credential.publicKey,
         x: Array.from(credential.publicKey.x),

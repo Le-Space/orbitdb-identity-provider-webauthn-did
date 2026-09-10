@@ -1,98 +1,11 @@
 import { test, expect } from '@playwright/test';
+import {
+  addVirtualAuthenticator,
+  requireChromium,
+} from './helpers/virtual-authenticator.js';
 
 const CREDENTIAL_SUCCESS_TEXT = 'Credential created successfully!';
 const AUTH_SUCCESS_TEXT = 'Successfully authenticated with biometric security!';
-
-async function installWebAuthnMock(context) {
-  // Enable WebAuthn API mocking
-  await context.addInitScript(() => {
-    // Mock WebAuthn APIs for testing
-    if (!window.PublicKeyCredential) {
-      window.PublicKeyCredential = function PublicKeyCredential() {};
-    }
-    if (!window.PublicKeyCredential.prototype) {
-      window.PublicKeyCredential.prototype = {};
-    }
-    window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable =
-      async () => true;
-    window.PublicKeyCredential.isConditionalMediationAvailable = async () =>
-      true;
-
-    const mockCredentialId = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
-    const mockAttestation = new Uint8Array(300);
-
-    const installCredentialMock = () => {
-      if (!window.navigator.credentials) {
-        Object.defineProperty(window.navigator, 'credentials', {
-          value: {},
-          configurable: true,
-        });
-      }
-
-      window.navigator.credentials.create = async (options) => {
-        console.log('Mock WebAuthn create called with:', options);
-
-        // Simulate successful credential creation
-        return {
-          id: 'mock-credential-id',
-          rawId: mockCredentialId.buffer,
-          type: 'public-key',
-          response: {
-            attestationObject: mockAttestation.buffer, // Mock attestation
-            clientDataJSON: new TextEncoder().encode(
-              JSON.stringify({
-                type: 'webauthn.create',
-                challenge: 'mock-challenge',
-                origin: window.location.origin,
-              })
-            ),
-            getPublicKey: () => new Uint8Array([/* mock public key */]),
-            getPublicKeyAlgorithm: () => -7, // ES256
-          },
-          getClientExtensionResults: () => ({}),
-        };
-      };
-
-      window.navigator.credentials.get = async (options) => {
-        console.log('Mock WebAuthn get called with:', options);
-
-        // Simulate successful authentication
-        return {
-          id: 'mock-credential-id',
-          rawId: mockCredentialId.buffer,
-          type: 'public-key',
-          response: {
-            authenticatorData: new Uint8Array(37),
-            clientDataJSON: new TextEncoder().encode(
-              JSON.stringify({
-                type: 'webauthn.get',
-                challenge: 'mock-challenge',
-                origin: window.location.origin,
-              })
-            ),
-            signature: new Uint8Array(64), // Mock signature
-            userHandle: null,
-          },
-          getClientExtensionResults: () => ({}),
-        };
-      };
-    };
-
-    try {
-      installCredentialMock();
-    } catch (error) {
-      console.warn(
-        'Failed to install WebAuthn mock, retrying with defineProperty:',
-        error
-      );
-      Object.defineProperty(window.navigator, 'credentials', {
-        value: {},
-        configurable: true,
-      });
-      installCredentialMock();
-    }
-  });
-}
 
 async function createCredential(page) {
   const createButton = page.locator('button:has-text("Create Credential")');
@@ -126,8 +39,11 @@ async function authenticate(page) {
 }
 
 test.describe('WebAuthn DID Identity Provider Integration', () => {
-  test.beforeEach(async ({ page, context }) => {
-    await installWebAuthnMock(context);
+  test.beforeEach(async ({ page, browserName }) => {
+    // A real authenticator: the zero-signature mock that stood here only passed
+    // while nothing verified a WebAuthn signature (GHSA-326j-4cc3-4rrg).
+    requireChromium(test, browserName);
+    await addVirtualAuthenticator(page);
 
     // Navigate to the demo app
     await page.goto('http://localhost:5173');
@@ -330,8 +246,8 @@ test.describe('WebAuthn DID Identity Provider Integration', () => {
   test('should work across different browser contexts', async ({ browser }) => {
     // Test that WebAuthn DIDs are consistent across browser sessions
     const context1 = await browser.newContext();
-    await installWebAuthnMock(context1);
     const page1 = await context1.newPage();
+    await addVirtualAuthenticator(page1);
 
     await page1.goto('http://localhost:5173');
     await page1.waitForSelector('text=WebAuthn is fully supported', {
