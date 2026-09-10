@@ -50,6 +50,11 @@ export class OrbitDBWebAuthnIdentityProvider {
    * @param {string} [options.keystoreKeyType='secp256k1'] - Keystore key type.
    * @param {boolean} [options.encryptKeystore=false] - Encrypt keystore at rest.
    * @param {string} [options.keystoreEncryptionMethod='prf'] - Encryption method.
+   * @param {boolean} [options.deriveSigningKeyFromPrf=true] - Derive the OrbitDB
+   *   signing key from the passkey's PRF output instead of a random one.
+   * @param {string} [options.signingKeyType='secp256k1'] - Type of that derived
+   *   key: 'secp256k1' or 'Ed25519'. `useKeystoreDID` has its own
+   *   `keystoreKeyType`.
    */
   constructor({
     webauthnCredential,
@@ -59,8 +64,15 @@ export class OrbitDBWebAuthnIdentityProvider {
     encryptKeystore = false,
     keystoreEncryptionMethod = KEYSTORE_ENCRYPTION_METHODS.PRF,
     deriveSigningKeyFromPrf = true,
+    signingKeyType = KEY_TYPES.SECP256K1,
   }) {
+    if (![KEY_TYPES.SECP256K1, KEY_TYPES.ED25519].includes(signingKeyType)) {
+      throw new Error(
+        `signingKeyType must be '${KEY_TYPES.SECP256K1}' or '${KEY_TYPES.ED25519}', not '${signingKeyType}'`
+      );
+    }
     this.credential = webauthnCredential;
+    this.signingKeyType = signingKeyType;
     // Costs one extra assertion the first time an identity is created on a
     // device. Set false to keep a keystore-generated key instead.
     this.deriveSigningKeyFromPrf = deriveSigningKeyFromPrf;
@@ -118,6 +130,7 @@ export class OrbitDBWebAuthnIdentityProvider {
           keystore,
           did,
           credential: this.credential,
+          keyType: this.signingKeyType,
         });
         identityLog('Derived signing key: %s', outcome);
       }
@@ -652,6 +665,8 @@ export class OrbitDBWebAuthnIdentityProvider {
       keystoreKeyType = KEY_TYPES.SECP256K1,
       encryptKeystore = false,
       keystoreEncryptionMethod = KEYSTORE_ENCRYPTION_METHODS.PRF,
+      deriveSigningKeyFromPrf = true,
+      signingKeyType = KEY_TYPES.SECP256K1,
     } = options;
 
     identityLog(
@@ -668,6 +683,8 @@ export class OrbitDBWebAuthnIdentityProvider {
       keystoreKeyType,
       encryptKeystore,
       keystoreEncryptionMethod,
+      deriveSigningKeyFromPrf,
+      signingKeyType,
     });
 
     // If encryption is enabled, create and unlock encrypted keystore
@@ -739,6 +756,7 @@ export class OrbitDBWebAuthnIdentityProvider {
  * @param {string} options.keystoreKeyType - Key type for keystore: 'secp256k1' (default) or 'Ed25519'
  * @param {boolean} options.encryptKeystore - If true, encrypts the keystore with WebAuthn-protected secret
  * @param {string} options.keystoreEncryptionMethod - Encryption method: 'largeBlob' or 'hmac-secret'
+ * @param {string} [options.signingKeyType] - PRF-derived signing key type: 'secp256k1' (default) or 'Ed25519'
  * @returns {Function} Provider factory for OrbitDB.
  */
 export function OrbitDBWebAuthnIdentityProviderFunction(options = {}) {

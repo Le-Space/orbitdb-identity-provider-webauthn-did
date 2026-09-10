@@ -10,6 +10,7 @@ This package provides:
 - A standalone WebAuthn toolkit export (`@le-space/orbitdb-identity-provider-webauthn-did/standalone`) for reuse outside OrbitDB identity wiring.
 - A keystore helper export (`@le-space/orbitdb-identity-provider-webauthn-did/keystore`) for encrypted keystore utilities and provider wiring.
 - **WebAuthn-Varsig**: No insecure OrbitDB keystore at all. Each entry is signed by WebAuthn (varsig envelope), so keys never leave the authenticator, one Passkey (WebAuthn) prompt per write.
+- **Passkey DID with a derived signing key** (the default): the DID is the credential's own P-256 key, and OrbitDB signs entries with a key derived from the passkey's PRF output (HKDF-SHA256, domain-separated by the DID) — secp256k1 by default, Ed25519 with `signingKeyType: 'Ed25519'`. The same passkey yields the same identity document on every device. That key lives in OrbitDB's keystore and is **not** covered by `encryptKeystore`; without PRF the keystore generates one, which then stays on that device.
 - **Keystore-based DID**: Generates an Ed25519/secp256k1 keystore keypair for OrbitDB signing in browser memory. When `encryptKeystore` is enabled, the private key is encrypted with AES-GCM and only rehydrated in memory after a WebAuthn unlock (PRF, largeBlob, or hmac-secret).
 
 ## Current WebAuthn Model

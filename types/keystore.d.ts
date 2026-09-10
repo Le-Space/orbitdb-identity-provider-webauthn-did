@@ -48,6 +48,10 @@ export interface OrbitDBWebAuthnIdentityProviderOptions {
   keystoreKeyType?: string;
   encryptKeystore?: boolean;
   keystoreEncryptionMethod?: KeystoreEncryptionMethod;
+  /** Derive the OrbitDB signing key from the passkey's PRF output (default true). */
+  deriveSigningKeyFromPrf?: boolean;
+  /** Type of that derived key (default 'secp256k1'). */
+  signingKeyType?: 'secp256k1' | 'Ed25519';
   [key: string]: unknown;
 }
 

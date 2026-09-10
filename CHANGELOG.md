@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+
+- `signingKeyType: 'Ed25519'` derives the OrbitDB signing key as Ed25519
+  instead of secp256k1 — still from the passkey's PRF output (HKDF-SHA256,
+  domain-separated by DID and key type), so one passkey still yields one
+  identity document on every device. The default stays secp256k1, and a
+  keystore that already holds a key for the DID keeps it.
+
 ## 0.5.2
 
 ### Security

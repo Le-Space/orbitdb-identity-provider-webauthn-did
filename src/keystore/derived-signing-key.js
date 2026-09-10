@@ -21,12 +21,19 @@
  * Needs no change to `@orbitdb/core` — it only has to happen before
  * `getKey(id)` is called, which `getId()` is.
  *
+ * The key is secp256k1, the type `createKey` would have produced, unless the
+ * provider is created with `signingKeyType: 'Ed25519'`. OrbitDB's keystore
+ * reads the type from the raw key, so either signs and verifies unchanged.
+ *
  * See issue #18, option 1.
  */
 import { logger } from '@libp2p/logger';
-import { privateKeyFromRaw } from '@libp2p/crypto/keys';
+import {
+  generateKeyPairFromSeed,
+  privateKeyFromRaw,
+} from '@libp2p/crypto/keys';
 
-import { CRYPTO_ALGORITHMS } from '../constants.js';
+import { CRYPTO_ALGORITHMS, KEY_TYPES } from '../constants.js';
 import { buildCredentialRequestOptions } from '../webauthn/config.js';
 
 const log = logger('orbitdb-identity-provider-webauthn-did:derived-key');
@@ -64,17 +71,35 @@ async function hkdf(seed, info) {
 }
 
 /**
- * Turn a PRF seed into a valid secp256k1 private key.
+ * Turn a PRF seed into a private key of the requested type, as the raw bytes
+ * `keystore.addKey` takes.
  *
- * Values outside the curve order are invalid. That is vanishingly unlikely for
- * a 256-bit hash, but retrying with a counter keeps the derivation total and
- * deterministic rather than probabilistic.
+ * secp256k1: values outside the curve order are invalid. That is vanishingly
+ * unlikely for a 256-bit hash, but retrying with a counter keeps the
+ * derivation total and deterministic rather than probabilistic.
+ *
+ * Ed25519: every 32 bytes are a valid seed, so there is nothing to retry. The
+ * key type is part of its info string, so the two derivations never share
+ * key material, even for the same passkey and DID.
  *
  * @param {Uint8Array} seed - PRF output.
  * @param {string} did - Identity DID, mixed in for domain separation.
- * @returns {Promise<Uint8Array>} A valid 32-byte secp256k1 private key.
+ * @param {string} [keyType='secp256k1'] - 'secp256k1' or 'Ed25519'.
+ * @returns {Promise<Uint8Array>} The 32-byte secp256k1 scalar, or the 64-byte
+ *   Ed25519 private key (seed ‖ public key) libp2p expects.
  */
-export async function deriveSigningKeyBytes(seed, did) {
+export async function deriveSigningKeyBytes(
+  seed,
+  did,
+  keyType = KEY_TYPES.SECP256K1
+) {
+  if (keyType === KEY_TYPES.ED25519) {
+    const edSeed = await hkdf(seed, `${DERIVATION_INFO}:ed25519:${did}`);
+    return (await generateKeyPairFromSeed(KEY_TYPES.ED25519, edSeed)).raw;
+  }
+  if (keyType !== KEY_TYPES.SECP256K1) {
+    throw new Error(`unsupported signing key type: ${keyType}`);
+  }
   for (let counter = 0; counter < 256; counter++) {
     const candidate = await hkdf(seed, `${DERIVATION_INFO}:${did}:${counter}`);
     try {
@@ -158,6 +183,7 @@ export async function getPrfOutput(credential, { rpId } = {}) {
  * @param {string} params.did - Identity DID.
  * @param {Object} params.credential - Stored WebAuthn credential info.
  * @param {string} [params.rpId] - Relying party id.
+ * @param {string} [params.keyType='secp256k1'] - Type of key to derive.
  * @returns {Promise<'derived'|'existing'|'unavailable'>} What happened.
  */
 export async function ensureDerivedSigningKey({
@@ -165,12 +191,24 @@ export async function ensureDerivedSigningKey({
   did,
   credential,
   rpId,
+  keyType = KEY_TYPES.SECP256K1,
 }) {
   if (!keystore || !did || !credential) return 'unavailable';
 
   try {
-    if (await keystore.getKey(did)) {
-      log('keystore already holds a key for this DID; leaving it alone');
+    const existing = await keystore.getKey(did);
+    if (existing) {
+      if (existing.type !== keyType) {
+        // Still left alone: a key of the other type has history behind it,
+        // and replacing it would mint a second document for the DID.
+        log(
+          'keystore already holds a %s key for this DID, not the requested %s; leaving it alone',
+          existing.type,
+          keyType
+        );
+      } else {
+        log('keystore already holds a key for this DID; leaving it alone');
+      }
       return 'existing';
     }
   } catch (error) {
@@ -187,9 +225,9 @@ export async function ensureDerivedSigningKey({
   }
 
   try {
-    const privateKey = await deriveSigningKeyBytes(seed, did);
+    const privateKey = await deriveSigningKeyBytes(seed, did, keyType);
     await keystore.addKey(did, { privateKey });
-    log('seeded the keystore with a PRF-derived signing key');
+    log('seeded the keystore with a PRF-derived %s signing key', keyType);
     return 'derived';
   } catch (error) {
     log('failed to seed the derived key: %s', error.message);
