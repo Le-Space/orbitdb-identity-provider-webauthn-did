@@ -1,0 +1,11 @@
+# The three demos share every dependency, so they share one install: the
+# packages live here, the demos declare none of their own, and the shared code
+# in ./shared resolves them the same way the demos do — by walking up to this
+# directory's node_modules. One lockfile instead of three 8k-line copies that
+# drifted apart (the varsig demo's pinned a different iso-webauthn-varsig than
+# the library it links).
+packages:
+  - '*-demo'
+
+onlyBuiltDependencies:
+  - esbuild
