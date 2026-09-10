@@ -78,9 +78,15 @@ export async function createWebAuthnVarsigIdentity({
     userVerification,
     mediation,
   });
-  const id =
-    credential.did ||
-    DIDKey.fromPublicKey(credential.algorithm, credential.publicKey).did;
+  // The id is the key, never a stored string. `credential.did` used to win
+  // when present, so metadata recovered from largeBlob or localStorage — data
+  // anyone with access to either can edit — decided which DID this identity
+  // claimed. Verification would then refuse the identity (0.5.2+ binds the id
+  // to the key), but a demo or app would have shown the wrong DID first.
+  const id = DIDKey.fromPublicKey(
+    credential.algorithm,
+    credential.publicKey
+  ).did;
   const idBytes = encoder.encode(id);
 
   const idSignature = await provider.signPayload(idBytes, labels.id);

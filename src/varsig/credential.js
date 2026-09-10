@@ -101,6 +101,12 @@ async function createWebAuthnVarsigCredential(options = {}) {
       }),
       userVerification: 'preferred',
     }),
+    // Recovery writes the varsig metadata into the passkey's largeBlob after
+    // registration — which an authenticator only allows for a credential that
+    // was created asking for it. `preferred` costs nothing where the
+    // extension is missing; without this line the later write was refused
+    // and "Use Existing Passkey" found nothing once localStorage was gone.
+    extensions: { largeBlob: { support: 'preferred' } },
   };
 
   const credential = await navigator.credentials.create({ publicKey });
