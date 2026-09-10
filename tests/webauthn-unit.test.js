@@ -1,112 +1,16 @@
 import { test, expect } from '@playwright/test';
+import {
+  addVirtualAuthenticator,
+  requireChromium,
+} from './helpers/virtual-authenticator.js';
 
 test.describe('WebAuthn DID Provider Unit Tests', () => {
-  test.beforeEach(async ({ page, context }) => {
-    // Mock WebAuthn API
-    await context.addInitScript(() => {
-      window.PublicKeyCredential = class PublicKeyCredentialMock {
-        static async isUserVerifyingPlatformAuthenticatorAvailable() {
-          return true;
-        }
-      };
-
-      const mockCredentialId = crypto.getRandomValues(new Uint8Array(16));
-      const mockPublicKey = {
-        x: crypto.getRandomValues(new Uint8Array(32)),
-        y: crypto.getRandomValues(new Uint8Array(32)),
-      };
-
-      const mockCredentials = {
-        create: async (options) => ({
-          rawId: mockCredentialId,
-          response: {
-            attestationObject: crypto.getRandomValues(new Uint8Array(300)),
-            clientDataJSON: new TextEncoder().encode(
-              JSON.stringify({
-                type: 'webauthn.create',
-                challenge: Array.from(
-                  new Uint8Array(options.publicKey.challenge)
-                )
-                  .map((b) => String.fromCharCode(b))
-                  .join(''),
-                origin: window.location.origin,
-              })
-            ),
-          },
-        }),
-
-        get: async (options) => ({
-          rawId:
-            options.publicKey.allowCredentials?.[0]?.id || mockCredentialId,
-          response: {
-            authenticatorData: crypto.getRandomValues(new Uint8Array(37)),
-            clientDataJSON: new TextEncoder().encode(
-              JSON.stringify({
-                type: 'webauthn.get',
-                challenge: Array.from(
-                  new Uint8Array(options.publicKey.challenge)
-                )
-                  .map((b) => String.fromCharCode(b))
-                  .join(''),
-                origin: window.location.origin,
-              })
-            ),
-            signature: crypto.getRandomValues(new Uint8Array(64)),
-          },
-        }),
-      };
-
-      if (window.navigator.credentials) {
-        window.navigator.credentials.create = mockCredentials.create;
-        window.navigator.credentials.get = mockCredentials.get;
-      } else {
-        try {
-          Object.defineProperty(window.navigator, 'credentials', {
-            configurable: true,
-            value: mockCredentials,
-          });
-        } catch {
-          Object.defineProperty(Navigator.prototype, 'credentials', {
-            configurable: true,
-            get() {
-              return mockCredentials;
-            },
-          });
-        }
-      }
-
-      // Mock CBOR decode function
-      window.mockCBORDecode = () => {
-        // Simple mock that returns a structure similar to what CBOR would decode
-        return {
-          authData: new Uint8Array([
-            ...crypto.getRandomValues(new Uint8Array(32)), // rpIdHash
-            0x01, // flags
-            ...new Uint8Array(4), // signCount
-            ...crypto.getRandomValues(new Uint8Array(16)), // AAGUID
-            0x00,
-            0x10, // credentialIdLength
-            ...mockCredentialId, // credentialId
-            // Mock COSE key format
-            0xa5, // map(5)
-            0x01,
-            0x02, // kty: 2 (EC2)
-            0x03,
-            0x26, // alg: -7 (ES256)
-            0x20,
-            0x01, // crv: 1 (P-256)
-            0x21,
-            0x58,
-            0x20,
-            ...mockPublicKey.x, // x coordinate
-            0x22,
-            0x58,
-            0x20,
-            ...mockPublicKey.y, // y coordinate
-          ]),
-        };
-      };
-    });
+  test.beforeEach(async ({ page, browserName }) => {
+    // A real authenticator: the mock that stood here signed random bytes over
+    // random authenticator data, which only passed while nothing verified a
+    // WebAuthn signature (GHSA-326j-4cc3-4rrg).
+    requireChromium(test, browserName);
+    await addVirtualAuthenticator(page);
 
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle');
@@ -193,7 +97,9 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
     const customOptions = {
       userId: 'test-user-123',
       displayName: 'Test User Custom',
-      domain: 'test-domain.com',
+      // The RP ID has to be the page's own host. A real authenticator refuses
+      // any other; the mock never checked.
+      domain: 'localhost',
     };
 
     const credential = await page.evaluate(async (options) => {

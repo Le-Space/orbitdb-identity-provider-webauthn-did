@@ -2,6 +2,52 @@
 
 ## Unreleased
 
+## 0.5.2
+
+### Security
+
+- **Identity verification checked shapes, not signatures**
+  ([GHSA-326j-4cc3-4rrg](https://github.com/Le-Space/orbitdb-identity-provider-webauthn-did/security/advisories/GHSA-326j-4cc3-4rrg)).
+  Four checks that decide whether an identity may speak for a DID verified
+  nothing: the static `verifyIdentity` OrbitDB calls accepted any `did:key:` of
+  type `webauthn`; `WebAuthnDIDProvider.verify()` accepted any proof with the
+  right fields; varsig verification returned `true` whenever
+  `window.__PLAYWRIGHT__` was set; and `verifyVarsigIdentity` never compared the
+  id with the key signing for it. Anyone who knew a DID could write as it
+  wherever write access was granted to that DID.
+
+  `src/webauthn/proof-verification.js` now decides it. A credential DID (P-256)
+  is bound through the WebAuthn assertion in `signatures.publicKey`, verified
+  against the key the DID itself encodes. A keystore DID (Ed25519, secp256k1)
+  must be exactly the key that signs. A varsig identity must carry the DID of
+  its own key. The test-mode branches are gone from `src/`.
+
+  **Check before upgrading** — three things that were accepted and now are not:
+  - Entries written under `useKeystoreDID` by 0.5.1 or earlier. Those identities
+    signed with a key unrelated to their DID (see _Fixed_), which makes their
+    entries indistinguishable from forgeries, so upgraded peers refuse them.
+    Identities with the default credential DID are unaffected.
+  - Legacy 64-hex identity ids. They cannot be bound to any key.
+  - `WebAuthnDIDProvider.verify(signature)` with one argument. It now needs the
+    signed data and the public key: `verify(signature, data, publicKey)`.
+
+### Fixed
+
+- `useKeystoreDID` with `keystoreKeyType: 'Ed25519'` signed entries with a
+  secp256k1 key. The provider stored its key under the credential's P-256 DID;
+  OrbitDB looked it up under the keystore DID, found nothing and generated a
+  fresh secp256k1 key, so only the DID was Ed25519. The key now goes under the
+  DID OrbitDB looks it up by, encrypted and unencrypted.
+- The Ed25519 demo kept `prfInput` across a reload as a plain object, which the
+  browser refused as a PRF input; the worker's seed then fell back to the
+  credential ID and its archive could no longer be opened.
+
+### Tests
+
+- `tests/identity-forgery.test.js`: every forgery above is refused, and beside
+  each the genuine identity still passes. The browser suites use a Chromium
+  virtual authenticator instead of mocks that signed with 64 zero bytes.
+
 ## 0.5.1
 
 ### Fixed
