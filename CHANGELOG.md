@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## 0.5.3
+
+### Security
+
+- **Varsig identities could still be forged through
+  `createWebAuthnVarsigIdentities()`**
+  ([GHSA-326j-4cc3-4rrg](https://github.com/Le-Space/orbitdb-identity-provider-webauthn-did/security/advisories/GHSA-326j-4cc3-4rrg),
+  left open by 0.5.2). 0.5.2 bound a varsig identity's id to the key that
+  signs for it, but only in `verifyVarsigIdentity`. The verifier returned by
+  `createWebAuthnVarsigIdentities()` — what OrbitDB's access controller
+  calls when an app builds its identities with it, as the varsig demo does —
+  still checked the two signatures against whatever key the identity
+  carried, so a second user's passkey on the same origin could sign someone
+  else's DID and be accepted as a writer under it. It now delegates to
+  `verifyVarsigIdentity`. orbitdb-relay is not affected: it registers
+  `verifyVarsigIdentity` directly.
+
 ### Added
 
 - `signingKeyType: 'Ed25519'` derives the OrbitDB signing key as Ed25519
