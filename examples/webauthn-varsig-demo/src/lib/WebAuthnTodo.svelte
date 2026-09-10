@@ -25,8 +25,6 @@
     toggleTodo,
     deleteTodo,
     getTodoStats,
-    getIdentityVerifications,
-    getVerificationForTodo,
   } from './database.js';
   import {
     Button,
@@ -35,10 +33,9 @@
     Loading,
   } from 'carbon-components-svelte';
   import { Checkmark, Warning } from 'carbon-icons-svelte';
-  import IdentityVerificationBadge from './components/IdentityVerificationBadge.svelte';
-
-  const isTestMode = () =>
-    typeof window !== 'undefined' && window.__PLAYWRIGHT__ === true;
+  import IdentityVerificationBadge from '$shared/IdentityVerificationBadge.svelte';
+  import ForgeryCheck from '$shared/ForgeryCheck.svelte';
+  import { verifyDatabase } from '$shared/lib/verification.js';
 
   // Core instances
   let orbitdbInstances = null; // Will contain { orbitdb, ipfs, identity, identities }
@@ -61,7 +58,7 @@
   };
 
   // Identity verification tracking (not stored in database)
-  let todoVerifications = new Map(); // Map<todoId, {verified: boolean, timestamp: number, identityHash: string}>
+  let todoVerifications = new Map(); // Map<todoId, verifyEntry result> — see $shared/lib/verification.js
 
   // WebAuthn support detection
   let webAuthnSupported = false;
@@ -245,10 +242,12 @@
         'running',
         'Waiting for passkey selection'
       );
-      const { assertion, blob, extensionResults } = await readLargeBlobMetadata({
-        rpId: window.location.hostname,
-        discoverableCredentials: true,
-      });
+      const { assertion, blob, extensionResults } = await readLargeBlobMetadata(
+        {
+          rpId: window.location.hostname,
+          discoverableCredentials: true,
+        }
+      );
       console.log('[Recovery Step] largeBlob read result', {
         blobLength: blob?.byteLength || 0,
         extensionResults,
@@ -270,7 +269,10 @@
         return;
       }
 
-      logWebAuthnResponse('demo useExistingPasskey navigator.credentials.get()', assertion);
+      logWebAuthnResponse(
+        'demo useExistingPasskey navigator.credentials.get()',
+        assertion
+      );
 
       pushRecoveryStep(
         'Read largeBlob metadata',
@@ -281,7 +283,10 @@
       );
 
       if (blob) {
-        credential = parseVarsigLargeBlobPayload(blob);
+        credential = bindRecoveredCredential(
+          parseVarsigLargeBlobPayload(blob),
+          assertion
+        );
         pushRecoveryStep(
           'Parse varsig identity metadata',
           'success',
@@ -314,7 +319,7 @@
       );
 
       if (localMatch) {
-        credential = storedCredential;
+        credential = bindRecoveredCredential(storedCredential, assertion);
         status =
           'Existing passkey matched locally stored OrbitDB varsig metadata. Ready to authenticate.';
         return;
@@ -338,27 +343,13 @@
       status = 'Creating WebAuthn credential...';
       startRecoveryStepLog('Create new passkey and persist recovery metadata');
 
-      if (typeof window !== 'undefined' && window.__PLAYWRIGHT__ === true) {
-        const publicKey = new Uint8Array(32);
-        for (let i = 0; i < publicKey.length; i++) {
-          publicKey[i] = i + 1;
-        }
-        credential = {
-          credentialId: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
-          publicKey,
-          algorithm: 'Ed25519',
-          did: DIDKey.fromPublicKey('Ed25519', publicKey).did,
-          cose: { kty: 1, alg: -8, crv: 6 },
-        };
-      } else {
-        credential = await WebAuthnVarsigProvider.createCredential({
-          userId: `todo-user-${Date.now()}`,
-          displayName: 'TODO App User',
-        });
-      }
+      credential = await WebAuthnVarsigProvider.createCredential({
+        userId: `todo-user-${Date.now()}`,
+        displayName: 'TODO App User',
+      });
       markInitialStep('success', 'Passkey registration completed');
 
-      if (extensionSupport.largeBlob && !isTestMode()) {
+      if (extensionSupport.largeBlob) {
         const payload = createVarsigLargeBlobPayload(credential);
         pushRecoveryStep(
           'Write varsig metadata to largeBlob',
@@ -386,9 +377,7 @@
         pushRecoveryStep(
           'Write varsig metadata to largeBlob',
           'warning',
-          isTestMode()
-            ? 'Skipped in Playwright mode'
-            : 'Skipped because largeBlob support is not available'
+          'Skipped because largeBlob support is not available'
         );
       }
 
@@ -410,6 +399,29 @@
     }
   }
 
+  /**
+   * Recovered metadata is data somebody stored, not something the
+   * authenticator vouches for. Two things are therefore not taken from it:
+   * the DID, which is recomputed from the public key (a stored `did` used to
+   * become `identity.id` as it was), and the credential it belongs to, which
+   * has to be the one that just signed the recovery assertion.
+   */
+  function bindRecoveredCredential(recovered, assertion) {
+    const signer = new Uint8Array(assertion.rawId);
+    if (
+      !recovered?.credentialId ||
+      !bytesEqual(new Uint8Array(recovered.credentialId), signer)
+    ) {
+      throw new Error(
+        'recovered metadata belongs to a different credential than the one that signed'
+      );
+    }
+    return {
+      ...recovered,
+      did: DIDKey.fromPublicKey(recovered.algorithm, recovered.publicKey).did,
+    };
+  }
+
   function storeCredential(credential) {
     storeWebAuthnVarsigCredential(credential);
   }
@@ -417,16 +429,6 @@
   async function authenticate() {
     try {
       loading = true;
-
-      if (isTestMode()) {
-        orbitdbInstances = {
-          identity: { id: credential?.did || 'did:key:varsig-test' },
-        };
-        database = { testMode: true };
-        isAuthenticated = true;
-        status = 'Successfully authenticated with biometric security!';
-        return;
-      }
 
       status = 'Setting up OrbitDB...';
       // Use the extracted setupOrbitDB function
@@ -479,7 +481,6 @@
   }
 
   async function refreshTodos() {
-    if (isTestMode()) return;
     if (!database) return;
 
     try {
@@ -507,14 +508,6 @@
   }
 
   async function handleAddTodo() {
-    if (isTestMode()) {
-      if (!newTodo.trim()) return;
-      const id = `todo-${Date.now()}`;
-      todos = [...todos, { id, text: newTodo, completed: false }];
-      newTodo = '';
-      status = 'TODO added successfully!';
-      return;
-    }
     if (!newTodo.trim() || !database) return;
 
     try {
@@ -537,12 +530,6 @@
   }
 
   async function handleToggleTodo(todo) {
-    if (isTestMode()) {
-      todos = todos.map((item) =>
-        item.id === todo.id ? { ...item, completed: !item.completed } : item
-      );
-      return;
-    }
     if (!database) return;
 
     try {
@@ -558,10 +545,6 @@
   }
 
   async function handleDeleteTodo(todo) {
-    if (isTestMode()) {
-      todos = todos.filter((item) => item.id !== todo.id);
-      return;
-    }
     if (!database) return;
 
     try {
@@ -608,63 +591,16 @@
   }
 
   async function refreshVerificationStates() {
-    console.log('🔄 Starting refreshVerificationStates...');
-
-    // First, get states from the global store (from database events)
-    const globalVerifications = getIdentityVerifications();
-    console.log(
-      `💾 Found ${globalVerifications.size} verifications in global store`
-    );
-
-    // Clear and update with global state
-    todoVerifications.clear();
-    for (const [todoId, verification] of globalVerifications) {
-      todoVerifications.set(todoId, verification);
-      console.log(
-        `✅ Loaded verification for ${todoId}: ${verification.success ? 'PASSED' : 'FAILED'}`
-      );
+    if (!database || !orbitdbInstances?.identities) return;
+    try {
+      const { byKey } = await verifyDatabase({
+        database,
+        identities: orbitdbInstances.identities,
+      });
+      todoVerifications = byKey;
+    } catch (error) {
+      console.error('❌ Verification failed:', error);
     }
-
-    // For todos that don't have verification yet, use the simple verification approach
-    if (database && orbitdbInstances?.identity?.id) {
-      try {
-        // Use the single verification approach
-        const { verifyTodos } = await import('./verification.js');
-
-        // Find todos that need verification
-        const unverifiedTodos = todos.filter(
-          (todo) => !todoVerifications.has(todo.id)
-        );
-
-        if (unverifiedTodos.length > 0) {
-          console.log(
-            `🔍 Running verification for ${unverifiedTodos.length} todos...`
-          );
-
-          const newVerifications = await verifyTodos(
-            database,
-            unverifiedTodos,
-            orbitdbInstances.identity.id
-          );
-
-          // Add new verifications to our map
-          for (const [todoId, verification] of newVerifications) {
-            todoVerifications.set(todoId, verification);
-          }
-        }
-      } catch (error) {
-        console.error('Error during simple verification:', error);
-      }
-    }
-
-    // Trigger reactivity
-    todoVerifications = todoVerifications;
-
-    console.log(
-      '🔄 Refreshed verification states:',
-      todoVerifications.size,
-      'todos verified'
-    );
   }
 
   async function handleLogout() {
@@ -758,13 +694,16 @@
       <div
         style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--cds-border-subtle);"
       >
-        <div style="font-size: 0.75rem; font-weight: 600; margin-bottom: 0.5rem;">
+        <div
+          style="font-size: 0.75rem; font-weight: 600; margin-bottom: 0.5rem;"
+        >
           Recovery Steps
         </div>
         <div style="font-size: 0.875rem; color: var(--cds-text-secondary);">
           {#each recoverySteps as step}
             <div style="margin-bottom: 0.35rem;">
-              <strong>{step.status.toUpperCase()}</strong> {step.label}{step.detail ? `: ${step.detail}` : ''}
+              <strong>{step.status.toUpperCase()}</strong>
+              {step.label}{step.detail ? `: ${step.detail}` : ''}
             </div>
           {/each}
         </div>
@@ -897,6 +836,11 @@
               Logout
             </Button>
           </div>
+          <ForgeryCheck
+            {database}
+            identities={orbitdbInstances?.identities}
+            identity={orbitdbInstances?.identity}
+          />
         </div>
       </div>
 
@@ -971,23 +915,10 @@
                 {todo.text}
               </span>
 
-              <!-- Identity Verification Badge -->
-              {#if todoVerifications.has(todo.id)}
-                {@const verification = todoVerifications.get(todo.id)}
-                <IdentityVerificationBadge
-                  identityHash={verification.identityHash}
-                  webAuthnDID={orbitdbInstances?.identity?.id}
-                  verificationState={verification.success}
-                  timestamp={verification.timestamp}
-                />
-              {:else}
-                <IdentityVerificationBadge
-                  identityHash="pending..."
-                  webAuthnDID={orbitdbInstances?.identity?.id}
-                  verificationState={null}
-                  timestamp={Date.now()}
-                />
-              {/if}
+              <!-- What the verifier found for the entry behind this todo -->
+              <IdentityVerificationBadge
+                result={todoVerifications.get(todo.id) ?? null}
+              />
 
               <button
                 on:click={() => handleDeleteTodo(todo)}

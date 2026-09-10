@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test';
 import {
+  expectForgeryRejected,
+  expectTodosVerified,
+} from './helpers/verification-ui.js';
+import {
   addVirtualAuthenticator,
   requireChromium,
 } from './helpers/virtual-authenticator.js';
@@ -308,6 +312,15 @@ test.describe('WebAuthn Credential Creation Test', () => {
     // Verify TODO count
     await expect(page.locator('text=1 total • 0 completed')).toBeVisible();
     console.log('✅ TODO statistics show 1 total, 0 completed');
+
+    // The badge is the verifier's word, not decoration: the entry's
+    // signature, the identity block behind it, its DID binding and the
+    // write list — and the same verifier refuses an edited entry and an
+    // impostor claiming this DID.
+    const writer = await expectTodosVerified(page);
+    console.log(`✅ Entry verified, written by ${writer}`);
+    await expectForgeryRejected(page);
+    console.log('✅ Both forgeries rejected');
 
     // === PHASE 2: Browser reload and persistence test ===
     console.log('🔄 Phase 2: Browser reload and persistence test');

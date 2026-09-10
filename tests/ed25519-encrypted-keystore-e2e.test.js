@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test';
 import {
+  expectForgeryRejected,
+  expectTodosVerified,
+} from './helpers/verification-ui.js';
+import {
   addVirtualAuthenticator,
   requireChromium,
 } from './helpers/virtual-authenticator.js';
@@ -350,6 +354,13 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     const todoElement = page.locator(`text=${todoText}`);
     await expect(todoElement).toBeVisible();
     console.log('✅ TODO is visible in the list');
+
+    // A keystore-DID identity: the badge must name the Ed25519 DID the page
+    // shows, and the verifier must refuse a forged entry and an impostor.
+    const writer = await expectTodosVerified(page);
+    expect(writer).toMatch(/^did:key:z6Mk/);
+    await expectForgeryRejected(page);
+    console.log('✅ Entry verified and forgeries rejected');
   });
 
   test('should display features summary when options are enabled', async ({

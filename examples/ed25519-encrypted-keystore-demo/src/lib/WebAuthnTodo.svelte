@@ -20,8 +20,6 @@
     toggleTodo,
     deleteTodo,
     getTodoStats,
-    getIdentityVerifications,
-    getVerificationForTodo,
   } from './database.js';
   import {
     Button,
@@ -30,7 +28,9 @@
     Loading,
   } from 'carbon-components-svelte';
   import { Checkmark, Warning } from 'carbon-icons-svelte';
-  import IdentityVerificationBadge from './components/IdentityVerificationBadge.svelte';
+  import IdentityVerificationBadge from '$shared/IdentityVerificationBadge.svelte';
+  import ForgeryCheck from '$shared/ForgeryCheck.svelte';
+  import { verifyDatabase } from '$shared/lib/verification.js';
 
   // Core instances
   let orbitdbInstances = null; // Will contain { orbitdb, ipfs, identity, identities }
@@ -45,7 +45,7 @@
   let status = 'Checking WebAuthn support...';
 
   // Identity verification tracking (not stored in database)
-  let todoVerifications = new Map(); // Map<todoId, {verified: boolean, timestamp: number, identityHash: string}>
+  let todoVerifications = new Map(); // Map<todoId, verifyEntry result> — see $shared/lib/verification.js
 
   // WebAuthn support detection
   let webAuthnSupported = false;
@@ -88,9 +88,7 @@
   // Computed values
   $: todoStats = getTodoStats(todos);
   $: workerModeSupported =
-    workerAvailable &&
-    useKeystoreDID &&
-    keystoreKeyType === 'Ed25519';
+    workerAvailable && useKeystoreDID && keystoreKeyType === 'Ed25519';
   $: if (!workerModeSupported) {
     useWorkerKeystore = false;
   }
@@ -710,63 +708,16 @@
   }
 
   async function refreshVerificationStates() {
-    console.log('🔄 Starting refreshVerificationStates...');
-
-    // First, get states from the global store (from database events)
-    const globalVerifications = getIdentityVerifications();
-    console.log(
-      `💾 Found ${globalVerifications.size} verifications in global store`
-    );
-
-    // Clear and update with global state
-    todoVerifications.clear();
-    for (const [todoId, verification] of globalVerifications) {
-      todoVerifications.set(todoId, verification);
-      console.log(
-        `✅ Loaded verification for ${todoId}: ${verification.success ? 'PASSED' : 'FAILED'}`
-      );
+    if (!database || !orbitdbInstances?.identities) return;
+    try {
+      const { byKey } = await verifyDatabase({
+        database,
+        identities: orbitdbInstances.identities,
+      });
+      todoVerifications = byKey;
+    } catch (error) {
+      console.error('❌ Verification failed:', error);
     }
-
-    // For todos that don't have verification yet, use the simple verification approach
-    if (database && orbitdbInstances?.identity?.id) {
-      try {
-        // Use the single verification approach
-        const { verifyTodos } = await import('./verification.js');
-
-        // Find todos that need verification
-        const unverifiedTodos = todos.filter(
-          (todo) => !todoVerifications.has(todo.id)
-        );
-
-        if (unverifiedTodos.length > 0) {
-          console.log(
-            `🔍 Running verification for ${unverifiedTodos.length} todos...`
-          );
-
-          const newVerifications = await verifyTodos(
-            database,
-            unverifiedTodos,
-            orbitdbInstances.identity.id
-          );
-
-          // Add new verifications to our map
-          for (const [todoId, verification] of newVerifications) {
-            todoVerifications.set(todoId, verification);
-          }
-        }
-      } catch (error) {
-        console.error('Error during simple verification:', error);
-      }
-    }
-
-    // Trigger reactivity
-    todoVerifications = todoVerifications;
-
-    console.log(
-      '🔄 Refreshed verification states:',
-      todoVerifications.size,
-      'todos verified'
-    );
   }
 
   async function handleLogout() {
@@ -1095,7 +1046,10 @@
                       Persistent {keystoreKeyType} DID from OrbitDB keystore
                     </li>
                     {#if useWorkerKeystore}
-                      <li>Worker-backed Ed25519 signer initialized from passkey seed</li>
+                      <li>
+                        Worker-backed Ed25519 signer initialized from passkey
+                        seed
+                      </li>
                     {/if}
                     {#if keystoreKeyType === 'Ed25519'}
                       <li>Ed25519: Faster signing, smaller keys (32 bytes)</li>
@@ -1210,42 +1164,52 @@
             <Button on:click={handleLogout} kind="ghost" size="small">
               Logout
             </Button>
-                </div>
-                <div
-                  style="display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.75rem;"
-                >
-                  <div data-testid="signing-backend">
-                    <strong>Active keystore mode:</strong> {activeSigningBackend}
-                  </div>
-                  <div data-testid="worker-status">
-                    <strong>Worker keystore:</strong> {workerStatus}
-                  </div>
-                  {#if workerDid}
-                    <div data-testid="worker-did">
-                      <strong>Worker signer DID:</strong> <code>{workerDid}</code>
-                    </div>
-                  {/if}
-                  {#if useWorkerKeystore}
-                    <div data-testid="worker-archive-status">
-                      <strong>Worker archive:</strong>
-                      {workerArchiveRestored ? 'restored from storage' : 'created for this session'}
-                    </div>
-                    <div data-testid="worker-seed-source">
-                      <strong>Seed source:</strong> {workerSeedSource}
-                    </div>
-                    <div data-testid="worker-probe-status">
-                      <strong>Last worker probe:</strong>
-                      {workerLastOperation || 'none'} /
-                      {workerSignatureVerified === null
-                        ? 'not-run'
-                        : workerSignatureVerified
-                          ? 'verified'
-                          : 'failed'} /
-                      {workerLastSignatureLength} bytes
-                    </div>
-                  {/if}
-                </div>
+          </div>
+          <ForgeryCheck
+            {database}
+            identities={orbitdbInstances?.identities}
+            identity={orbitdbInstances?.identity}
+          />
+          <div
+            style="display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.75rem;"
+          >
+            <div data-testid="signing-backend">
+              <strong>Active keystore mode:</strong>
+              {activeSigningBackend}
+            </div>
+            <div data-testid="worker-status">
+              <strong>Worker keystore:</strong>
+              {workerStatus}
+            </div>
+            {#if workerDid}
+              <div data-testid="worker-did">
+                <strong>Worker signer DID:</strong> <code>{workerDid}</code>
               </div>
+            {/if}
+            {#if useWorkerKeystore}
+              <div data-testid="worker-archive-status">
+                <strong>Worker archive:</strong>
+                {workerArchiveRestored
+                  ? 'restored from storage'
+                  : 'created for this session'}
+              </div>
+              <div data-testid="worker-seed-source">
+                <strong>Seed source:</strong>
+                {workerSeedSource}
+              </div>
+              <div data-testid="worker-probe-status">
+                <strong>Last worker probe:</strong>
+                {workerLastOperation || 'none'} /
+                {workerSignatureVerified === null
+                  ? 'not-run'
+                  : workerSignatureVerified
+                    ? 'verified'
+                    : 'failed'} /
+                {workerLastSignatureLength} bytes
+              </div>
+            {/if}
+          </div>
+        </div>
       </div>
 
       <!-- Add New TODO -->
@@ -1318,23 +1282,10 @@
                 {todo.text}
               </span>
 
-              <!-- Identity Verification Badge -->
-              {#if todoVerifications.has(todo.id)}
-                {@const verification = todoVerifications.get(todo.id)}
-                <IdentityVerificationBadge
-                  identityHash={verification.identityHash}
-                  webAuthnDID={orbitdbInstances?.identity?.id}
-                  verificationState={verification.success}
-                  timestamp={verification.timestamp}
-                />
-              {:else}
-                <IdentityVerificationBadge
-                  identityHash="pending..."
-                  webAuthnDID={orbitdbInstances?.identity?.id}
-                  verificationState={null}
-                  timestamp={Date.now()}
-                />
-              {/if}
+              <!-- What the verifier found for the entry behind this todo -->
+              <IdentityVerificationBadge
+                result={todoVerifications.get(todo.id) ?? null}
+              />
 
               <button
                 on:click={() => handleDeleteTodo(todo)}
