@@ -291,6 +291,12 @@ export {
   extensionSupportFromCredential,
 } from './keystore/encryption.js';
 
+export {
+  createSessionKeystore,
+  isSessionKeystore,
+} from './keystore/session-keystore.js';
+export { PrfUnavailableError } from './errors.js';
+
 export default {
   WebAuthnDIDProvider,
   OrbitDBWebAuthnIdentityProvider,

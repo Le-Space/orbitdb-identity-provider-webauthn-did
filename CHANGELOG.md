@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+### Added
+
+- `createSessionKeystore()`: an OrbitDB keystore on memory storage. OrbitDB
+  signs with whatever its keystore returns, and the default keystore writes
+  every key to disk — so with `encryptKeystore` the unlocked key was sitting
+  in IndexedDB unencrypted, and the sealed copy protected nothing after the
+  first session. Hand this keystore to `Identities()` and the unlocked key
+  lives in memory only; the provider warns when it is given any other.
+- `provider.encryptionState`: `{ enabled, method | reason }`, so an app can
+  show whether the key is actually sealed.
+
+### Changed
+
+- **No PRF, no seal.** When the authenticator returns no PRF output,
+  `wrapSKWithPRF`/`unwrapSKWithPRF` throw `PrfUnavailableError` and
+  `extractPrfSeedFromCredential` returns `{ seed: null, source: 'none' }`.
+  They used to fall back to the raw credential id, which sits in
+  localStorage in clear, so a key "wrapped with PRF" could be wrapped with
+  nothing secret. The provider carries on without encryption in that case
+  (`encryptionState.reason === 'prf-unavailable'`) and warns. Anything that
+  relied on the `'credentialId'` source has to decide for itself now.
+
+### Fixed
+
+- Creating an encrypted keystore no longer unlocks it straight afterwards:
+  the pair is already in memory, and the second prompt bought nothing.
+- The static `OrbitDBWebAuthnIdentityProvider.createIdentity` created a new
+  encrypted keystore on every call, replacing the sealed key; it now loads
+  the existing one and creates only when there is none.
+
 ## 0.5.3
 
 ### Security

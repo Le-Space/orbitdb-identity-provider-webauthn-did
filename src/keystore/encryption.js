@@ -11,7 +11,7 @@ import {
   CRYPTO_ALGORITHMS,
   KEYSTORE_ENCRYPTION_METHODS,
 } from '../constants.js';
-import { KeystoreEncryptionError } from '../errors.js';
+import { KeystoreEncryptionError, PrfUnavailableError } from '../errors.js';
 
 const log = logger(
   'orbitdb-identity-provider-webauthn-did:keystore-encryption'
@@ -44,25 +44,48 @@ async function deriveKeyFromPrfSeed(prfSeed) {
   return new Uint8Array(bits);
 }
 
-function getPrfSeed(credential, rawCredentialId) {
-  if (credential) {
-    try {
-      const extensions = credential.getClientExtensionResults();
-      const prfResults = extensions?.prf;
-      if (prfResults?.results?.first) {
-        log('Using WebAuthn PRF extension for key derivation');
-        return {
-          seed: new Uint8Array(prfResults.results.first),
-          source: KEYSTORE_ENCRYPTION_METHODS.PRF,
-        };
-      }
-    } catch (error) {
-      log('Error reading PRF extension results: %s', error.message);
+/**
+ * The PRF output of an assertion, or null when there is none.
+ *
+ * This used to fall back to the raw credential id, silently, so a key
+ * "wrapped with PRF" could in fact be wrapped with a value that sits in
+ * localStorage in clear. Without PRF there is no secret to derive from.
+ *
+ * @param {PublicKeyCredential} assertion
+ * @returns {{seed: Uint8Array, source: 'prf'}|null}
+ */
+function getPrfSeed(assertion) {
+  if (!assertion) return null;
+  try {
+    const prfResults = assertion.getClientExtensionResults()?.prf;
+    if (prfResults?.results?.first) {
+      log('Using WebAuthn PRF extension for key derivation');
+      return {
+        seed: new Uint8Array(prfResults.results.first),
+        source: KEYSTORE_ENCRYPTION_METHODS.PRF,
+      };
     }
+  } catch (error) {
+    log('Error reading PRF extension results: %s', error.message);
   }
+  log('PRF extension not available');
+  return null;
+}
 
-  log('PRF extension not available, using rawCredentialId for key derivation');
-  return { seed: rawCredentialId, source: 'credentialId' };
+/**
+ * @param {PublicKeyCredential} assertion
+ * @param {string} verb - For the message: what could not be done.
+ * @returns {{seed: Uint8Array, source: 'prf'}}
+ * @throws {PrfUnavailableError}
+ */
+function getPrfSeedOrThrow(assertion, verb) {
+  const prf = getPrfSeed(assertion);
+  if (!prf) {
+    throw new PrfUnavailableError(
+      `the authenticator returned no PRF output, so the key cannot be ${verb}`
+    );
+  }
+  return prf;
 }
 
 /**
@@ -423,7 +446,7 @@ export async function wrapSKWithPRF(credentialId, sk, rpId, prfInput) {
       })
     );
 
-    const { seed, source } = getPrfSeed(assertion, credentialId);
+    const { seed, source } = getPrfSeedOrThrow(assertion, 'wrapped');
     const prfKey = await deriveKeyFromPrfSeed(seed);
     const wrapped = await encryptWithAESGCM(sk, prfKey);
 
@@ -436,6 +459,7 @@ export async function wrapSKWithPRF(credentialId, sk, rpId, prfInput) {
       prfSource: source,
     };
   } catch (error) {
+    if (error instanceof PrfUnavailableError) throw error;
     log.error('Failed to wrap secret key with PRF: %s', error.message);
     throw new KeystoreEncryptionError(
       `Failed to wrap secret key: ${error.message}`,
@@ -544,13 +568,14 @@ export async function unwrapSKWithPRF(
       })
     );
 
-    const { seed, source } = getPrfSeed(assertion, credentialId);
+    const { seed, source } = getPrfSeedOrThrow(assertion, 'unwrapped');
     const prfKey = await deriveKeyFromPrfSeed(seed);
     const sk = await decryptWithAESGCM(wrappedSK, prfKey, wrappingIV);
 
     log('Secret key unwrapped with PRF (%s)', source);
     return sk;
   } catch (error) {
+    if (error instanceof PrfUnavailableError) throw error;
     log.error('Failed to unwrap secret key with PRF: %s', error.message);
     throw new KeystoreEncryptionError(
       `Failed to unwrap secret key: ${error.message}`,

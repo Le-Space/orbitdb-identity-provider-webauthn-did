@@ -55,8 +55,14 @@ export interface OrbitDBWebAuthnIdentityProviderOptions {
   [key: string]: unknown;
 }
 
+export type KeystoreEncryptionState =
+  | { enabled: true; method: KeystoreEncryptionMethod }
+  | { enabled: false; reason: 'not-requested' | 'prf-unavailable' };
+
 export class OrbitDBWebAuthnIdentityProvider {
   constructor(options?: OrbitDBWebAuthnIdentityProviderOptions);
+  /** What happened to `encryptKeystore`; `prf-unavailable` means the key is not encrypted at rest. */
+  encryptionState: KeystoreEncryptionState;
   getId(): Promise<string>;
   signIdentity(
     data: string | Uint8Array,
@@ -68,6 +74,15 @@ export class OrbitDBWebAuthnIdentityProvider {
 export function OrbitDBWebAuthnIdentityProviderFunction(
   options?: OrbitDBWebAuthnIdentityProviderOptions
 ): OrbitDBWebAuthnIdentityProvider;
+
+/** An OrbitDB keystore on memory storage; required for `encryptKeystore` to mean anything at rest. */
+export function createSessionKeystore(): Promise<unknown>;
+export function isSessionKeystore(keystore: unknown): boolean;
+
+/** The authenticator returned no PRF output; nothing stands in for it. */
+export class PrfUnavailableError extends Error {
+  code: 'PRF_UNAVAILABLE';
+}
 
 export function generateSecretKey(): Uint8Array;
 
