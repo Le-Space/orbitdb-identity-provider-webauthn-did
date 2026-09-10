@@ -22,7 +22,10 @@ import { signMessage } from '@orbitdb/core/src/key-store.js';
 import { generateKeyPair } from '@libp2p/crypto/keys';
 import { base58btc } from 'multiformats/bases/base58';
 
-import { OrbitDBWebAuthnIdentityProviderFunction } from '../src/keystore/provider.js';
+import {
+  OrbitDBWebAuthnIdentityProvider,
+  OrbitDBWebAuthnIdentityProviderFunction,
+} from '../src/keystore/provider.js';
 import { WebAuthnDIDProvider } from '../src/webauthn/provider.js';
 import { WebAuthnVarsigProvider } from '../src/varsig/provider.js';
 import {
@@ -110,6 +113,66 @@ test.describe('webauthn identity verification', () => {
     const { identities, identity } = await genuine();
     expect(identity.id).toMatch(/^did:key:z/);
     expect(await identities.verifyIdentity(identity)).toBe(true);
+  });
+
+  test('its derived signing key is secp256k1 unless asked otherwise', async () => {
+    const { keystore, identity } = await genuine();
+    expect((await keystore.getKey(identity.id)).type).toBe('secp256k1');
+    expect(identity.publicKey).toHaveLength(66); // 33-byte compressed point
+  });
+
+  test("signingKeyType 'Ed25519' derives an Ed25519 key, and the identity still verifies", async () => {
+    const { keystore, identities, identity } = await genuine({
+      signingKeyType: 'Ed25519',
+    });
+    expect((await keystore.getKey(identity.id)).type).toBe('Ed25519');
+    expect(identity.publicKey).toHaveLength(64); // 32-byte Ed25519 key
+    expect(await identities.verifyIdentity(identity)).toBe(true);
+  });
+
+  test('the same passkey derives the same Ed25519 key on a second device', async () => {
+    const first = await genuine({ signingKeyType: 'Ed25519' });
+    const { identities } = await orbitIdentities();
+    const second = await identities.createIdentity({
+      provider: OrbitDBWebAuthnIdentityProviderFunction({
+        webauthnCredential: first.credential,
+        signingKeyType: 'Ed25519',
+      }),
+    });
+    expect(second.id).toBe(first.identity.id);
+    expect(second.publicKey).toBe(first.identity.publicKey);
+  });
+
+  test('a keystore that already holds a secp256k1 key for the DID keeps it', async () => {
+    const { keystore, identities } = await orbitIdentities();
+    const credential = await WebAuthnDIDProvider.createCredential({
+      userId: 'alice',
+      displayName: 'Alice',
+    });
+    const did = await WebAuthnDIDProvider.createDID(credential);
+    await keystore.createKey(did); // whatever an earlier version left behind
+    const identity = await identities.createIdentity({
+      provider: OrbitDBWebAuthnIdentityProviderFunction({
+        webauthnCredential: credential,
+        signingKeyType: 'Ed25519',
+      }),
+    });
+    expect((await keystore.getKey(did)).type).toBe('secp256k1');
+    expect(await identities.verifyIdentity(identity)).toBe(true);
+  });
+
+  test('an unknown signingKeyType is refused up front', async () => {
+    const credential = await WebAuthnDIDProvider.createCredential({
+      userId: 'alice',
+      displayName: 'Alice',
+    });
+    expect(
+      () =>
+        new OrbitDBWebAuthnIdentityProvider({
+          webauthnCredential: credential,
+          signingKeyType: 'P-256',
+        })
+    ).toThrow(/signingKeyType/);
   });
 
   test('a stranger key claiming that DID does not', async () => {
