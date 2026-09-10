@@ -28,10 +28,20 @@ In this repo today, metadata recovery works in two layers:
 
 This means discoverable credentials remove the need to pre-select the credential for authentication, but they do not by themselves eliminate the need for identity metadata persistence.
 
-**Recommendation (security-first):**
+**Which option, and what each one actually gives you:**
 
-- **Best security:** Varsig provider (hardware-backed key for every write).
-- **Best balance:** Keystore provider with WebAuthn-encrypted keystore (fewer prompts, faster writes, key material in memory during session).
+|                                  | Default (passkey DID + derived key)                                                          | Keystore DID + `encryptKeystore`                                                                    | Varsig                                    |
+| -------------------------------- | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| DID                              | the passkey's P-256 key                                                                      | the keystore key (Ed25519/secp256k1)                                                                | the passkey's key                         |
+| Signs an entry                   | a key derived from the passkey's PRF output (secp256k1, or Ed25519 with `signingKeyType`)    | the keystore key, sealed by the passkey and unlocked once per session                               | the passkey, every write                  |
+| Prompts per write                | 0                                                                                            | 0                                                                                                   | 1                                         |
+| Prompts per session              | 0 after the first (the identity assertion is stored)                                         | 1 (unlock)                                                                                          | 2 (identity assertions)                   |
+| Same identity on a second device | yes, given PRF                                                                               | no — a new keystore key, unless the sealed copy travels                                             | yes                                       |
+| At rest in the browser           | the derived key, **unencrypted**, in OrbitDB's keystore                                      | the sealed copy only, **if** OrbitDB gets `createSessionKeystore()`; otherwise the unlocked key too | nothing                                   |
+| Without PRF                      | a generated key, one device only                                                             | not sealed at all (`encryptionState.reason === 'prf-unavailable'`)                                  | unaffected                                |
+| What a peer verifies             | the WebAuthn assertion binding the DID's key to the derived key, then each entry's signature | the DID is the signing key, then each entry's signature                                             | each entry's varsig against the DID's key |
+
+Varsig is the only option with no signing key in JavaScript at all; it costs a prompt per write and binds entries to the origin. The default is the cheapest and moves with the passkey, but leaves a software key on disk. The sealed keystore sits between, and only means something at rest with a session keystore.
 
 Note: WebAuthn varsig support in this repo relies on our forked `@le-space/iso-*` packages of [Hugo Dias iso-repo](https://github.com/hugomrdias/iso-repo/) (notably `@le-space/iso-did` and `@le-space/iso-webauthn-varsig`) to align with the updated varsig flow.
 
