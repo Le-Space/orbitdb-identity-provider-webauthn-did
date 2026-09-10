@@ -17,8 +17,22 @@
   recovery through "Use Existing Passkey" found nothing once localStorage
   was gone. A `required` set by the largeBlob encryption method stays.
 
+- The largeBlob identity payload (`createDidLargeBlobPayload`, version 2)
+  carries the credential's `prfInput`. Without it a recovered credential
+  could name its DID but not re-derive its signing key, so a second device
+  got a key of its own — the one thing the derived key exists to prevent.
+  Version 1 payloads still parse.
+- `clearIdentityProofs` is exported from the package root, so an app can
+  forget an identity completely: credential metadata, stored identity
+  assertion, keystore.
+
 ### Examples
 
+- The default demo lets you pick the derived key's type (`signingKeyType`),
+  shows the identity document's hash, the key in use and the number of
+  WebAuthn prompts, and splits "Logout" (keeps the passkey metadata) from
+  "Forget identity" (removes everything this device holds). Its own
+  credential store dropped `prfInput`; it uses the library's now.
 - One pnpm workspace for the three demos: one lockfile, one set of
   dependencies, `examples/shared` for what they share.
 - The "Verified" badge is now the verdict of a real check — entry signature,

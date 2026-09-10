@@ -35,10 +35,17 @@ function decodePayload(bytes) {
 
 export function createDidLargeBlobPayload(credential, did) {
   return encodePayload({
-    version: 1,
+    version: 2,
     type: 'webauthn-did',
     credentialId: credential.credentialId,
     did: did || null,
+    // Without the PRF input a recovered credential can name its DID but not
+    // re-derive its signing key, so a second device got a key of its own —
+    // the one thing the derived key exists to prevent. Version 1 payloads
+    // lack it and still parse.
+    prfInput: credential.prfInput
+      ? bytesToBase64url(credential.prfInput)
+      : null,
     publicKey: {
       algorithm: credential.publicKey.algorithm,
       keyType: credential.publicKey.keyType,
@@ -66,6 +73,7 @@ export function parseDidLargeBlobPayload(bytes) {
       y: base64urlToBytes(payload.publicKey.y),
     },
     did: payload.did || null,
+    prfInput: payload.prfInput ? base64urlToBytes(payload.prfInput) : undefined,
   };
 }
 
