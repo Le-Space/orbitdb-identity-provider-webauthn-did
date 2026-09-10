@@ -6,7 +6,7 @@ for all of them.
 | Demo | Option | What signs an entry |
 | --- | --- | --- |
 | `webauthn-todo-demo` | default | a key derived from the passkey, in the OrbitDB keystore |
-| `ed25519-encrypted-keystore-demo` | keystore DID + `encryptKeystore` | an Ed25519 key sealed by the passkey, in memory for the session |
+| `ed25519-encrypted-keystore-demo` | keystore DID + `encryptKeystore`, or a worker signer | an Ed25519 key sealed by the passkey and unlocked into memory for the session — or one that never leaves a Web Worker |
 | `webauthn-varsig-demo` | varsig | the passkey itself, every write |
 
 ## Running one
@@ -26,8 +26,18 @@ Pages deploy run.
 
 ## Layout
 
-- `shared/` — the page frame, brand and the code every demo needs the same
-  way. Files here resolve packages by walking up to `examples/node_modules`,
-  which is why the demos must not carry their own.
+- `shared/lib/options/` — one module per option, each building the
+  identity for it: `default-path.js`, `encrypted-keystore.js`, `varsig.js`.
+  This is the code to read for "how do I use this option".
+- `shared/lib/stack.js` — libp2p, Helia, OrbitDB, cleanup and reset, the
+  same for all three. Each demo passes a namespace so their IndexedDB stores
+  stay apart on the one origin the demos are published under.
+- `shared/lib/` also holds the verifier (`verification.js`), the forgery
+  checks and the prompt counter that back the panels, and `database.js`,
+  the todo store.
+- `shared/` otherwise — the page frame, brand and the switcher. Files here
+  resolve packages by walking up to `examples/node_modules`, which is why the
+  demos must not carry their own.
 - `<demo>/` — a SvelteKit app: `src/lib/WebAuthnTodo.svelte` is the demo,
-  the rest is scaffolding.
+  `src/lib/orbitdb.js` wires the option module into the stack, the rest is
+  scaffolding.

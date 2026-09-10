@@ -1,6 +1,6 @@
 # WebAuthn-Encrypted Keystore
 
-Protect OrbitDB keystores with hardware-backed WebAuthn encryption using `largeBlob` or `hmac-secret` extensions.
+Seal the OrbitDB keystore key with the passkey: PRF by default, `largeBlob` or `hmac-secret` where the authenticator offers them. Only meaningful together with `useKeystoreDID` (the keystore key is the identity) and a keystore that forgets — see below.
 
 ## Architecture
 
@@ -66,29 +66,26 @@ const identity = await orbitdb.identities.createIdentity({
     webauthnCredential: credential,
     useKeystoreDID: true, // Use Ed25519 keystore DID
     keystoreKeyType: 'Ed25519', // 'Ed25519' or 'secp256k1'
-    keystore: orbitdb.keystore,
+    keystore, // from createSessionKeystore(): OrbitDB's default keystore
+    //          persists the unlocked key unencrypted
     encryptKeystore: true, // Enable encryption
-    keystoreEncryptionMethod: 'largeBlob', // 'largeBlob' or 'hmac-secret'
+    keystoreEncryptionMethod: 'prf', // 'prf' (default), 'largeBlob' or 'hmac-secret'
   }),
 });
 ```
 
 ### Database Content Encryption
 
-Use the same secret key for both keystore and database content encryption:
+The keystore seal and database content encryption are separate keys. There
+is no `secretKey` option on the provider — it generates and seals its own —
+so content encryption needs a key of its own, wrapped the same way if you
+want the passkey to guard it:
 
 ```javascript
-import { SimpleEncryption } from '@orbitdb/simple-encryption';
+import SimpleEncryption from '@orbitdb/simple-encryption';
 import { generateSecretKey } from '@le-space/orbitdb-identity-provider-webauthn-did';
 
-const sk = generateSecretKey();
-const identity = await orbitdb.identities.createIdentity({
-  provider: OrbitDBWebAuthnIdentityProviderFunction({
-    webauthnCredential: credential,
-    encryptKeystore: true,
-    secretKey: sk,
-  }),
-});
+const sk = generateSecretKey(); // seal it with wrapSKWithPRF() to persist it
 
 const password = btoa(String.fromCharCode(...sk));
 const encryption = {
@@ -99,7 +96,7 @@ const encryption = {
 const db = await orbitdb.open('encrypted-db', { encryption });
 ```
 
-See [examples/simple-encryption-integration.js](../examples/simple-encryption-integration.js).
+`tests/simple-encryption-integration.test.js` runs this combination end to end.
 
 ## Implementation Details
 
@@ -322,17 +319,22 @@ const identity = await orbitdb.identities.createIdentity({
 
 ## Security
 
-**Without encryption**: Keystore vulnerable to XSS, malicious extensions, device theft
+**Without encryption**: the keystore key sits in IndexedDB in clear.
 
-**With encryption**:
+**With encryption, on a session keystore**:
 
-- Keystore encrypted with AES-GCM 256-bit
-- Secret key protected by WebAuthn hardware
-- One biometric prompt per session
+- A copy of the keystore key sealed with AES-GCM-256, the wrapping key from
+  the passkey's PRF output; nothing else at rest
+- Unlocked once per session into memory; during the session the key is in
+  page memory like any other software key — script running in the page can
+  use it. The worker signer (`createWorkerSigner`) is the option that keeps
+  it out of the page
+- Without PRF nothing is sealed: `provider.encryptionState` reports
+  `{ enabled: false, reason: 'prf-unavailable' }`
 
 ## Status
 
-**Implemented**: AES-GCM encryption, largeBlob/hmac-secret extensions, Ed25519/secp256k1 support, simple-encryption integration, 342 tests
+**Implemented**: AES-GCM sealing, PRF/largeBlob/hmac-secret unwrap, Ed25519/secp256k1 keystore DIDs, the session keystore, the worker signer
 
 **Future**: Session timeout, multi-device sync, recovery flows
 
@@ -342,7 +344,7 @@ Encryption is opt-in. Existing code without `encryptKeystore` continues to work.
 
 ## Testing
 
-342 automated tests across E2E, unit, and integration scenarios.
+The node suite (`pnpm run test:node`) covers the seal, the session keystore and the signer; `tests/ed25519-encrypted-keystore-e2e.test.js` drives the demo through a virtual authenticator.
 
 ```bash
 npm run test:encrypted-keystore

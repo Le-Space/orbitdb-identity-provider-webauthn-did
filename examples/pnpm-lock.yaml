@@ -17,9 +17,6 @@ importers:
       '@helia/bitswap':
         specifier: ^4.0.1
         version: 4.0.15(react-native@0.87.1(@babel/core@7.29.7)(react@19.3.0))
-      '@helia/http':
-        specifier: ^4.0.1
-        version: 4.0.6
       '@helia/libp2p':
         specifier: ^1.0.1
         version: 1.0.8(react-native@0.87.1(@babel/core@7.29.7)(react@19.3.0))

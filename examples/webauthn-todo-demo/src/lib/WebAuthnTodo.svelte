@@ -17,7 +17,7 @@
     writeLargeBlobMetadata,
   } from '../../../../src/webauthn/large-blob-metadata.js';
 
-  import { setupOrbitDB, cleanup, resetDatabaseState } from './libp2p.js';
+  import { setupOrbitDB, cleanup, resetDatabaseState } from './orbitdb.js';
   import {
     openTodoDatabase,
     loadTodos,
@@ -25,7 +25,7 @@
     toggleTodo,
     deleteTodo,
     getTodoStats,
-  } from './database.js';
+  } from '$shared/lib/database.js';
   import {
     Button,
     Tile,
