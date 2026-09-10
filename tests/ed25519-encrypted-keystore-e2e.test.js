@@ -432,7 +432,7 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     const encryptionEnabled = (await encryptionCheckbox.isDisabled())
       ? false
       : await encryptionCheckbox.isChecked();
-    const encryptionBenefit = page.locator('text=Keystore encrypted');
+    const encryptionBenefit = page.locator('text=Keystore key sealed');
     if (encryptionEnabled) {
       await expect(encryptionBenefit).toBeVisible({ timeout: 10000 });
       console.log('✅ Encryption benefit shown');
@@ -442,84 +442,84 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
     }
   });
 
-  test('should initialize worker-backed keystore mode and verify worker probe', async ({
+  async function panel(page) {
+    const text = async (id) =>
+      (await page.getByTestId(id).textContent()).replace(/\s+/g, ' ').trim();
+    const m = (await text('prompt-count')).match(/create (\d+) · get (\d+)/);
+    return {
+      backend: await text('signing-backend'),
+      key: await text('signing-key-type'),
+      atRest: await text('encryption-state'),
+      hash: await text('identity-hash'),
+      create: Number(m?.[1]),
+      get: Number(m?.[2]),
+    };
+  }
+
+  test('the worker signs OrbitDB entries with a key derived from the passkey', async ({
     page,
   }) => {
-    test.setTimeout(90000);
-    console.log('\n🧪 Testing worker-backed keystore mode...');
-
+    test.setTimeout(120000);
     await page.waitForSelector('text=WebAuthn is fully supported', {
       timeout: 30000,
     });
-
     await createCredentialAndWait(page);
-
     const workerToggle = page.locator('[data-testid="worker-mode-toggle"]');
-    await expect(workerToggle).toBeVisible();
     await expect(workerToggle).toBeEnabled();
     await workerToggle.check({ force: true });
-    await expect(workerToggle).toBeChecked();
-
     await authenticateAndWait(page);
-
-    await page.waitForFunction(
-      () => {
-        const state = window.__encryptedKeystoreDemo?.getState?.();
-        return (
-          state &&
-          state.useWorkerKeystore === true &&
-          state.workerStatus !== 'initializing' &&
-          state.workerProbeCount >= 1
-        );
-      },
-      { timeout: 60000 }
-    );
 
     const state = await page.evaluate(() =>
       window.__encryptedKeystoreDemo.getState()
     );
-    expect(state.useWorkerKeystore).toBe(true);
-    expect(state.activeSigningBackend).toBe('worker-keystore');
+    expect(state.activeSigningBackend).toBe('worker-signer');
+    expect(state.workerSeedSource).toBe('prf');
     expect(state.workerDid).toMatch(/^did:key:z6Mk/);
-    expect(state.workerSignatureVerified).toBe(true);
-    expect(state.workerLastOperation).toBe('authenticate');
-    expect(state.workerLastSignatureLength).toBeGreaterThan(0);
+    // The worker's key is the identity: same DID, and nothing at rest.
+    expect(state.orbitdbIdentityDid).toBe(state.workerDid);
+    expect(state.encryptionState).toEqual({
+      enabled: false,
+      reason: 'external-signer',
+    });
+    const first = await panel(page);
+    expect(first.backend).toBe('worker-signer');
+    expect(first.key).toBe('Ed25519, in the Web Worker');
+    expect(first.atRest).toContain('derived in the worker');
+    // Registration, then one PRF assertion for the seed. The identity
+    // document is self-signed by the worker key: no passkey prompt for it.
+    expect(first).toMatchObject({ create: 1, get: 1 });
 
-    await expect(page.locator('[data-testid="worker-status"]')).toContainText(
-      /ready|restored/
-    );
-    await expect(
-      page.locator('[data-testid="worker-probe-status"]')
-    ).toContainText('verified');
+    const todoText = `Signed in the worker ${Date.now()}`;
+    await page.locator('input[placeholder="Add a new TODO..."]').fill(todoText);
+    await page.locator('button:has-text("Add")').click();
+    await page.waitForSelector(`text=${todoText}`, { timeout: 30000 });
+    expect((await panel(page)).get).toBe(1); // the write asked the worker, not the passkey
 
-    console.log('✅ Worker keystore initialized with DID:', state.workerDid);
+    const writer = await expectTodosVerified(page);
+    expect(writer).toBe(state.workerDid);
+    await expectForgeryRejected(page);
   });
 
-  test('should restore worker archive after reload when worker mode is re-enabled', async ({
+  test('the same passkey derives the same worker key after a reload, with nothing stored', async ({
     page,
   }) => {
-    test.setTimeout(90000);
-    console.log('\n🧪 Testing worker archive restore after reload...');
-
+    test.setTimeout(120000);
     await page.waitForSelector('text=WebAuthn is fully supported', {
       timeout: 30000,
     });
-
     await createCredentialAndWait(page);
-    await page.locator('[data-testid="worker-mode-toggle"]').check();
+    // Enabled only once the page knows a worker is available; a click before
+    // that is undone by the demo's own guard, and the session would sign from
+    // the keystore instead.
+    const workerToggle = page.locator('[data-testid="worker-mode-toggle"]');
+    await expect(workerToggle).toBeEnabled();
+    await workerToggle.check({ force: true });
     await authenticateAndWait(page);
-
-    await page.waitForFunction(
-      () => {
-        const state = window.__encryptedKeystoreDemo?.getState?.();
-        return state && state.workerDid && state.workerProbeCount >= 1;
-      },
-      { timeout: 60000 }
-    );
-
-    const firstState = await page.evaluate(() =>
+    const before = await page.evaluate(() =>
       window.__encryptedKeystoreDemo.getState()
     );
+    expect(before.workerDid).toMatch(/^did:key:z6Mk/);
+    const hashBefore = (await panel(page)).hash;
 
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => document.readyState === 'complete');
@@ -530,39 +530,57 @@ test.describe('Ed25519 Encrypted Keystore Demo - E2E Tests', () => {
         timeout: 30000,
       }
     );
-
-    const workerToggle = page.locator('[data-testid="worker-mode-toggle"]');
+    // The archive the old worker mode kept in localStorage is gone for good:
+    // there is nothing to restore, the key is derived again.
+    expect(
+      await page.evaluate(() =>
+        Object.keys(localStorage).filter((k) => k.startsWith('worker-keystore'))
+      )
+    ).toEqual([]);
+    await expect(workerToggle).toBeEnabled();
     await workerToggle.check({ force: true });
-    await expect(workerToggle).toBeChecked();
     await authenticateAndWait(page);
-
-    await page.waitForFunction(
-      () => {
-        const state = window.__encryptedKeystoreDemo?.getState?.();
-        return (
-          state &&
-          state.workerArchiveRestored === true &&
-          state.workerStatus !== 'initializing' &&
-          state.workerProbeCount >= 1
-        );
-      },
-      { timeout: 60000 }
-    );
-
-    const restoredState = await page.evaluate(() =>
+    const after = await page.evaluate(() =>
       window.__encryptedKeystoreDemo.getState()
     );
+    expect(after.workerDid).toBe(before.workerDid);
+    expect(after.orbitdbIdentityDid).toBe(before.orbitdbIdentityDid);
+    expect((await panel(page)).hash).toBe(hashBefore);
+  });
 
-    expect(restoredState.useWorkerKeystore).toBe(true);
-    expect(restoredState.workerArchiveRestored).toBe(true);
-    expect(restoredState.workerDid).toBe(firstState.workerDid);
-    expect(restoredState.workerSignatureVerified).toBe(true);
-
-    await expect(
-      page.locator('[data-testid="worker-archive-status"]')
-    ).toContainText('restored from storage');
-
-    console.log('✅ Worker archive restored for DID:', restoredState.workerDid);
+  test('without the worker, the sealed copy is the only thing at rest', async ({
+    page,
+  }) => {
+    test.setTimeout(120000);
+    await page.waitForSelector('text=WebAuthn is fully supported', {
+      timeout: 30000,
+    });
+    await createCredentialAndWait(page);
+    await authenticateAndWait(page);
+    const state = await page.evaluate(() =>
+      window.__encryptedKeystoreDemo.getState()
+    );
+    expect(state.activeSigningBackend).toBe('session-keystore');
+    expect(state.encryptionState).toEqual({ enabled: true, method: 'prf' });
+    const facts = await panel(page);
+    expect(facts.key).toBe('Ed25519, in memory for this session');
+    expect(facts.atRest).toContain('sealed by the passkey (prf)');
+    await expect(page.getByTestId('encryption-state')).toHaveAttribute(
+      'data-enabled',
+      'true'
+    );
+    // The sealed copy exists; OrbitDB's own keystore stores are not on disk.
+    const stores = await page.evaluate(async () =>
+      (await indexedDB.databases()).map((d) => d.name)
+    );
+    expect(stores.some((n) => n.includes('identities'))).toBe(false);
+    expect(
+      await page.evaluate(() =>
+        Object.keys(localStorage).some((k) =>
+          k.startsWith('encrypted-keystore-')
+        )
+      )
+    ).toBe(true);
   });
 
   test('should handle browser reload persistence (session management)', async ({
