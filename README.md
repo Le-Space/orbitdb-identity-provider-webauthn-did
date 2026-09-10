@@ -299,8 +299,8 @@ It drives six alice/bob pairings through a real relay:
 
 | Mode                                          | Pairing                                    |
 | --------------------------------------------- | ------------------------------------------ |
-| `alice-worker-bob-hardware-ed25519`           | worker keystore ↔ hardware Ed25519        |
-| `alice-worker-bob-hardware-p256`              | worker keystore ↔ hardware P-256          |
+| `alice-worker-bob-hardware-ed25519`           | worker keystore ↔ hardware Ed25519         |
+| `alice-worker-bob-hardware-p256`              | worker keystore ↔ hardware P-256           |
 | `alice-hardware-ed25519-bob-hardware-p256`    | the two hardware curves against each other |
 | `alice-worker-ed25519-bob-worker-ed25519`     | worker keystore, both sides                |
 | `alice-hardware-ed25519-bob-hardware-ed25519` | hardware Ed25519, both sides               |
