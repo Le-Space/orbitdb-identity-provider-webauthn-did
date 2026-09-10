@@ -193,26 +193,11 @@ export function createWebAuthnVarsigIdentities(identity, domainLabels = {}) {
       return false;
     }
 
-    const idBytes = encoder.encode(identityToVerify.id);
-    const idValid = await verifyVarsigForPayload(
-      identityToVerify.signatures.id,
-      identityToVerify.publicKey,
-      idBytes,
-      labels.id
-    );
-    if (!idValid) return false;
-
-    const publicKeyPayload = concat([
-      identityToVerify.publicKey,
-      identityToVerify.signatures.id,
-    ]);
-
-    return verifyVarsigForPayload(
-      identityToVerify.signatures.publicKey,
-      identityToVerify.publicKey,
-      publicKeyPayload,
-      labels.publicKey
-    );
+    // The same check OrbitDB's provider registry uses, including the binding
+    // of the id to the key that signs for it. Verifying only the two
+    // signatures, as this did, accepted a stranger's passkey signing someone
+    // else's DID (GHSA-326j-4cc3-4rrg, left open here in 0.5.2).
+    return verifyVarsigIdentity(identityToVerify, labels);
   };
 
   const getIdentity = async (hash) => {

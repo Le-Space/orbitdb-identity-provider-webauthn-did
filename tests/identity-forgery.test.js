@@ -29,6 +29,7 @@ import {
 import { WebAuthnDIDProvider } from '../src/webauthn/provider.js';
 import { WebAuthnVarsigProvider } from '../src/varsig/provider.js';
 import {
+  createWebAuthnVarsigIdentities,
   createWebAuthnVarsigIdentity,
   verifyVarsigIdentity,
 } from '../src/varsig/identity.js';
@@ -271,6 +272,43 @@ test.describe('varsig identity verification', () => {
     const identity = await genuineVarsig();
     const relabelled = { ...identity, id: await ed25519Did() };
     expect(await verifyVarsigIdentity(relabelled)).toBe(false);
+  });
+
+  test("a stranger's passkey signing someone else's DID is refused by the identities object too", async () => {
+    // Relabelling alone breaks signatures.id. The real forgery signs the
+    // victim's DID with the attacker's own passkey, so every signature is
+    // valid for the key it carries — only the id/key binding catches it.
+    // createWebAuthnVarsigIdentities().verifyIdentity is what OrbitDB's access
+    // controller calls; 0.5.2 bound the id only in verifyVarsigIdentity.
+    const victim = await genuineVarsig();
+
+    // The attacker's own authenticator: one mock holds one key pair, so a
+    // second credential on the same mock would be the victim's key again.
+    const restore = installMockAuthenticator(await createMockAuthenticator());
+    let forged;
+    let attackersOwn;
+    try {
+      const attacker = await WebAuthnVarsigProvider.createCredential({
+        userId: 'mallory',
+        displayName: 'Mallory',
+      });
+      attackersOwn = await createWebAuthnVarsigIdentity({
+        credential: attacker,
+      });
+      forged = await createWebAuthnVarsigIdentity({
+        credential: { ...attacker, did: victim.id },
+      });
+    } finally {
+      restore();
+    }
+    expect(forged.id).toBe(victim.id);
+    expect(forged.publicKey).not.toEqual(victim.publicKey);
+    expect(await verifyVarsigIdentity(attackersOwn)).toBe(true); // a working passkey
+
+    const identities = createWebAuthnVarsigIdentities(victim);
+    expect(await identities.verifyIdentity(victim)).toBe(true);
+    expect(await identities.verifyIdentity(forged)).toBe(false);
+    expect(await verifyVarsigIdentity(forged)).toBe(false);
   });
 
   test('the Playwright flag no longer switches verification off', async () => {
