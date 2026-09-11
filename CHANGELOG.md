@@ -2,8 +2,27 @@
 
 ## Unreleased
 
+### Added
+
+- `createSessionKeystore()`: an OrbitDB keystore on memory storage. OrbitDB
+  signs with whatever its keystore returns, and the default keystore writes
+  every key to disk — so with `encryptKeystore` the unlocked key was sitting
+  in IndexedDB unencrypted, and the sealed copy protected nothing after the
+  first session. Hand this keystore to `Identities()` and the unlocked key
+  lives in memory only; the provider warns when it is given any other.
+- `provider.encryptionState`: `{ enabled, method | reason }`, so an app can
+  show whether the key is actually sealed.
+
 ### Changed
 
+- **No PRF, no seal.** When the authenticator returns no PRF output,
+  `wrapSKWithPRF`/`unwrapSKWithPRF` throw `PrfUnavailableError` and
+  `extractPrfSeedFromCredential` returns `{ seed: null, source: 'none' }`.
+  They used to fall back to the raw credential id, which sits in
+  localStorage in clear, so a key "wrapped with PRF" could be wrapped with
+  nothing secret. The provider carries on without encryption in that case
+  (`encryptionState.reason === 'prf-unavailable'`) and warns. Anything that
+  relied on the `'credentialId'` source has to decide for itself now.
 - A varsig identity's id is always derived from its public key.
   `createWebAuthnVarsigIdentity` used to let a stored `credential.did` win,
   so metadata recovered from largeBlob or localStorage — data anyone with
@@ -16,7 +35,6 @@
   credential created asking for it; without this the write was refused and
   recovery through "Use Existing Passkey" found nothing once localStorage
   was gone. A `required` set by the largeBlob encryption method stays.
-
 - The largeBlob identity payload (`createDidLargeBlobPayload`, version 2)
   carries the credential's `prfInput`. Without it a recovered credential
   could name its DID but not re-derive its signing key, so a second device
@@ -25,6 +43,14 @@
 - `clearIdentityProofs` is exported from the package root, so an app can
   forget an identity completely: credential metadata, stored identity
   assertion, keystore.
+
+### Fixed
+
+- Creating an encrypted keystore no longer unlocks it straight afterwards:
+  the pair is already in memory, and the second prompt bought nothing.
+- The static `OrbitDBWebAuthnIdentityProvider.createIdentity` created a new
+  encrypted keystore on every call, replacing the sealed key; it now loads
+  the existing one and creates only when there is none.
 
 ### Examples
 

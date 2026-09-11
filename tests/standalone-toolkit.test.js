@@ -523,7 +523,7 @@ test.describe('Standalone WebAuthn Toolkit', () => {
     expect(loadWebAuthnCredentialSafe('credential-safe-test')).toBeNull();
   });
 
-  test('extractPrfSeedFromCredential uses PRF output then falls back', async () => {
+  test('extractPrfSeedFromCredential returns the PRF output, and nothing in its place', async () => {
     const credential = {
       rawCredentialId: new Uint8Array([91, 92, 93]),
       prfInput: new Uint8Array([1, 1, 1]),
@@ -562,11 +562,12 @@ test.describe('Standalone WebAuthn Toolkit', () => {
       },
     });
 
-    const fallback = await extractPrfSeedFromCredential(credential, {
+    // No PRF: no seed. It used to hand back the credential id here, which is
+    // not a secret, and callers "encrypted" with it.
+    const none = await extractPrfSeedFromCredential(credential, {
       rpId: 'example.test',
     });
-    expect(fallback.source).toBe('credentialId');
-    expect(Array.from(fallback.seed)).toEqual([91, 92, 93]);
+    expect(none).toEqual({ seed: null, source: 'none' });
 
     Object.defineProperty(navigatorObject, 'credentials', {
       configurable: true,

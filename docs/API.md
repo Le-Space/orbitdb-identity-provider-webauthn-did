@@ -132,7 +132,7 @@ Creates a signer instance from credential metadata.
 ```js
 const provider = new WebAuthnDIDProvider(credential);
 const signature = await provider.sign(new TextEncoder().encode('hello'));
-const valid = await provider.verify(signature);
+const valid = await provider.verify(signature, data, credential.publicKey);
 ```
 
 ### OrbitDB Identity Provider

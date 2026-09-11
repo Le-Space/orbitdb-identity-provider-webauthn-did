@@ -72,6 +72,20 @@ export class KeystoreEncryptionError extends WebAuthnIdentityError {
   }
 }
 
+/**
+ * The authenticator produced no PRF output. Nothing else can stand in for
+ * it: a key derived from a value anyone can read (the credential id used to
+ * be that stand-in) is not a secret, so callers decide what to do without
+ * PRF instead of getting a "wrapped" key that is not.
+ */
+export class PrfUnavailableError extends KeystoreEncryptionError {
+  constructor(message = 'PRF output unavailable', options) {
+    super(message, options);
+    this.name = 'PrfUnavailableError';
+    this.code = 'PRF_UNAVAILABLE';
+  }
+}
+
 export class VarsigVerificationError extends WebAuthnIdentityError {
   constructor(message, options = {}) {
     super(message, {
