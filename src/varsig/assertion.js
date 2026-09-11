@@ -1,7 +1,6 @@
 /**
  * Build and verify WebAuthn varsig assertions for payloads.
  */
-import { unwrapEC2Signature } from 'iso-passkeys';
 import {
   bytesToBase64url,
   decodeWebAuthnVarsigV1,
@@ -104,20 +103,16 @@ async function buildVarsigOutput(assertionData) {
   });
 
   const signedData = await reconstructSignedData(decoded);
-  const signatureBytes = Uint8Array.from(decoded.signature);
-  let p256Signature = signatureBytes;
-  if (signatureBytes.length !== 64) {
-    try {
-      p256Signature = Uint8Array.from(unwrapEC2Signature(signatureBytes));
-    } catch {
-      p256Signature = signatureBytes;
-    }
-  }
 
+  // verifyP256Signature takes the signature as the authenticator returned it
+  // (DER) and converts it itself. Unwrapping it here first broke two ways:
+  // the unwrapper did not pad a short r or s to 32 bytes, and a raw r‖s that
+  // starts with 0x30 was then taken for DER again. About one genuine
+  // signature in 90 was refused.
   const signatureValid =
     algorithm === KEY_TYPES.ED25519
       ? await verifyEd25519Signature(signedData, decoded.signature, publicKey)
-      : await verifyP256Signature(signedData, p256Signature, publicKey);
+      : await verifyP256Signature(signedData, decoded.signature, publicKey);
 
   if (!verification.valid || !signatureValid) {
     throw new VarsigVerificationError('WebAuthn varsig verification failed.');
@@ -198,20 +193,12 @@ async function verifyVarsigForPayload(
   }
 
   const signedData = await reconstructSignedData(decoded);
-  const signatureBytes = Uint8Array.from(decoded.signature);
-  let p256Signature = signatureBytes;
-  if (signatureBytes.length !== 64) {
-    try {
-      p256Signature = Uint8Array.from(unwrapEC2Signature(signatureBytes));
-    } catch {
-      p256Signature = signatureBytes;
-    }
-  }
 
+  // The DER signature goes to the verifier as is; see buildVarsigOutput.
   const algorithm = algorithmFromPublicKey(publicKey);
   return algorithm === 'Ed25519'
     ? verifyEd25519Signature(signedData, decoded.signature, publicKey)
-    : verifyP256Signature(signedData, p256Signature, publicKey);
+    : verifyP256Signature(signedData, decoded.signature, publicKey);
 }
 
 export {
