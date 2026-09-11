@@ -46,6 +46,18 @@
 
 ### Fixed
 
+- **Genuine P-256 signatures were refused about once in 90.** An
+  authenticator returns an ES256 signature as DER with minimal integers, so r
+  or s can be 31 bytes long. The default path's identity binding unwrapped
+  it with a helper that did not pad them back to 32, so about one passkey
+  identity in 128 failed verification — at every peer, and permanently,
+  because the proof is stored and reused (since 0.5.2). The varsig path had
+  the same unwrap plus a second fault: the raw r‖s went to a verifier that
+  takes DER, and one that started with 0x30 was parsed as DER and refused.
+  Both now leave the conversion to `derToRawSignature`/`verifyP256Signature`
+  from `iso-webauthn-varsig`. Found as a 2% flake in the forgery suite;
+  `tests/p256-signature-shapes.test.js` forces each shape through the mock
+  authenticator's new `signatureShape` option.
 - Creating an encrypted keystore no longer unlocks it straight afterwards:
   the pair is already in memory, and the second prompt bought nothing.
 - The static `OrbitDBWebAuthnIdentityProvider.createIdentity` created a new

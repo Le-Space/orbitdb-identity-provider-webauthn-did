@@ -26,6 +26,7 @@ export default defineConfig({
     'identity-forgery.test.js',
     'session-keystore.test.js',
     'worker-signer.test.js',
+    'p256-signature-shapes.test.js',
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,

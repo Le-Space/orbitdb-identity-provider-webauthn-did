@@ -80,6 +80,11 @@ export async function createMockAuthenticator({
   // false to model an authenticator without the extension.
   supportsPrf = true,
   prfSecret = null,
+  // ECDSA is randomised, so the rare shapes that break DER handling — a short
+  // r or s, a raw r‖s starting with 0x30 — turn up about once in 90
+  // signatures, which makes a flake, not a test. `signatureShape(raw)` makes
+  // every assertion re-sign until its raw r‖s has the shape asked for.
+  signatureShape = null,
 } = {}) {
   const keypair = await crypto.subtle.generateKey(
     { name: 'ECDSA', namedCurve: 'P-256' },
@@ -265,15 +270,20 @@ export async function createMockAuthenticator({
         // varsig decoder tells the two apart by the first byte — so a raw
         // signature that happened to start with 0x30 (one in 256) was read as
         // DER and refused. Match what an authenticator does.
-        const signature = derEncodeEcdsaSignature(
-          new Uint8Array(
+        const signedBytes = concatBytes([authData, clientDataHash]);
+        let raw;
+        for (let attempt = 0; ; attempt += 1) {
+          raw = new Uint8Array(
             await crypto.subtle.sign(
               { name: 'ECDSA', hash: 'SHA-256' },
               keypair.privateKey,
-              concatBytes([authData, clientDataHash])
+              signedBytes
             )
-          )
-        );
+          );
+          if (!signatureShape || signatureShape(raw)) break;
+          if (attempt > 20000) throw new Error('signatureShape never matched');
+        }
+        const signature = derEncodeEcdsaSignature(raw);
 
         return {
           id: bytesToBase64url(activeCredentialId),

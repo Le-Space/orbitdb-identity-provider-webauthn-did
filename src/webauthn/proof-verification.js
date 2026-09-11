@@ -27,7 +27,7 @@
  */
 import { varint } from 'multiformats';
 import { base58btc } from 'multiformats/bases/base58';
-import { unwrapEC2Signature } from 'iso-passkeys';
+import { derToRawSignature } from 'iso-webauthn-varsig';
 
 import { DID_KEY_PREFIX, WEBAUTHN_CLIENT_DATA_TYPES } from '../constants.js';
 
@@ -171,11 +171,16 @@ export async function verifyWebAuthnProof(encodedProof, data, publicKeyBytes) {
       authData,
       await sha256(new TextEncoder().encode(clientDataJSON))
     );
+    // Authenticators return ES256 signatures as DER, where r and s are
+    // minimal integers: one with a leading zero byte is 31 bytes long (about
+    // one signature in 128). WebCrypto wants each padded to 32. The unwrapper
+    // used here before did not pad, so those genuine proofs were refused — by
+    // every peer, and for good, because the proof is stored and reused.
     const signatureBytes = base64urlToBytes(signature);
     const p1363 =
       signatureBytes.length === P1363_SIGNATURE_LENGTH
         ? signatureBytes
-        : Uint8Array.from(unwrapEC2Signature(signatureBytes));
+        : derToRawSignature(signatureBytes);
 
     const key = await crypto.subtle.importKey(
       'raw',
