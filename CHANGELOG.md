@@ -2,8 +2,31 @@
 
 ## Unreleased
 
+## 0.5.4
+
+Fixes a verification bug that refused about one P-256 passkey identity in
+128 at every peer, since 0.5.2 (see _Fixed_). Upgrade if you use P-256
+passkeys, which is most platform authenticators.
+
+**Upgrade note.** `encryptKeystore` no longer falls back to the credential
+id when the authenticator has no PRF: `wrapSKWithPRF`/`unwrapSKWithPRF`
+throw `PrfUnavailableError`, and `extractPrfSeedFromCredential` returns
+`{ seed: null, source: 'none' }`. The credential id sits in localStorage in
+clear, so a key sealed that way was never sealed. An app that used
+`encryptKeystore` with users whose authenticator has no PRF cannot unseal
+their old key; those users get a fresh keystore DID. The default path and
+varsig are unaffected.
+
 ### Added
 
+- `signer` option and `createSessionKeystore({ signer })`: a key that signs
+  elsewhere — typically a Web Worker — becomes the identity. The keystore
+  answers for the signer's DID with a key object whose `sign()` calls the
+  signer, OrbitDB signs through it, and no private key exists in the page.
+  From the standalone toolkit, `client.deriveSigner(prfSeed)` derives an
+  Ed25519 key from the passkey's PRF output inside the worker and returns
+  only its DID and public key; `createWorkerSigner(client, { did, publicKey })`
+  turns that into the signer.
 - `createSessionKeystore()`: an OrbitDB keystore on memory storage. OrbitDB
   signs with whatever its keystore returns, and the default keystore writes
   every key to disk — so with `encryptKeystore` the unlocked key was sitting
@@ -58,6 +81,8 @@
   from `iso-webauthn-varsig`. Found as a 2% flake in the forgery suite;
   `tests/p256-signature-shapes.test.js` forces each shape through the mock
   authenticator's new `signatureShape` option.
+- The `/keystore` subpath exports `PrfUnavailableError`, which its type
+  declarations already promised.
 - Creating an encrypted keystore no longer unlocks it straight afterwards:
   the pair is already in memory, and the second prompt bought nothing.
 - The static `OrbitDBWebAuthnIdentityProvider.createIdentity` created a new
