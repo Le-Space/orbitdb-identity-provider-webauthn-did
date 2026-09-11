@@ -8,7 +8,7 @@ import { varint } from 'multiformats';
 import { base58btc } from 'multiformats/bases/base58';
 import * as KeystoreEncryption from './encryption.js';
 import { ensureDerivedSigningKey } from './derived-signing-key.js';
-import { isSessionKeystore } from './session-keystore.js';
+import { assertSigner, isSessionKeystore } from './session-keystore.js';
 import { PrfUnavailableError } from '../errors.js';
 import { WebAuthnDIDProvider } from '../webauthn/provider.js';
 import { verifyWebAuthnIdentityBinding } from '../webauthn/proof-verification.js';
@@ -57,6 +57,10 @@ export class OrbitDBWebAuthnIdentityProvider {
    * @param {string} [options.signingKeyType='secp256k1'] - Type of that derived
    *   key: 'secp256k1' or 'Ed25519'. `useKeystoreDID` has its own
    *   `keystoreKeyType`.
+   * @param {Object} [options.signer] - A key that signs elsewhere (see
+   *   `createWorkerSigner`): the identity is its DID, OrbitDB signs through
+   *   it, and nothing of it is in this provider or any keystore. Give
+   *   `Identities()` the keystore from `createSessionKeystore({ signer })`.
    */
   constructor({
     webauthnCredential,
@@ -67,7 +71,10 @@ export class OrbitDBWebAuthnIdentityProvider {
     keystoreEncryptionMethod = KEYSTORE_ENCRYPTION_METHODS.PRF,
     deriveSigningKeyFromPrf = true,
     signingKeyType = KEY_TYPES.SECP256K1,
+    signer = null,
   }) {
+    if (signer) assertSigner(signer);
+    this.signer = signer;
     if (![KEY_TYPES.SECP256K1, KEY_TYPES.ED25519].includes(signingKeyType)) {
       throw new Error(
         `signingKeyType must be '${KEY_TYPES.SECP256K1}' or '${KEY_TYPES.ED25519}', not '${signingKeyType}'`
@@ -93,9 +100,11 @@ export class OrbitDBWebAuthnIdentityProvider {
      * when the authenticator has no PRF and the key therefore went into the
      * keystore unencrypted rather than "encrypted" under a public value.
      */
-    this.encryptionState = encryptKeystore
-      ? { enabled: true, method: keystoreEncryptionMethod }
-      : { enabled: false, reason: 'not-requested' };
+    this.encryptionState = signer
+      ? { enabled: false, reason: 'external-signer' }
+      : encryptKeystore
+        ? { enabled: true, method: keystoreEncryptionMethod }
+        : { enabled: false, reason: 'not-requested' };
     this.warnedAboutPersistence = false;
   }
 
@@ -115,6 +124,20 @@ export class OrbitDBWebAuthnIdentityProvider {
    */
   async getId(options = {}) {
     identityLog('getId() called');
+
+    // An external signer is the identity: its DID names its key, and the
+    // keystore OrbitDB holds answers for that DID with something that signs
+    // through it. Verification is the keystore-DID rule — the DID's key must
+    // equal `publicKey` — which this satisfies by construction.
+    if (this.signer) {
+      const keystore = options.keystore ?? this.keystore;
+      if (keystore && !(await keystore.getKey(this.signer.did))) {
+        throw new Error(
+          'the keystore does not serve the signer; create it with createSessionKeystore({ signer })'
+        );
+      }
+      return this.signer.did;
+    }
 
     // If useKeystoreDID flag is set, create Ed25519 DID from keystore
     if (this.useKeystoreDID && this.keystore) {
@@ -662,6 +685,17 @@ export class OrbitDBWebAuthnIdentityProvider {
       hasUnlockedKeypair: Boolean(this.unlockedKeypair),
     });
 
+    if (this.signer) {
+      // The document is self-signed by the same key that signs entries: no
+      // WebAuthn prompt, and nothing the verifier reads for a keystore DID.
+      const bytes =
+        typeof data === 'string' ? new TextEncoder().encode(data) : data;
+      const signature = await this.signer.sign(bytes);
+      return Array.from(signature, (b) => b.toString(16).padStart(2, '0')).join(
+        ''
+      );
+    }
+
     if (this.encryptKeystore && this.unlockedKeypair) {
       identityLog(
         'Encrypted keystore is unlocked, but signing currently remains WebAuthn-based'
@@ -714,6 +748,7 @@ export class OrbitDBWebAuthnIdentityProvider {
       keystoreEncryptionMethod = KEYSTORE_ENCRYPTION_METHODS.PRF,
       deriveSigningKeyFromPrf = true,
       signingKeyType = KEY_TYPES.SECP256K1,
+      signer = null,
     } = options;
 
     identityLog(
@@ -732,6 +767,7 @@ export class OrbitDBWebAuthnIdentityProvider {
       keystoreEncryptionMethod,
       deriveSigningKeyFromPrf,
       signingKeyType,
+      signer,
     });
 
     // If encryption is enabled, create and unlock encrypted keystore

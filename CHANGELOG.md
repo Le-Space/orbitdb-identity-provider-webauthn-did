@@ -54,6 +54,13 @@
 
 ### Examples
 
+- The encrypted-keystore demo gives OrbitDB a session keystore in both of its
+  modes, so its "encrypted at rest" is true, and its worker mode is now the
+  real signer: the key is derived from the passkey inside the worker and
+  OrbitDB signs through it (`createWorkerSigner`, `signer` option). The
+  archive the worker used to hand to the page, the probe panel beside the
+  real signing, and the credential-id fallback are gone; the panel shows the
+  signing backend, what is at rest and the prompt count.
 - The default demo lets you pick the derived key's type (`signingKeyType`),
   shows the identity document's hash, the key in use and the number of
   WebAuthn prompts, and splits "Logout" (keeps the passkey metadata) from

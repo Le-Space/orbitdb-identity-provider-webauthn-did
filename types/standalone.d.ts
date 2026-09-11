@@ -136,6 +136,10 @@ export function extractPrfSeedFromCredential(
 
 export interface WorkerKeystoreClient {
   initWithPrfSeed(prfSeed: Uint8Array): Promise<void>;
+  /** Derive the Ed25519 signer from the PRF seed inside the worker; only the public half comes back. */
+  deriveSigner(
+    prfSeed: Uint8Array
+  ): Promise<{ did: string; publicKey: Uint8Array }>;
   generateEd25519Identity(): Promise<{
     did: string;
     publicKey: Uint8Array;
@@ -217,3 +221,14 @@ export function decryptArchive(
   iv: Uint8Array,
   options?: WorkerKeystoreOptions
 ): Promise<ByteArchive>;
+
+/** A signer for `createSessionKeystore({ signer })` and the provider's `signer` option; `sign` runs in the worker. */
+export function createWorkerSigner(
+  client: WorkerKeystoreClient,
+  derived: { did: string; publicKey: Uint8Array }
+): {
+  type: 'Ed25519';
+  did: string;
+  publicKey: Uint8Array;
+  sign(data: Uint8Array): Promise<Uint8Array>;
+};

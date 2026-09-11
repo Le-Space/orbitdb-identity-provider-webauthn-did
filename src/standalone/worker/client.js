@@ -138,6 +138,27 @@ class WorkerKeystoreClient {
   }
 
   /**
+   * Derive the signer from the PRF seed, inside the worker, and get back the
+   * public half. Nothing is stored; call it again next session with the same
+   * seed and the same key answers.
+   * @param {Uint8Array} prfSeed
+   * @returns {Promise<{did: string, publicKey: Uint8Array}>}
+   */
+  async deriveSigner(prfSeed) {
+    if (!(prfSeed instanceof Uint8Array) || prfSeed.length === 0) {
+      throw new Error('deriveSigner requires a non-empty Uint8Array seed');
+    }
+    const prfSeedBuffer = toDetachedBuffer(prfSeed);
+    const result = await this.request(
+      'deriveSigner',
+      { prfSeed: prfSeedBuffer },
+      [prfSeedBuffer]
+    );
+    const publicKey = new Uint8Array(result.publicKey);
+    return { did: createEd25519DidFromPublicKey(publicKey), publicKey };
+  }
+
+  /**
    * Generate an Ed25519 keypair in the worker and return DID + archive.
    * @returns {Promise<{did: string, publicKey: Uint8Array, archive: Object}>}
    */
@@ -279,6 +300,23 @@ let defaultClient = null;
  * @param {{workerFactory?: () => Worker}} [options]
  * @returns {WorkerKeystoreClient}
  */
+/**
+ * A signer OrbitDB can sign with while the key stays in the worker: the
+ * shape `createSessionKeystore({ signer })` and the identity provider's
+ * `signer` option take. `sign` returns the raw 64-byte Ed25519 signature.
+ *
+ * @param {WorkerKeystoreClient} client
+ * @param {{did: string, publicKey: Uint8Array}} derived - From `deriveSigner`.
+ */
+export function createWorkerSigner(client, { did, publicKey }) {
+  return {
+    type: 'Ed25519',
+    did,
+    publicKey,
+    sign: (data) => client.sign(data),
+  };
+}
+
 export function createWorkerKeystoreClient(options = {}) {
   if (!isWorkerKeystoreAvailable()) {
     throw new Error('Web Workers are not available in this environment');

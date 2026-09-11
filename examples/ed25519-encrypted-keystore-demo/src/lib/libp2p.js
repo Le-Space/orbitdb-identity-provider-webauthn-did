@@ -19,8 +19,7 @@ import * as json from 'multiformats/codecs/json';
 import { sha512 } from 'multiformats/hashes/sha2';
 import {
   OrbitDBWebAuthnIdentityProviderFunction,
-  OrbitDBWebAuthnIdentityProvider,
-  KeystoreEncryption,
+  createSessionKeystore,
 } from '@le-space/orbitdb-identity-provider-webauthn-did';
 
 export function createLibp2pOptions() {
@@ -80,15 +79,22 @@ export async function createLibp2pInstance() {
  * Creates a Helia IPFS instance with persistent Level storage
  * @param {Object} libp2pOptions - The libp2p options to use
  */
+// The Level stores handed to Helia. Helia's stop() does not close stores it
+// did not create, and an open store blocks the IndexedDB delete in
+// resetDatabaseState — so this demo keeps them and closes them in cleanup().
+const openStores = new Set();
+
 export async function createHeliaInstance(
   libp2pOptions = createLibp2pOptions()
 ) {
+  const blockstore = new LevelBlockstore('./orbitdb/blocks');
+  const datastore = new LevelDatastore('./orbitdb/data');
   const ipfs = withBitswap(
     withLibp2p(
       withHTTP(
         createHeliaLight({
-          blockstore: new LevelBlockstore('./orbitdb/blocks'),
-          datastore: new LevelDatastore('./orbitdb/data'),
+          blockstore,
+          datastore,
           codecs: [dagCbor, dagJson, json],
           hashers: [sha512],
         })
@@ -98,6 +104,8 @@ export async function createHeliaInstance(
   );
 
   await ipfs.start();
+  openStores.add(blockstore);
+  openStores.add(datastore);
 
   return ipfs;
 }
@@ -117,20 +125,31 @@ export async function createIdentitiesInstance() {
 }
 
 /**
- * Creates a WebAuthn identity using the provided credential
+ * Creates the identity for one of this demo's two modes, on a keystore that
+ * forgets.
+ *
+ * Both modes give OrbitDB `createSessionKeystore()`: OrbitDB signs with
+ * whatever that keystore returns and the default one writes every key to
+ * disk, which made `encryptKeystore` decoration. With a `signer` the keystore
+ * answers for the signer's DID with something that signs in the Web Worker,
+ * and no private key exists in this page at all.
+ *
  * @param {Object} identities - The OrbitDB identities instance
  * @param {Object} credential - The WebAuthn credential
- * @param {Object} orbitdb - The OrbitDB instance (for keystore access)
- * @param {Object} options - Additional options
- * @param {boolean} options.useKeystoreDID - Use persistent DID from OrbitDB keystore (instead of WebAuthn P-256)
- * @param {string} options.keystoreKeyType - Key type: 'secp256k1' or 'Ed25519'
- * @param {boolean} options.encryptKeystore - Enable keystore encryption
- * @param {string} options.encryptionMethod - Encryption method ('prf', 'largeBlob' or 'hmac-secret')
+ * @param {Object} keystore - The session keystore the identities were built on
+ * @param {Object} options
+ * @param {boolean} options.useKeystoreDID - Ed25519/secp256k1 DID from the keystore instead of the P-256 credential DID
+ * @param {string} options.keystoreKeyType - 'secp256k1' or 'Ed25519'
+ * @param {boolean} options.encryptKeystore - Seal the keystore key with the passkey
+ * @param {string} options.encryptionMethod - 'prf', 'largeBlob' or 'hmac-secret'
+ * @param {Object|null} options.signer - From createWorkerSigner(); makes the other options moot
+ * @returns {Promise<{identity: Object, provider: Object}>} The identity and the
+ *   provider instance behind it (for `provider.encryptionState`).
  */
 export async function createWebAuthnIdentity(
   identities,
   credential,
-  orbitdb = null,
+  keystore,
   options = {}
 ) {
   const {
@@ -140,18 +159,28 @@ export async function createWebAuthnIdentity(
     // Matches the library's own default since 0.4.0. Hard-coding 'largeBlob'
     // here meant the demo silently overrode it and never exercised PRF.
     encryptionMethod = 'prf',
+    signer = null,
   } = options;
 
-  return await identities.createIdentity({
-    provider: OrbitDBWebAuthnIdentityProviderFunction({
-      webauthnCredential: credential,
-      useKeystoreDID: useKeystoreDID,
-      keystore: orbitdb ? orbitdb.keystore : null,
-      keystoreKeyType: keystoreKeyType,
-      encryptKeystore: encryptKeystore,
-      keystoreEncryptionMethod: encryptionMethod,
-    }),
+  // OrbitDB keeps the provider instance to itself; the demo wants to read
+  // `encryptionState` off it, so the factory is wrapped to catch the instance.
+  const factory = OrbitDBWebAuthnIdentityProviderFunction({
+    webauthnCredential: credential,
+    useKeystoreDID: signer ? true : useKeystoreDID,
+    keystore,
+    keystoreKeyType: signer ? 'Ed25519' : keystoreKeyType,
+    encryptKeystore: signer ? false : encryptKeystore,
+    keystoreEncryptionMethod: encryptionMethod,
+    signer,
   });
+  let provider = null;
+  const identity = await identities.createIdentity({
+    provider: async () => {
+      provider = await factory();
+      return provider;
+    },
+  });
+  return { identity, provider };
 }
 
 /**
@@ -185,17 +214,18 @@ export async function setupOrbitDB(credential, options = {}) {
   // Register WebAuthn provider
   registerWebAuthnProvider();
 
-  // Create identities instance with IPFS for proper storage
-  const identities = await Identities({ ipfs });
-
-  // Create OrbitDB instance first (needed for keystore access)
-  const tempOrbitdb = await createOrbitDB({ ipfs, identities });
+  // A keystore that forgets, for the identities and for OrbitDB alike. See
+  // createWebAuthnIdentity for why this is not OrbitDB's default one.
+  const keystore = await createSessionKeystore({
+    signer: options.signer ?? undefined,
+  });
+  const identities = await Identities({ ipfs, keystore });
 
   // Create WebAuthn identity with encryption options
-  const identity = await createWebAuthnIdentity(
+  const { identity, provider } = await createWebAuthnIdentity(
     identities,
     credential,
-    tempOrbitdb,
+    keystore,
     options
   );
 
@@ -239,6 +269,8 @@ export async function setupOrbitDB(credential, options = {}) {
     ipfs,
     identity,
     identities,
+    keystore,
+    provider,
   };
 }
 
@@ -246,7 +278,12 @@ export async function setupOrbitDB(credential, options = {}) {
  * Cleanup function to properly shut down all instances
  * @param {Object} instances - Object containing orbitdb, ipfs instances
  */
-export async function cleanup({ orbitdb, ipfs, database = null }) {
+export async function cleanup({
+  orbitdb,
+  ipfs,
+  identities = null,
+  database = null,
+}) {
   try {
     if (database) {
       await database.close();
@@ -256,8 +293,19 @@ export async function cleanup({ orbitdb, ipfs, database = null }) {
       await orbitdb.stop();
     }
 
+    // The identities' keystore is this demo's, not OrbitDB's to close. A
+    // session keystore has nothing on disk, but closing it is still right.
+    if (identities?.keystore?.close) {
+      await identities.keystore.close();
+    }
+
     if (ipfs) {
       await ipfs.stop();
+    }
+
+    for (const store of openStores) {
+      await store.close();
+      openStores.delete(store);
     }
   } catch (error) {
     console.error('Error during cleanup:', error);
@@ -266,24 +314,49 @@ export async function cleanup({ orbitdb, ipfs, database = null }) {
 }
 
 /**
- * Reset database state by clearing IndexedDB
+ * Delete one IndexedDB database, and say so only once it is gone.
+ */
+function deleteIndexedDb(name) {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(name);
+    request.onsuccess = () => resolve('deleted');
+    request.onerror = () => reject(request.error);
+    request.onblocked = () => {
+      console.warn(
+        '🗑️ Delete blocked, waiting for connections to close:',
+        name
+      );
+    };
+  });
+}
+
+/**
+ * Reset database state by clearing IndexedDB. Call cleanup() first.
  */
 export async function resetDatabaseState() {
   try {
     console.log('🗑️ Clearing IndexedDB...');
-    if ('databases' in indexedDB) {
-      const databases = await indexedDB.databases();
-      for (const db of databases) {
-        if (
-          db.name.includes('orbitdb') ||
-          db.name.includes('helia') ||
-          db.name.includes('webauthn')
-        ) {
-          console.log('🗑️ Deleting database:', db.name);
-          indexedDB.deleteDatabase(db.name);
-        }
-      }
-    }
+    if (!('databases' in indexedDB)) return;
+    const databases = await indexedDB.databases();
+    const ours = databases.filter(
+      (db) =>
+        db.name.includes('orbitdb') ||
+        db.name.includes('helia') ||
+        db.name.includes('webauthn')
+    );
+    await Promise.all(
+      ours.map((db) =>
+        Promise.race([
+          deleteIndexedDb(db.name),
+          new Promise((_, reject) =>
+            setTimeout(
+              () => reject(new Error(`deleting ${db.name} timed out`)),
+              15000
+            )
+          ),
+        ]).then((outcome) => console.log('🗑️', outcome, db.name))
+      )
+    );
   } catch (error) {
     console.error('Error clearing IndexedDB:', error);
     throw error;
