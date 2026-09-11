@@ -124,8 +124,15 @@ export function loadWebAuthnCredentialSafe(
 export function clearWebAuthnCredentialSafe(key?: string): void;
 
 export function extractPrfSeedFromCredential(
-  credential: Record<string, unknown>
-): Uint8Array | null;
+  credential: Record<string, unknown>,
+  options?: {
+    rpId?: string;
+    prfInput?: Uint8Array;
+    discoverableCredentials?: boolean;
+  }
+): Promise<
+  { seed: Uint8Array; source: 'prf' } | { seed: null; source: 'none' }
+>;
 
 export interface WorkerKeystoreClient {
   initWithPrfSeed(prfSeed: Uint8Array): Promise<void>;

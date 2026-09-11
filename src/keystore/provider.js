@@ -8,6 +8,8 @@ import { varint } from 'multiformats';
 import { base58btc } from 'multiformats/bases/base58';
 import * as KeystoreEncryption from './encryption.js';
 import { ensureDerivedSigningKey } from './derived-signing-key.js';
+import { isSessionKeystore } from './session-keystore.js';
+import { PrfUnavailableError } from '../errors.js';
 import { WebAuthnDIDProvider } from '../webauthn/provider.js';
 import { verifyWebAuthnIdentityBinding } from '../webauthn/proof-verification.js';
 import {
@@ -84,6 +86,17 @@ export class OrbitDBWebAuthnIdentityProvider {
     this.encryptKeystore = encryptKeystore; // Flag to encrypt keystore
     this.keystoreEncryptionMethod = keystoreEncryptionMethod; // Encryption method
     this.unlockedKeypair = null; // Store unlocked keypair during session
+    /**
+     * What actually happened to `encryptKeystore`, for the app to show.
+     * `{ enabled: true, method }` once the keystore is sealed, or
+     * `{ enabled: false, reason }` — `'not-requested'`, or `'prf-unavailable'`
+     * when the authenticator has no PRF and the key therefore went into the
+     * keystore unencrypted rather than "encrypted" under a public value.
+     */
+    this.encryptionState = encryptKeystore
+      ? { enabled: true, method: keystoreEncryptionMethod }
+      : { enabled: false, reason: 'not-requested' };
+    this.warnedAboutPersistence = false;
   }
 
   static get type() {
@@ -157,7 +170,22 @@ export class OrbitDBWebAuthnIdentityProvider {
         'Encrypted keystore missing, creating a new one: %s',
         error.message
       );
-      await this.createEncryptedKeystore();
+      try {
+        await this.createEncryptedKeystore();
+      } catch (createError) {
+        if (!(createError instanceof PrfUnavailableError)) throw createError;
+        // No PRF, no secret to wrap with. Carry on unencrypted and say so,
+        // instead of sealing the key under the credential id as before.
+        this.encryptKeystore = false;
+        this.encryptionState = { enabled: false, reason: 'prf-unavailable' };
+        console.warn(
+          '[orbitdb-identity-provider-webauthn-did] encryptKeystore: this authenticator has no PRF, so the keystore key is NOT encrypted at rest. See provider.encryptionState.'
+        );
+        return;
+      }
+      // Creating it left the pair in memory; unlocking again would only cost
+      // another prompt.
+      if (this.unlockedKeypair) return;
     }
 
     await this.unlockEncryptedKeystore();
@@ -198,6 +226,19 @@ export class OrbitDBWebAuthnIdentityProvider {
           this.unlockedKeypair?.privateKey &&
           !(await this.keystore.getKey(did))
         ) {
+          // OrbitDB's default keystore writes this to disk in clear, and then
+          // the encrypted copy protects nothing. The app has to hand OrbitDB
+          // a keystore that forgets — createSessionKeystore() — and this is
+          // the one place that can tell whether it did.
+          if (
+            !isSessionKeystore(this.keystore) &&
+            !this.warnedAboutPersistence
+          ) {
+            this.warnedAboutPersistence = true;
+            console.warn(
+              '[orbitdb-identity-provider-webauthn-did] encryptKeystore: the OrbitDB keystore persists the unlocked key unencrypted. Pass `keystore: await createSessionKeystore()` to Identities() so it stays in memory.'
+            );
+          }
           await this.keystore.addKey(did, {
             privateKey: this.unlockedKeypair.privateKey,
           });
@@ -499,9 +540,15 @@ export class OrbitDBWebAuthnIdentityProvider {
         keyType,
       };
       identityLog('✅ Encrypted keystore stored successfully');
+      this.unlockedKeypair = {
+        privateKey: privateKeyBytes,
+        publicKey: publicKeyBytes,
+        keyType,
+      };
 
       identityLog('Encrypted keystore created and stored successfully');
     } catch (error) {
+      if (error instanceof PrfUnavailableError) throw error;
       identityLog.error(
         'Failed to create encrypted keystore: %s',
         error.message
@@ -695,9 +742,10 @@ export class OrbitDBWebAuthnIdentityProvider {
           keystoreEncryptionMethod,
           '...'
         );
-        await provider.createEncryptedKeystore();
-        identityLog('🔓 Unlocking encrypted keystore...');
-        await provider.unlockEncryptedKeystore();
+        // Loads and unlocks an existing one; only creates when there is none.
+        // This used to create unconditionally, replacing the sealed key on
+        // every call.
+        await provider.ensureEncryptedKeystore();
         identityLog('✅ Encrypted keystore created and unlocked successfully');
         identityLog('Encrypted keystore created and unlocked');
       } catch (error) {

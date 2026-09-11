@@ -84,11 +84,18 @@ export function clearWebAuthnCredentialSafe(
 }
 
 /**
- * Extract PRF seed from a credential via WebAuthn get() with PRF extension.
- * Falls back to rawCredentialId if PRF is unavailable.
+ * Extract the PRF seed from a credential via WebAuthn get() with the PRF
+ * extension.
+ *
+ * Without PRF there is no seed: `{ seed: null, source: 'none' }`. This used
+ * to hand back the raw credential id instead, which sits in localStorage in
+ * clear, so a key "derived from the passkey" could be derived from nothing
+ * secret at all. A refused or failed assertion is thrown, not turned into
+ * "no PRF".
+ *
  * @param {Object} credential
- * @param {{rpId?: string, prfInput?: Uint8Array}} [options]
- * @returns {Promise<{seed: Uint8Array, source: 'prf'|'credentialId'}>}
+ * @param {{rpId?: string, prfInput?: Uint8Array, discoverableCredentials?: boolean}} [options]
+ * @returns {Promise<{seed: Uint8Array, source: 'prf'}|{seed: null, source: 'none'}>}
  */
 export async function extractPrfSeedFromCredential(credential, options = {}) {
   if (!credential || typeof credential !== 'object') {
@@ -107,30 +114,25 @@ export async function extractPrfSeedFromCredential(credential, options = {}) {
     credential.prfInput ||
     crypto.getRandomValues(new Uint8Array(32));
 
-  try {
-    const assertion = await navigator.credentials.get(
-      buildCredentialRequestOptions({
-        challenge: crypto.getRandomValues(new Uint8Array(32)),
-        credentialId: rawCredentialId,
-        rpId,
-        userVerification: 'required',
-        extensions: {
-          prf: {
-            eval: { first: prfInput },
-          },
+  const assertion = await navigator.credentials.get(
+    buildCredentialRequestOptions({
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      credentialId: rawCredentialId,
+      rpId,
+      userVerification: 'required',
+      extensions: {
+        prf: {
+          eval: { first: prfInput },
         },
-        discoverableCredentials: options.discoverableCredentials,
-      })
-    );
+      },
+      discoverableCredentials: options.discoverableCredentials,
+    })
+  );
 
-    const prfResult =
-      assertion?.getClientExtensionResults?.()?.prf?.results?.first;
-    if (prfResult) {
-      return { seed: new Uint8Array(prfResult), source: 'prf' };
-    }
-  } catch {
-    // Fall through to credentialId fallback.
+  const prfResult =
+    assertion?.getClientExtensionResults?.()?.prf?.results?.first;
+  if (prfResult) {
+    return { seed: new Uint8Array(prfResult), source: 'prf' };
   }
-
-  return { seed: rawCredentialId, source: 'credentialId' };
+  return { seed: null, source: 'none' };
 }
