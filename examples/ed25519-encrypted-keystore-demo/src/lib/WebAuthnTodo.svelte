@@ -13,7 +13,7 @@
     resetDefaultWorkerKeystoreClient,
   } from '@le-space/orbitdb-identity-provider-webauthn-did/standalone';
 
-  import { setupOrbitDB, cleanup, resetDatabaseState } from './libp2p.js';
+  import { setupOrbitDB, cleanup, resetDatabaseState } from './orbitdb.js';
   import {
     openTodoDatabase,
     loadTodos,
@@ -21,7 +21,7 @@
     toggleTodo,
     deleteTodo,
     getTodoStats,
-  } from './database.js';
+  } from '$shared/lib/database.js';
   import {
     Button,
     Tile,

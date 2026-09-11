@@ -301,22 +301,28 @@ sequenceDiagram
 
 ## Examples
 
-Svelte demos:
+Three demo apps, one per option, in one pnpm workspace (`examples/README.md`
+has the install). Each proves its option in the browser: a real
+authenticator (Chromium's virtual one in CI), a badge that is the verdict of
+the same checks a peer makes, and a panel that runs those checks on two
+forgeries.
 
-- Live demo directory: https://le-space.github.io/orbitdb-identity-provider-webauthn-did/
-- `examples/ed25519-encrypted-keystore-demo/` - Ed25519 keystore DID; keystore encrypted at rest with WebAuthn (PRF when available, otherwise largeBlob/hmac-secret). Live demo: https://le-space.github.io/orbitdb-identity-provider-webauthn-did/ed25519-encrypted-keystore-demo/
-- `examples/webauthn-varsig-demo/` - Varsig provider with passkey signing for each entry. Includes discoverable credential diagnostics, `Use Existing Passkey`, `largeBlob` varsig metadata recovery, and local fallback recovery. Live demo: https://le-space.github.io/orbitdb-identity-provider-webauthn-did/webauthn-varsig-demo/
-- `examples/webauthn-todo-demo/` - WebAuthn DID (no keystore signing; identity-only). Includes discoverable credential diagnostics, `Use Existing Passkey`, `largeBlob` identity metadata recovery, and local fallback recovery. Live demo: https://le-space.github.io/orbitdb-identity-provider-webauthn-did/webauthn-todo-demo/
+- `examples/webauthn-todo-demo/` — the default: passkey DID, entries signed by
+  a key derived from the passkey (secp256k1 or Ed25519), no prompt per write.
+  Live: https://le-space.github.io/orbitdb-identity-provider-webauthn-did/webauthn-todo-demo/
+- `examples/ed25519-encrypted-keystore-demo/` — an Ed25519 keystore DID,
+  either sealed by the passkey and unlocked into a session keystore, or
+  signed in a Web Worker that derives the key from the passkey and never
+  hands it to the page. Live:
+  https://le-space.github.io/orbitdb-identity-provider-webauthn-did/ed25519-encrypted-keystore-demo/
+- `examples/webauthn-varsig-demo/` — varsig: the passkey signs every write,
+  no keystore. Live:
+  https://le-space.github.io/orbitdb-identity-provider-webauthn-did/webauthn-varsig-demo/
 
-Scripted examples:
-
-- `examples/ed25519-keystore-did-example.js` - Keystore DID flow.
-- `examples/encrypted-keystore-example.js` - Keystore encryption flow.
-- `examples/simple-encryption-integration.js` - Keystore + database content encryption.
-
-Mermaid sequences for scripts:
-
-- `docs/EXAMPLE-SEQUENCES.md`
+The identity for each option is built by one module under
+`examples/shared/lib/options/`, which is also the shortest way to read the
+API; `docs/EXAMPLE-SEQUENCES.md` walks through the three sequences and their
+prompt counts.
 
 ## Documentation
 

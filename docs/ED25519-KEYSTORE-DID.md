@@ -321,7 +321,7 @@ await db.access.revoke('write', oldP256DID);
 
 ## Examples
 
-See [examples/ed25519-keystore-did-example.js](../examples/ed25519-keystore-did-example.js) for complete working examples:
+See [`examples/ed25519-encrypted-keystore-demo` (identity module: `examples/shared/lib/options/encrypted-keystore.js`)](../`examples/ed25519-encrypted-keystore-demo` 'identity module: `examples/shared/lib/options/encrypted-keystore.js`') for complete working examples:
 
 - Example 1: Default P-256 DID from WebAuthn
 - Example 2: Ed25519 DID from keystore

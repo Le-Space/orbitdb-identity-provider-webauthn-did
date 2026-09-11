@@ -1,255 +1,123 @@
-# Example Sequences
+# Example sequences
 
-Mermaid sequences for the JavaScript examples in `examples/`.
+One section per way of using the package. Each names the module that builds
+the identity for that option — the demos import it, and so can you — and the
+browser suite that drives the demo through a real authenticator (Chromium's
+virtual one in CI).
 
-## `examples/ed25519-keystore-did-example.js` (tests: `tests/ed25519-keystore-did.test.js`)
+The four scripted examples that used to live in `examples/*.js` are gone.
+None of them ran: they read `window.location` in Node and `process.argv` in
+the browser, one imported a function that did not exist, and no test ever
+executed them. The sequences they described were also wrong about what
+signs (see the README's option table).
+
+## 1. Default path — passkey DID, a key derived from the passkey
+
+Module: `examples/shared/lib/options/default-path.js` · Demo:
+`examples/webauthn-todo-demo` · Suite: `tests/webauthn-default-path.test.js`
 
 ```mermaid
 sequenceDiagram
   autonumber
-  participant User
-  participant App as Example Script (Keystore DID)
-  participant WebAuthn as WebAuthn API
+  participant App
+  participant Prov as OrbitDBWebAuthnIdentityProvider
   participant Auth as Authenticator
-  participant Prov as WebAuthn DID Provider
-  participant KS as OrbitDB Keystore (IndexedDB)
-  participant DB as OrbitDB Database
+  participant KS as OrbitDB keystore
+  participant DB as OrbitDB
 
-  User->>App: Run example
-  App->>WebAuthn: navigator.credentials.create()
-  WebAuthn->>Auth: Create passkey
-  Auth-->>WebAuthn: Attestation
-  WebAuthn-->>App: Credential
-
-  App->>KS: getKey() / add generated Ed25519 key
-  KS-->>App: Ed25519 keypair
-  App->>Prov: create identity (useKeystoreDID=true)
-  Prov-->>App: DID from keystore public key
-
-  App->>DB: db.put()
-  DB->>KS: sign entry with keystore key
-  KS-->>DB: Entry signature
-
-  Note over App,KS: Keystore private key is not encrypted at rest unless encryptKeystore is enabled.
+  App->>Prov: createIdentity({ webauthnCredential, signingKeyType })
+  Prov->>Auth: get() with PRF (once per device)
+  Auth-->>Prov: PRF output
+  Prov->>KS: addKey(did, HKDF(PRF) → secp256k1 | Ed25519)
+  Prov->>Auth: get() over publicKey + idSignature (once, stored and reused)
+  Auth-->>Prov: assertion = signatures.publicKey
+  App->>DB: put()
+  DB->>KS: sign entry with the derived key
+  Note over Auth,DB: No prompt per write. The derived key sits in the keystore unencrypted.
 ```
 
-## `examples/encrypted-keystore-example.js` (tests: `tests/encrypted-keystore.test.js`)
+What a peer verifies: the assertion binds the DID's key to the derived key
+(`verifyWebAuthnIdentityBinding`), then each entry's signature by that key.
+
+## 2. Keystore DID, sealed by the passkey — or signed in a Web Worker
+
+Module: `examples/shared/lib/options/encrypted-keystore.js` · Demo:
+`examples/ed25519-encrypted-keystore-demo` · Suite:
+`tests/ed25519-encrypted-keystore-e2e.test.js`
+
+Both variants give OrbitDB `createSessionKeystore()`; with the default
+keystore the unlocked key would be written to IndexedDB in clear.
 
 ```mermaid
 sequenceDiagram
   autonumber
-  participant User
-  participant App as Example Script (Encrypted Keystore)
-  participant WebAuthn as WebAuthn API
+  participant App
+  participant Prov as OrbitDBWebAuthnIdentityProvider
   participant Auth as Authenticator
-  participant KS as OrbitDB Keystore (IndexedDB)
-  participant Enc as KeystoreEncryption
-  participant DB as OrbitDB Database
+  participant W as Web Worker
+  participant KS as Session keystore (memory)
+  participant DB as OrbitDB
 
-  User->>App: Run example
-  App->>WebAuthn: navigator.credentials.create()
-  WebAuthn->>Auth: Create passkey
-  Auth-->>WebAuthn: Attestation
-  WebAuthn-->>App: Credential
-
-  App->>KS: getKey() / add generated Ed25519 key
-  KS-->>App: Ed25519 keypair
-  App->>Enc: generateSecretKey()
-  Enc-->>App: sk
-  App->>Enc: encrypt private key (AES-GCM)
-
-  alt prf
-    App->>WebAuthn: get() with PRF
-    WebAuthn->>Auth: User verification
-    Auth-->>WebAuthn: PRF output
-    WebAuthn-->>App: PRF bytes
-    App->>Enc: wrap sk with PRF
-  else largeBlob
-    App->>WebAuthn: get() with largeBlob write
-    WebAuthn->>Auth: User verification
-    Auth-->>WebAuthn: Store sk in largeBlob
-    WebAuthn-->>App: largeBlob stored
-  else hmac-secret
-    App->>WebAuthn: get() with hmac-secret
-    WebAuthn->>Auth: User verification
-    Auth-->>WebAuthn: HMAC output
-    WebAuthn-->>App: HMAC bytes
-    App->>Enc: wrap sk with HMAC
+  alt sealed keystore key
+    App->>Prov: createIdentity({ useKeystoreDID, encryptKeystore, keystore })
+    Prov->>Auth: get() with PRF
+    Auth-->>Prov: PRF output → unwrap the sealed key (localStorage)
+    Prov->>KS: addKey(did, unlocked key)
+    Note over Prov,KS: Without PRF: not sealed, encryptionState says so.
+  else worker signer
+    App->>Auth: get() with PRF
+    Auth-->>App: PRF output
+    App->>W: deriveSigner(PRF output)
+    W->>W: HKDF → Ed25519 key, kept here
+    W-->>App: public key → DID
+    App->>KS: createSessionKeystore({ signer })
+    App->>Prov: createIdentity({ signer })
+    Prov->>W: sign(publicKey + idSignature)
   end
-
-  App->>Enc: store encrypted keystore metadata
-  App->>DB: db.put()
-  DB->>KS: sign entry with keystore key
-  KS-->>DB: Entry signature
-```
-
-## `examples/simple-encryption-integration.js` (tests: `tests/simple-encryption-integration.test.js`)
-
-```mermaid
-sequenceDiagram
-  autonumber
-  participant User
-  participant App as Example Script (Simple Encryption)
-  participant WebAuthn as WebAuthn API
-  participant Auth as Authenticator
-  participant Enc as KeystoreEncryption
-  participant KS as OrbitDB Keystore (IndexedDB)
-  participant DB as OrbitDB Database
-  participant SE as SimpleEncryption
-
-  User->>App: Run example
-  App->>WebAuthn: navigator.credentials.create()
-  WebAuthn->>Auth: Create passkey
-  Auth-->>WebAuthn: Attestation
-  WebAuthn-->>App: Credential
-
-  App->>Enc: generateSecretKey()
-  Enc-->>App: sk
-  App->>Enc: protect sk via PRF/largeBlob/hmac-secret
-  App->>KS: createKey()
-  KS-->>App: keystore keypair
-  App->>Enc: encrypt keystore private key (AES-GCM)
-  App->>Enc: store encrypted keystore metadata
-
-  App->>SE: create database encryption config (sk)
-  SE-->>App: encryption instance
-  App->>DB: open with encryption
-  App->>DB: db.put() (encrypted content)
+  App->>DB: put()
   DB->>KS: sign entry
+  KS->>W: sign() (worker variant)
 ```
 
-## `examples/webauthn-todo-demo` (tests: `tests/webauthn-focused.test.js`, `tests/webauthn-integration.test.js`, `tests/webauthn-logging-e2e.test.js`, `tests/webauthn-verification.test.js`)
+What a peer verifies: the DID's key equals the identity's public key
+(keystore-DID rule), then each entry's signature.
+
+## 3. Varsig — the passkey signs every write
+
+Module: `examples/shared/lib/options/varsig.js` · Demo:
+`examples/webauthn-varsig-demo` · Suite: `tests/webauthn-varsig-e2e.test.js`
 
 ```mermaid
 sequenceDiagram
   autonumber
-  participant User
-  participant App as Web UI (WebAuthn DID)
-  participant WebAuthn as WebAuthn API
+  participant App
+  participant Prov as WebAuthnVarsigProvider
   participant Auth as Authenticator
-  participant LS as LocalStorage
-  participant ID as OrbitDB Identities
-  participant Prov as WebAuthn DID Provider
-  participant DB as OrbitDB Database
+  participant DB as OrbitDB
 
-  User->>App: Create credential
-  App->>WebAuthn: navigator.credentials.create()
-  WebAuthn->>Auth: Create passkey
-  Auth-->>WebAuthn: Attestation
-  WebAuthn-->>App: Credential (rawId, publicKey)
-  App->>LS: Store credentialId
-
-  User->>App: Authenticate / create identity
-  App->>ID: createIdentity(provider)
-  ID->>Prov: getId() + signIdentity()
-  Prov->>WebAuthn: navigator.credentials.get()
-  WebAuthn->>Auth: User verification
-  Auth-->>WebAuthn: Assertion
-  WebAuthn-->>Prov: Signature
-  Prov-->>ID: DID (P-256) + signature
-  ID-->>App: Identity
-
-  User->>App: Add TODO
-  App->>DB: db.put()
-  DB->>ID: identity.sign(entry)
-  ID->>Prov: signIdentity(payload)
-  Prov->>WebAuthn: navigator.credentials.get()
-  WebAuthn->>Auth: User verification
-  Auth-->>WebAuthn: Assertion
-  WebAuthn-->>Prov: Signature
-  Prov-->>DB: Entry signature
-
-  Note over App,DB: Keystore encryption/PRF are not used in this demo.
+  App->>Prov: createWebAuthnVarsigIdentity({ credential })
+  Prov->>Auth: get() over the id
+  Auth-->>Prov: assertion → varsig
+  Prov->>Auth: get() over publicKey + idSignature
+  Auth-->>Prov: assertion → varsig
+  App->>DB: put()
+  DB->>Prov: sign(entry)
+  Prov->>Auth: get() over the entry
+  Auth-->>DB: varsig signature
+  Note over Auth,DB: One prompt per write. No signing key in JavaScript. Bound to the origin.
 ```
 
-## `examples/ed25519-encrypted-keystore-demo` (tests: `tests/ed25519-encrypted-keystore-e2e.test.js`)
+What a peer verifies: both identity varsigs against the key the DID
+encodes (`verifyVarsigIdentity`), then each entry's varsig.
 
-```mermaid
-sequenceDiagram
-  autonumber
-  participant User
-  participant App as Web UI (Encrypted Keystore)
-  participant WebAuthn as WebAuthn API
-  participant Auth as Authenticator
-  participant KS as OrbitDB Keystore
-  participant Enc as KeystoreEncryption
-  participant DB as OrbitDB Database
+## Prompt counts
 
-  User->>App: Create credential
-  App->>WebAuthn: navigator.credentials.create()
-  WebAuthn->>Auth: Create passkey
-  Auth-->>WebAuthn: Attestation
-  WebAuthn-->>App: Credential (rawId, publicKey)
+|                 | Create                                 | First authenticate | Later sessions | Per write |
+| --------------- | -------------------------------------- | ------------------ | -------------- | --------- |
+| Default         | 1 (+1 largeBlob write where supported) | 2                  | 0              | 0         |
+| Sealed keystore | 1 (+1)                                 | 2 (seal, unlock)   | 1              | 0         |
+| Worker signer   | 1 (+1)                                 | 1                  | 1              | 0         |
+| Varsig          | 1 (+1)                                 | 2                  | 2              | 1         |
 
-  User->>App: Select encryption method (PRF / largeBlob / hmac-secret)
-  App->>KS: add generated Ed25519 key
-  KS-->>App: Keystore keypair
-  App->>Enc: generateSecretKey()
-  Enc-->>App: sk
-  App->>Enc: encrypt keystore private key (AES-GCM)
-
-  alt prf
-    App->>WebAuthn: get() with PRF
-    WebAuthn->>Auth: User verification
-    Auth-->>WebAuthn: PRF output
-    WebAuthn-->>App: PRF bytes
-    App->>Enc: wrap sk with PRF
-  else largeBlob
-    App->>WebAuthn: get() with largeBlob write
-    WebAuthn->>Auth: User verification
-    Auth-->>WebAuthn: Store sk in largeBlob
-    WebAuthn-->>App: largeBlob stored
-  else hmac-secret
-    App->>WebAuthn: get() with hmac-secret
-    WebAuthn->>Auth: User verification
-    Auth-->>WebAuthn: HMAC output
-    WebAuthn-->>App: HMAC bytes
-    App->>Enc: wrap sk with HMAC
-  end
-
-  App->>DB: db.put()
-  DB->>KS: sign entry with keystore key
-  KS-->>DB: Entry signature
-```
-
-## `examples/webauthn-varsig-demo` (tests: `tests/webauthn-varsig-e2e.test.js`)
-
-```mermaid
-sequenceDiagram
-  autonumber
-  participant User
-  participant App as Web UI (WebAuthn Varsig)
-  participant WebAuthn as WebAuthn API
-  participant Auth as Authenticator
-  participant LS as LocalStorage
-  participant Prov as WebAuthn Varsig Provider
-  participant DB as OrbitDB Database
-
-  User->>App: Create credential
-  App->>WebAuthn: navigator.credentials.create()
-  WebAuthn->>Auth: Create passkey
-  Auth-->>WebAuthn: Attestation
-  WebAuthn-->>App: Credential (rawId, publicKey)
-  App->>LS: Store credentialId
-
-  User->>App: Authenticate / create varsig identity
-  App->>Prov: createIdentity()
-  Prov->>WebAuthn: navigator.credentials.get()
-  WebAuthn->>Auth: User verification
-  Auth-->>WebAuthn: Assertion
-  WebAuthn-->>Prov: Assertion
-  Prov->>Prov: build varsig envelope (encodeWebAuthnVarsigV1)
-  Prov-->>App: Identity (publicKey + varsig signature)
-
-  User->>App: Add TODO
-  App->>DB: db.put()
-  DB->>Prov: signIdentity(payload)
-  Prov->>WebAuthn: navigator.credentials.get()
-  WebAuthn->>Auth: User verification
-  Auth-->>WebAuthn: Assertion
-  WebAuthn-->>Prov: Assertion
-  Prov->>Prov: build varsig envelope (encodeWebAuthnVarsigV1)
-  Prov-->>DB: Varsig signature
-
-  Note over App,DB: No OrbitDB keystore, no PRF/keystore encryption in this demo.
-```
+The demos count these at the WebAuthn API (`examples/shared/lib/prompt-counter.js`)
+and the suites assert them.

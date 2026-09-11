@@ -54,6 +54,23 @@
 
 ### Examples
 
+- One module per option under `examples/shared/lib/options/`
+  (`default-path.js`, `encrypted-keystore.js`, `varsig.js`) builds the
+  identity for that option; the demos import them, and each is covered by
+  the suite that drives its demo. The four scripted examples in
+  `examples/*.js` are gone — none of them ran (Node globals in the browser,
+  browser globals in Node, an import that did not exist), and no test ever
+  executed them.
+- The three demos share one stack (`examples/shared/lib/stack.js`) and one
+  todo store. Each demo prefixes its IndexedDB stores with its own name, so
+  "Reset DB" in one demo no longer wipes the other two on the shared
+  GitHub Pages origin; the varsig demo's reset now waits for the deletes and
+  closes the Level stores first, like the others already did. No more HTTP
+  gateway fallback in the demos.
+- `docs/EXAMPLE-SEQUENCES.md` rewritten around the three options, with the
+  prompt counts the suites assert; `docs/WEBAUTHN-ENCRYPTED-KEYSTORE-INTEGRATION.md`
+  no longer promises what `encryptKeystore` cannot do on the default keystore,
+  and no longer names a `secretKey` option that does not exist.
 - The encrypted-keystore demo gives OrbitDB a session keystore in both of its
   modes, so its "encrypted at rest" is true, and its worker mode is now the
   real signer: the key is derived from the passkey inside the worker and

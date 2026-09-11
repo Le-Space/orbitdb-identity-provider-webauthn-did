@@ -53,7 +53,7 @@ This branch implements a new flag `useKeystoreDID` that allows creating **Ed2551
 
 ### 3. Examples
 
-- **`examples/ed25519-keystore-did-example.js`**: Complete working examples:
+- **`examples/ed25519-encrypted-keystore-demo` (identity module: `examples/shared/lib/options/encrypted-keystore.js`)**: Complete working examples:
   - Example 1: Default P-256 DID from WebAuthn
   - Example 2: Ed25519 DID from keystore
   - Example 3: Full workflow with Ed25519 keystore DID
