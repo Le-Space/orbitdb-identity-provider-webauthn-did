@@ -188,6 +188,17 @@ export class WebAuthnDIDProvider {
       // Note: largeBlob write happens after credential creation
     }
 
+    // Identity metadata goes into largeBlob after registration (see
+    // large-blob-metadata.js), and an authenticator only permits that for a
+    // credential created asking for it. `preferred` never fails registration;
+    // a `required` set by the largeBlob encryption method above stays.
+    if (!credentialOptions.publicKey.extensions?.largeBlob) {
+      credentialOptions.publicKey.extensions = {
+        ...(credentialOptions.publicKey.extensions ?? {}),
+        largeBlob: { support: 'preferred' },
+      };
+    }
+
     // Request PRF even when the keystore is not encrypted. The stored input is
     // what lets the OrbitDB signing key be derived reproducibly later, so a
     // credential registered without it can never get a reproducible identity.

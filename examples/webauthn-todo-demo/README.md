@@ -1,22 +1,78 @@
-# WebAuthn Todo Demo
+# WebAuthn Todo Demo — the default path
 
-This demo uses the WebAuthn DID provider (P-256 DID) and signs each database write with a WebAuthn assertion. It does not use the OrbitDB keystore for signing unless you change the provider options.
+The DID is the passkey's own P-256 public key. OrbitDB entries are signed by a
+**key derived from the passkey** — secp256k1 by default, Ed25519 if you pick it
+before authenticating (`signingKeyType`): the provider asks the authenticator
+for its PRF output once and runs it through HKDF-SHA256, domain-separated by
+the DID and the key type, before OrbitDB reaches for a signing key. The same
+passkey therefore yields the same identity document on every device. The choice
+only matters the first time this device derives a key; a keystore that already
+holds one for the DID keeps it, and the panel shows which is in use.
+
+The passkey itself signs exactly once: the identity document
+(`signatures.publicKey` is a WebAuthn assertion). That assertion is stored and
+reused, so later sessions and every write cost **no prompt at all**. What a
+peer verifies is that assertion — the key the DID encodes signed for the
+derived key — and then each entry's signature by the derived key.
+
+Two things this README used to claim and the code never did: it does not sign
+every write with WebAuthn (that is the varsig demo), and it does use the
+OrbitDB keystore for signing.
+
+## Prompts and what sits at rest
+
+| When                     | Prompts | Why                                                          |
+| ------------------------ | ------- | ------------------------------------------------------------ |
+| Create credential        | 1–2     | registration, plus a largeBlob write where supported         |
+| First authenticate       | 2       | PRF output for the derived key, then the identity assertion  |
+| Later sessions           | 0       | the derived key and the stored assertion are reused          |
+| Each write               | 0       | OrbitDB signs with the derived key                           |
+| Use Existing Passkey     | 1       | a discoverable assertion that also reads largeBlob           |
+| After Reset DB           | 1       | the PRF assertion that re-derives the key                    |
+
+At rest, in this browser's IndexedDB (`./orbitdb/identities`): the derived
+signing key, **unencrypted**. `encryptKeystore` does not apply to this path —
+see the [encrypted keystore demo](../ed25519-encrypted-keystore-demo/) for the
+option that seals the signing key. Without PRF support, the keystore
+generates a key instead; that identity works, but stays on one device.
+
+## What the panel shows
+
+After authenticating, next to the DID: the identity document's hash, the
+signing key's type and where it came from, and how many times the page asked
+the authenticator this session (every `create()` and `get()`, whatever it was
+for). Two things to try:
+
+- **Reset DB** wipes IndexedDB, keystore included. Authenticate again: one
+  PRF assertion re-derives the key, the stored identity assertion is reused,
+  and the document hash is the same one.
+- **Logout** ends the session and keeps the credential metadata, so the next
+  visit authenticates straight away. **Forget identity** (two clicks) removes
+  everything this device holds — metadata, stored assertion, keystore. The
+  passkey stays in the authenticator; "Use Existing Passkey" brings the
+  identity back from largeBlob, PRF input included, and derives the key again.
+
+## What the badges mean
+
+"Verified" on a todo is the verdict of `examples/shared/lib/verification.js`
+on the entry behind it: the entry's signature by the writer key, the identity
+block naming that key, that block verifying for its DID (0.5.2+), and the
+writer's DID in the write list. The panel below the list runs the same verifier
+on an edited entry and on an impostor claiming your DID; both must be
+rejected.
+
+This demo runs a single peer. There is no relay or bootstrap; `sync` finds
+nobody. The verification is what a second peer would do on receipt.
 
 ## Running the demo
 
-Install dependencies:
+The demos are one pnpm workspace; install once in `examples/`:
 
 ```sh
-npm install
+pnpm install --frozen-lockfile                    # repository root, for the library
+pnpm --dir examples install --frozen-lockfile
+pnpm --dir examples/webauthn-todo-demo run dev
 ```
-
-Start the dev server:
-
-```sh
-npm run dev
-```
-
-Open the URL shown (typically http://localhost:5173).
 
 ## Sequence
 
@@ -27,37 +83,29 @@ sequenceDiagram
   participant App as Web UI
   participant WebAuthn as WebAuthn API
   participant Auth as Authenticator
-  participant LS as LocalStorage
-  participant ID as OrbitDB Identities
   participant Prov as WebAuthn DID Provider
+  participant KS as OrbitDB Keystore
   participant DB as OrbitDB Database
 
   User->>App: Create credential
   App->>WebAuthn: navigator.credentials.create()
   WebAuthn->>Auth: Create passkey
-  Auth-->>WebAuthn: Attestation
-  WebAuthn-->>App: Credential (rawId, publicKey)
-  App->>LS: Store credentialId
+  Auth-->>App: Credential (rawId, public key, PRF input)
+  App->>App: store credential metadata (localStorage, largeBlob)
 
-  User->>App: Authenticate / create identity
-  App->>ID: createIdentity(provider)
-  ID->>Prov: getId() + signIdentity()
-  Prov->>WebAuthn: navigator.credentials.get()
+  User->>App: Authenticate
+  App->>Prov: createIdentity()
+  Prov->>WebAuthn: get() with PRF
   WebAuthn->>Auth: User verification
-  Auth-->>WebAuthn: Assertion
-  WebAuthn-->>Prov: Signature
-  Prov-->>ID: DID (P-256) + signature
-  ID-->>App: Identity
+  Auth-->>Prov: PRF output
+  Prov->>KS: addKey(did, HKDF(PRF))
+  Prov->>WebAuthn: get() over publicKey + idSignature
+  Auth-->>Prov: Assertion (stored, reused later)
+  Prov-->>App: Identity (P-256 DID, derived key, assertion)
 
   User->>App: Add TODO
   App->>DB: db.put()
-  DB->>ID: identity.sign(entry)
-  ID->>Prov: signIdentity(payload)
-  Prov->>WebAuthn: navigator.credentials.get()
-  WebAuthn->>Auth: User verification
-  Auth-->>WebAuthn: Assertion
-  WebAuthn-->>Prov: Signature
-  Prov-->>DB: Entry signature
-
-  Note over App,DB: Keystore encryption/PRF are not used in this demo.
+  DB->>KS: sign entry with the derived key
+  KS-->>DB: Entry signature
+  Note over Auth,DB: No prompt: the passkey signed the identity document once.
 ```

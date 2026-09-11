@@ -50,6 +50,25 @@ async function sha256(bytes) {
  *   expose getPublicKey(). Set false to force attestation-object parsing.
  * @returns {Promise<Object>} Authenticator handle with a `navigator` shim.
  */
+/**
+ * Raw r‖s (64 bytes) → DER SEQUENCE { INTEGER r, INTEGER s }, minimal
+ * encoding: leading zeros stripped, a 0x00 prefixed where the high bit is set.
+ * @param {Uint8Array} raw
+ * @returns {Uint8Array}
+ */
+export function derEncodeEcdsaSignature(raw) {
+  const integer = (bytes) => {
+    let i = 0;
+    while (i < bytes.length - 1 && bytes[i] === 0) i += 1;
+    let body = bytes.subarray(i);
+    if (body[0] & 0x80) body = new Uint8Array([0, ...body]);
+    return new Uint8Array([0x02, body.length, ...body]);
+  };
+  const r = integer(raw.subarray(0, 32));
+  const s = integer(raw.subarray(32));
+  return new Uint8Array([0x30, r.length + s.length, ...r, ...s]);
+}
+
 export async function createMockAuthenticator({
   rpId = 'localhost',
   exposeGetPublicKey = true,
@@ -241,12 +260,18 @@ export async function createMockAuthenticator({
           };
         }
 
-        // ECDSA signatures are randomised: identical input, different output
-        const signature = new Uint8Array(
-          await crypto.subtle.sign(
-            { name: 'ECDSA', hash: 'SHA-256' },
-            keypair.privateKey,
-            concatBytes([authData, clientDataHash])
+        // ECDSA signatures are randomised: identical input, different output.
+        // WebCrypto hands back raw r‖s; authenticators return DER, and the
+        // varsig decoder tells the two apart by the first byte — so a raw
+        // signature that happened to start with 0x30 (one in 256) was read as
+        // DER and refused. Match what an authenticator does.
+        const signature = derEncodeEcdsaSignature(
+          new Uint8Array(
+            await crypto.subtle.sign(
+              { name: 'ECDSA', hash: 'SHA-256' },
+              keypair.privateKey,
+              concatBytes([authData, clientDataHash])
+            )
           )
         );
 

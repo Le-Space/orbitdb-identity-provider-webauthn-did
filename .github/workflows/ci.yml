@@ -42,35 +42,13 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: Install demo dependencies (webauthn-todo-demo)
-        run: |
-          cd examples/webauthn-todo-demo
-          pnpm install --frozen-lockfile
+      # The demos are one pnpm workspace (examples/pnpm-workspace.yaml): one
+      # install, one lockfile, and `-r` builds all three.
+      - name: Install demo dependencies
+        run: pnpm --dir examples install --frozen-lockfile
 
-      - name: Build demo application (webauthn-todo-demo)
-        run: |
-          cd examples/webauthn-todo-demo
-          pnpm run build
-
-      - name: Install demo dependencies (ed25519-encrypted-keystore-demo)
-        run: |
-          cd examples/ed25519-encrypted-keystore-demo
-          pnpm install --frozen-lockfile
-
-      - name: Install demo dependencies (webauthn-varsig-demo)
-        run: |
-          cd examples/webauthn-varsig-demo
-          pnpm install --frozen-lockfile
-
-      - name: Build demo application (ed25519-encrypted-keystore-demo)
-        run: |
-          cd examples/ed25519-encrypted-keystore-demo
-          pnpm run build
-
-      - name: Build demo application (webauthn-varsig-demo)
-        run: |
-          cd examples/webauthn-varsig-demo
-          pnpm run build
+      - name: Build demo applications
+        run: pnpm --dir examples -r run build
 
       - name: Run WebAuthn focused tests
         run: pnpm exec playwright test tests/webauthn-focused.test.js --project=chromium --reporter=github
@@ -84,6 +62,11 @@ jobs:
 
       - name: Run WebAuthn integration tests
         run: pnpm exec playwright test tests/webauthn-integration.test.js --project=chromium --reporter=github
+        env:
+          CI: true
+
+      - name: Run default-path tests
+        run: pnpm exec playwright test tests/webauthn-default-path.test.js --project=chromium --reporter=github
         env:
           CI: true
 

@@ -291,6 +291,7 @@ export {
   extensionSupportFromCredential,
 } from './keystore/encryption.js';
 
+export { clearIdentityProofs } from './webauthn/identity-proof-store.js';
 export {
   createSessionKeystore,
   isSessionKeystore,

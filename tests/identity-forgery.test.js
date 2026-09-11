@@ -21,6 +21,7 @@ import Identity from '@orbitdb/core/src/identities/identity.js';
 import { signMessage } from '@orbitdb/core/src/key-store.js';
 import { generateKeyPair } from '@libp2p/crypto/keys';
 import { base58btc } from 'multiformats/bases/base58';
+import { DIDKey } from 'iso-did';
 
 import {
   OrbitDBWebAuthnIdentityProvider,
@@ -33,6 +34,8 @@ import {
   createWebAuthnVarsigIdentity,
   verifyVarsigIdentity,
 } from '../src/varsig/identity.js';
+import { DEFAULT_DOMAIN_LABELS } from '../src/varsig/domain.js';
+import { concat } from 'uint8arrays/concat';
 import {
   createMockAuthenticator,
   installMockAuthenticator,
@@ -268,6 +271,22 @@ test.describe('varsig identity verification', () => {
     expect(await verifyVarsigIdentity(identity)).toBe(true);
   });
 
+  test('a stored did in the credential metadata does not decide the id', async () => {
+    // Recovered metadata is data: whatever `did` it carries, the identity is
+    // named after the key that signs for it.
+    const credential = await WebAuthnVarsigProvider.createCredential({
+      userId: 'carol',
+      displayName: 'Carol',
+    });
+    const identity = await createWebAuthnVarsigIdentity({
+      credential: { ...credential, did: await ed25519Did() },
+    });
+    expect(identity.id).toBe(
+      DIDKey.fromPublicKey(credential.algorithm, credential.publicKey).did
+    );
+    expect(await verifyVarsigIdentity(identity)).toBe(true);
+  });
+
   test('its signatures do not carry over to another DID', async () => {
     const identity = await genuineVarsig();
     const relabelled = { ...identity, id: await ed25519Did() };
@@ -295,9 +314,24 @@ test.describe('varsig identity verification', () => {
       attackersOwn = await createWebAuthnVarsigIdentity({
         credential: attacker,
       });
-      forged = await createWebAuthnVarsigIdentity({
-        credential: { ...attacker, did: victim.id },
-      });
+      // The library's own factory names an identity after its key, so the
+      // forgery is built by hand, the way an attacker would: the victim's DID
+      // signed with the attacker's passkey, then the public key with that.
+      const mallory = new WebAuthnVarsigProvider(attacker);
+      const idSignature = await mallory.signPayload(
+        new TextEncoder().encode(victim.id),
+        DEFAULT_DOMAIN_LABELS.id
+      );
+      const publicKeySignature = await mallory.signPayload(
+        concat([attacker.publicKey, idSignature]),
+        DEFAULT_DOMAIN_LABELS.publicKey
+      );
+      forged = {
+        id: victim.id,
+        type: 'webauthn-varsig',
+        publicKey: attacker.publicKey,
+        signatures: { id: idSignature, publicKey: publicKeySignature },
+      };
     } finally {
       restore();
     }

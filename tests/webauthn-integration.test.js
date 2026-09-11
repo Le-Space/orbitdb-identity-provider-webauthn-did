@@ -221,7 +221,7 @@ test.describe('WebAuthn DID Identity Provider Integration', () => {
     ).toBeVisible();
   });
 
-  test('should logout and clear credentials', async ({ page }) => {
+  test('should logout without losing the passkey', async ({ page }) => {
     // Create credential and authenticate
     await createCredential(page);
     await authenticate(page);
@@ -234,12 +234,11 @@ test.describe('WebAuthn DID Identity Provider Integration', () => {
       timeout: 10000,
     });
 
-    // Verify we're back to credential creation state
+    // Logout ends the session; the credential metadata stays, so the next
+    // step is authenticating, not registering. Forgetting the identity is
+    // a separate, two-click action (webauthn-default-path.test.js).
     await expect(
-      page.locator('button:has-text("Create Credential")')
-    ).toBeVisible();
-    await expect(
-      page.locator('text=Create a WebAuthn credential')
+      page.locator('button:has-text("Authenticate with WebAuthn")')
     ).toBeVisible();
   });
 

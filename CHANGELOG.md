@@ -23,6 +23,26 @@
   nothing secret. The provider carries on without encryption in that case
   (`encryptionState.reason === 'prf-unavailable'`) and warns. Anything that
   relied on the `'credentialId'` source has to decide for itself now.
+- A varsig identity's id is always derived from its public key.
+  `createWebAuthnVarsigIdentity` used to let a stored `credential.did` win,
+  so metadata recovered from largeBlob or localStorage — data anyone with
+  access to either can edit — decided which DID an identity claimed.
+  Verification would then refuse it (0.5.2+), but an app showed the wrong
+  DID first.
+- Both `createCredential` paths register with
+  `largeBlob: { support: 'preferred' }`. Identity metadata is written to
+  largeBlob after registration, and an authenticator only allows that for a
+  credential created asking for it; without this the write was refused and
+  recovery through "Use Existing Passkey" found nothing once localStorage
+  was gone. A `required` set by the largeBlob encryption method stays.
+- The largeBlob identity payload (`createDidLargeBlobPayload`, version 2)
+  carries the credential's `prfInput`. Without it a recovered credential
+  could name its DID but not re-derive its signing key, so a second device
+  got a key of its own — the one thing the derived key exists to prevent.
+  Version 1 payloads still parse.
+- `clearIdentityProofs` is exported from the package root, so an app can
+  forget an identity completely: credential metadata, stored identity
+  assertion, keystore.
 
 ### Fixed
 
@@ -31,6 +51,31 @@
 - The static `OrbitDBWebAuthnIdentityProvider.createIdentity` created a new
   encrypted keystore on every call, replacing the sealed key; it now loads
   the existing one and creates only when there is none.
+
+### Examples
+
+- The default demo lets you pick the derived key's type (`signingKeyType`),
+  shows the identity document's hash, the key in use and the number of
+  WebAuthn prompts, and splits "Logout" (keeps the passkey metadata) from
+  "Forget identity" (removes everything this device holds). Its own
+  credential store dropped `prfInput`; it uses the library's now.
+- One pnpm workspace for the three demos: one lockfile, one set of
+  dependencies, `examples/shared` for what they share.
+- The "Verified" badge is now the verdict of a real check — entry signature,
+  identity block, DID binding, write list — and each demo carries a panel
+  that runs the same verifier on two forgeries. The old badge compared the
+  database's identity with itself.
+- The varsig demo no longer honours `window.__PLAYWRIGHT__`; its browser
+  test drives the real flow with a virtual authenticator, including
+  recovery from largeBlob.
+- Demo READMEs, the README's option table and SECURITY.md describe what the
+  code does: which key signs, what sits at rest, how many prompts.
+
+### Tests
+
+- The mock authenticator returns DER-encoded P-256 signatures, as
+  authenticators do. Raw r‖s starting with 0x30 (one in 256) was read as
+  DER by the varsig decoder and refused.
 
 ## 0.5.3
 

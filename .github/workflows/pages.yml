@@ -41,16 +41,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install demo dependencies
-        run: |
-          for demo in webauthn-todo-demo ed25519-encrypted-keystore-demo webauthn-varsig-demo; do
-            pnpm --dir "examples/${demo}" install --frozen-lockfile
-          done
+        run: pnpm --dir examples install --frozen-lockfile
 
       - name: Build demos
-        run: |
-          for demo in webauthn-todo-demo ed25519-encrypted-keystore-demo webauthn-varsig-demo; do
-            pnpm --dir "examples/${demo}" run build
-          done
+        run: pnpm --dir examples -r run build
 
       - name: Assemble Pages artifact
         run: |
