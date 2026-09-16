@@ -69,8 +69,9 @@ const listings = new Map();
 function listed(config) {
   if (!listings.has(config)) {
     const dir = mkdtempSync(join(tmpdir(), 'ci-test-files-'));
+    const output = join(dir, 'list.json');
+    let selected;
     try {
-      const output = join(dir, 'list.json');
       execFileSync(
         'pnpm',
         [
@@ -90,15 +91,22 @@ function listed(config) {
       const { config: resolved, suites } = JSON.parse(
         readFileSync(output, 'utf8')
       );
-      listings.set(
-        config,
-        suites.map((suite) =>
-          relative(root, join(resolved.rootDir, suite.file))
-        )
+      selected = suites.map((suite) =>
+        relative(root, join(resolved.rootDir, suite.file))
       );
+    } catch {
+      // Playwright has already printed why, typically a suite that fails to
+      // import. Such a suite cannot run in CI either.
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+    if (!selected) {
+      console.error(
+        `Playwright could not list the files ${config} selects; its error is above.`
+      );
+      process.exit(1);
+    }
+    listings.set(config, selected);
   }
   return listings.get(config);
 }

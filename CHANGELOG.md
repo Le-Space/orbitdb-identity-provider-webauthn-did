@@ -15,6 +15,10 @@
   browsers; `standalone-toolkit`, `webauthn-attestation-parsing` and
   `webauthn-two-peer-replication` lose their separate steps, which booted a
   demo server they do not use.
+- `identity-forgery` did not load in a clean install. It imported `concat`
+  from `uint8arrays`, which this package does not declare; only a hoisted
+  `node_modules` (`node-linker=hoisted`) made it resolvable. It now takes
+  `concat` from `iso-base/utils`, a declared dependency.
 - `scripts/check-ci-runs-every-test.mjs` fails CI when a file in `tests/` is
   selected by no step. This is the second time suites went unrun: 0.4.0 found
   five.

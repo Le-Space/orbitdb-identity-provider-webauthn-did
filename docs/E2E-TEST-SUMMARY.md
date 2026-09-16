@@ -47,6 +47,12 @@ and fails it when neither is there; run it locally with
 happened twice: five suites had never run in CI before 0.4.0, and eight more
 between July and September 2026.
 
+CI installs with pnpm's default isolated `node_modules`, where a test can import
+only packages this repository declares. With `node-linker=hoisted` in a local
+pnpm config, every transitive package is importable too, so a suite can pass
+locally and fail to load in CI. To reproduce CI, install with
+`pnpm install --config.node-linker=isolated`.
+
 Two details worth knowing about the Chromium steps:
 
 - `webauthn-unit` runs with `CI` cleared. It loads the package through Vite's

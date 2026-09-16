@@ -22,6 +22,7 @@ import { signMessage } from '@orbitdb/core/src/key-store.js';
 import { generateKeyPair } from '@libp2p/crypto/keys';
 import { base58btc } from 'multiformats/bases/base58';
 import { DIDKey } from 'iso-did';
+import { concat } from 'iso-base/utils';
 
 import {
   OrbitDBWebAuthnIdentityProvider,
@@ -35,7 +36,6 @@ import {
   verifyVarsigIdentity,
 } from '../src/varsig/identity.js';
 import { DEFAULT_DOMAIN_LABELS } from '../src/varsig/domain.js';
-import { concat } from 'uint8arrays/concat';
 import {
   createMockAuthenticator,
   installMockAuthenticator,
