@@ -90,8 +90,10 @@ sequenceDiagram
   User->>App: Create credential
   App->>WebAuthn: navigator.credentials.create()
   WebAuthn->>Auth: Create passkey
-  Auth-->>App: Credential (rawId, public key, PRF input)
-  App->>App: store credential metadata (localStorage, largeBlob)
+  Auth-->>App: Credential (rawId, public key)
+  App->>App: store credential metadata and the PRF input (localStorage)
+  App->>WebAuthn: get() with largeBlob write, where the browser supports it
+  Note over App,Auth: Stores nothing today. createCredential does not request largeBlob at registration (issue 48), and the demo reports success without reading written.
 
   User->>App: Authenticate
   App->>Prov: createIdentity()

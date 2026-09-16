@@ -188,48 +188,65 @@ sequenceDiagram
   participant App
   participant WebAuthn
   participant Auth as Authenticator
-  participant KS as OrbitDB Keystore
-  participant Enc as KeystoreEncryption
+  participant Prov as Keystore-DID provider
+  participant LS as localStorage
+  participant KS as OrbitDB keystore
   participant DB as OrbitDB
 
   User->>App: Create credential
-  App->>WebAuthn: create()
+  App->>WebAuthn: create() with PRF requested
   WebAuthn->>Auth: Create passkey
   Auth-->>WebAuthn: Attestation
   WebAuthn-->>App: Credential
 
-  App->>KS: getKey() or add generated Ed25519 key
-  KS-->>App: Keystore keypair
-
-  opt encryptKeystore=true
-    App->>Enc: generateSecretKey()
-    Enc-->>App: sk
-    App->>Enc: encrypt keystore private key (AES-GCM)
-    alt prf
-      App->>WebAuthn: get() with PRF
+  App->>Prov: createIdentity({ useKeystoreDID, encryptKeystore })
+  alt encryptKeystore, first session
+    Prov->>Prov: generateSecretKey() gives sk
+    Prov->>Prov: generateKeyPair() gives a random Ed25519 key
+    Prov->>Prov: AES-GCM encrypt the private key with sk
+    alt prf (the default)
+      Prov->>WebAuthn: get() with PRF
       WebAuthn->>Auth: User verification
-      Auth-->>WebAuthn: PRF output
-      WebAuthn-->>App: PRF bytes
-      App->>Enc: wrap sk with PRF
+      alt PRF output
+        Auth-->>Prov: PRF output
+        Prov->>Prov: wrap sk with a key derived from it
+        Prov->>LS: sealed key, wrapped sk, PRF input
+        Prov->>KS: addKey(did, the unlocked key)
+      else no PRF
+        Auth-->>Prov: no PRF result
+        Note right of Prov: Nothing is sealed. encryptionState is { enabled false, reason prf-unavailable }
+        Prov->>KS: getKey(), or add a generated key
+      end
     else largeBlob
-      App->>WebAuthn: get() with largeBlob write
+      Prov->>WebAuthn: get() with largeBlob write
       WebAuthn->>Auth: User verification
-      Auth-->>WebAuthn: Store sk in largeBlob
-      WebAuthn-->>App: largeBlob stored
+      Auth-->>Prov: written is false
+      Note right of Prov: Throws. createCredential does not request largeBlob at registration (issue 48)
     else hmac-secret
-      App->>WebAuthn: get() with hmac-secret
+      Prov->>WebAuthn: get() with hmac-secret
       WebAuthn->>Auth: User verification
-      Auth-->>WebAuthn: HMAC output
-      WebAuthn-->>App: HMAC bytes
-      App->>Enc: wrap sk with HMAC
+      Auth-->>Prov: HMAC output
+      Prov->>Prov: wrap sk with it
+      Prov->>LS: sealed key, wrapped sk
+      Prov->>KS: addKey(did, the unlocked key)
     end
+  else encryptKeystore with prf, later session
+    Prov->>LS: load the sealed key
+    Prov->>WebAuthn: get() with PRF, the stored input
+    Auth-->>Prov: PRF output
+    Prov->>Prov: unwrap sk, then decrypt the key
+    Prov->>KS: addKey(did, the unlocked key)
+  else not encrypted
+    Prov->>KS: getKey(), or add a generated key
   end
+  Prov-->>App: Identity, DID = did:key of the keystore key
 
+  User->>App: Add entry
   App->>DB: db.put()
-  DB->>KS: sign entry with keystore key
+  DB->>KS: sign entry with the keystore key
   KS-->>DB: Entry signature
 
-  Note over App,KS: With `encryptKeystore=true` the sealed copy is at rest; the unlocked key lives in the OrbitDB keystore — make that `createSessionKeystore()` so it stays in memory.
+  Note over App,KS: The sealed copy stays at rest. The unlocked key lives in the OrbitDB keystore, so create it with createSessionKeystore() to keep it in memory.
 ```
 
 OrbitDB signs with whatever its keystore returns, and the default keystore
@@ -274,24 +291,28 @@ sequenceDiagram
   participant DB as OrbitDB
 
   User->>App: Create credential
-  App->>WebAuthn: create()
+  App->>WebAuthn: create() with largeBlob requested
   WebAuthn->>Auth: Create passkey
   Auth-->>WebAuthn: Attestation
   WebAuthn-->>App: Credential
 
   User->>App: Create varsig identity
-  App->>Var: createIdentity()
-  Var->>WebAuthn: get()
+  App->>Var: createWebAuthnVarsigIdentity({ credential })
+  Var->>Var: id = did:key of the passkey's public key
+  Var->>WebAuthn: get() over the id
   WebAuthn->>Auth: User verification
   Auth-->>WebAuthn: Assertion
-  WebAuthn-->>Var: Assertion
-  Var->>Var: encode varsig envelope
+  WebAuthn-->>Var: Assertion, becomes signatures.id
+  Var->>WebAuthn: get() over publicKey + idSignature
+  WebAuthn->>Auth: User verification
+  Auth-->>WebAuthn: Assertion
+  WebAuthn-->>Var: Assertion, becomes signatures.publicKey
   Var-->>App: Identity
 
   User->>App: Add entry
   App->>DB: db.put()
-  DB->>Var: signIdentity(payload)
-  Var->>WebAuthn: get()
+  DB->>Var: sign(entry)
+  Var->>WebAuthn: get() over the entry
   WebAuthn->>Auth: User verification
   Auth-->>WebAuthn: Assertion
   WebAuthn-->>Var: Assertion
