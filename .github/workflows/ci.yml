@@ -39,6 +39,18 @@ jobs:
       - name: Check formatting
         run: pnpm run format:check
 
+      # A suite runs here only if a step below names it or it is listed in
+      # playwright.node.config.js. This fails when a file in tests/ is neither.
+      - name: Check that CI runs every test file
+        run: node scripts/check-ci-runs-every-test.mjs
+
+      # The suites in playwright.node.config.js import the package directly and
+      # open no page, so they need neither the browsers nor a demo build.
+      - name: Run Node-context tests
+        run: pnpm run test:node
+        env:
+          CI: true
+
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
 
@@ -86,16 +98,6 @@ jobs:
         env:
           CI: true
 
-      - name: Run two-peer replication tests
-        run: pnpm run test:two-peer
-        env:
-          CI: true
-
-      - name: Run WebAuthn attestation parsing tests
-        run: pnpm exec playwright test tests/webauthn-attestation-parsing.test.js --project=chromium --reporter=github
-        env:
-          CI: true
-
       - name: Run WebAuthn unit tests
         # This suite imports src/index.js through Vite's /@fs endpoint, which
         # only the dev server exposes. playwright.config.js starts `preview`
@@ -107,11 +109,6 @@ jobs:
 
       - name: Run WebAuthn verification tests
         run: pnpm exec playwright test tests/webauthn-verification.test.js --project=chromium --reporter=github
-        env:
-          CI: true
-
-      - name: Run standalone toolkit tests
-        run: pnpm exec playwright test tests/standalone-toolkit.test.js --project=chromium --reporter=github
         env:
           CI: true
 
