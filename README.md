@@ -194,7 +194,7 @@ sequenceDiagram
   participant DB as OrbitDB
 
   User->>App: Create credential
-  App->>WebAuthn: create() with PRF requested
+  App->>WebAuthn: create() with PRF and largeBlob requested
   WebAuthn->>Auth: Create passkey
   Auth-->>WebAuthn: Attestation
   WebAuthn-->>App: Credential
@@ -220,8 +220,14 @@ sequenceDiagram
     else largeBlob
       Prov->>WebAuthn: get() with largeBlob write
       WebAuthn->>Auth: User verification
-      Auth-->>Prov: written is false
-      Note right of Prov: Throws. createCredential does not request largeBlob at registration (issue 48)
+      alt written
+        Auth-->>Prov: written is true
+        Prov->>LS: sealed key, sk kept on the authenticator
+        Prov->>KS: addKey(did, the unlocked key)
+      else not written
+        Auth-->>Prov: written is false
+        Note right of Prov: Throws. Nothing is stored.
+      end
     else hmac-secret
       Prov->>WebAuthn: get() with hmac-secret
       WebAuthn->>Auth: User verification

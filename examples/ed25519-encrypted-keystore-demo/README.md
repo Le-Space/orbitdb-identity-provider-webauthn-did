@@ -64,7 +64,7 @@ sequenceDiagram
   participant DB as OrbitDB
 
   User->>App: Create credential
-  App->>WebAuthn: navigator.credentials.create() (PRF requested)
+  App->>WebAuthn: navigator.credentials.create() (PRF, largeBlob requested)
   Auth-->>App: Credential
 
   User->>App: Authenticate
