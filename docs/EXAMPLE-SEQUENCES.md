@@ -126,9 +126,9 @@ What the **(+1)** at creation is, checked against the demos:
 
 - **Default** — a `largeBlob` write of the identity metadata. It can store
   where the authenticator supports `largeBlob`, since registration asks for it
-  (`preferred`). The demo marks the step as succeeded without reading
-  `written`, so where it is not supported the step still reads as done.
-- **Varsig** — the same write, with the same caveat.
+  (`preferred`). The demo reads `written` and warns where the authenticator
+  declined, since a declined write throws nothing.
+- **Varsig** — the same write, read the same way.
 - **Sealed keystore, worker signer** — the encrypted-keystore demo makes no
   `largeBlob` write at creation at all, so these two `(+1)` do not match its
   code. Either the counts or the demo is out of date; this page does not know

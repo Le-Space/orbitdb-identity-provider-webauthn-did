@@ -364,12 +364,19 @@
         console.log('[Recovery Step] largeBlob write result', {
           extensionResults,
         });
+        // A declined write throws nothing: the outcome is only in `written`.
+        // Reading the absence of an exception as success is what kept #48
+        // invisible — a passkey reported as carrying its metadata that would
+        // never restore from the authenticator.
+        const written = extensionResults?.largeBlob?.written === true;
         recoverySteps = recoverySteps.map((step, index) =>
           index === recoverySteps.length - 1
             ? {
                 ...step,
-                status: 'success',
-                detail: 'largeBlob write completed',
+                status: written ? 'success' : 'warning',
+                detail: written
+                  ? 'largeBlob write completed'
+                  : 'not written — the authenticator declined, so the varsig metadata is only in this browser and will not restore on another device',
               }
             : step
         );
@@ -701,7 +708,12 @@
         </div>
         <div style="font-size: 0.875rem; color: var(--cds-text-secondary);">
           {#each recoverySteps as step}
-            <div style="margin-bottom: 0.35rem;">
+            <div
+              style="margin-bottom: 0.35rem;"
+              data-testid="recovery-step"
+              data-label={step.label}
+              data-status={step.status}
+            >
               <strong>{step.status.toUpperCase()}</strong>
               {step.label}{step.detail ? `: ${step.detail}` : ''}
             </div>
