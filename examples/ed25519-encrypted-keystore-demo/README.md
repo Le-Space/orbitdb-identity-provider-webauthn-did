@@ -59,11 +59,12 @@ sequenceDiagram
   participant WebAuthn as WebAuthn API
   participant Auth as Authenticator
   participant Worker as Web Worker
+  participant Prov as WebAuthn DID Provider
   participant KS as Session keystore
   participant DB as OrbitDB
 
   User->>App: Create credential
-  App->>WebAuthn: navigator.credentials.create() (PRF, largeBlob requested)
+  App->>WebAuthn: navigator.credentials.create() (PRF requested)
   Auth-->>App: Credential
 
   User->>App: Authenticate
@@ -71,19 +72,26 @@ sequenceDiagram
     App->>WebAuthn: get() with PRF
     Auth-->>App: PRF output
     App->>Worker: deriveSigner(PRF output)
-    Worker->>Worker: HKDF → Ed25519 key (kept here)
-    Worker-->>App: public key → DID
+    Worker->>Worker: HKDF to an Ed25519 key, kept here
+    Worker-->>App: public key, becomes the DID
     App->>KS: createSessionKeystore({ signer })
-  else session keystore
+    App->>Prov: createIdentity({ signer })
+    Prov->>Worker: sign(publicKey + idSignature)
+  else sealed keystore key
     App->>KS: createSessionKeystore()
-    App->>WebAuthn: get() with PRF
-    Auth-->>App: PRF output → unwrap the sealed key
-    App->>KS: addKey(did, unlocked key)
+    App->>Prov: createIdentity({ useKeystoreDID, encryptKeystore })
+    Prov->>WebAuthn: get() with PRF
+    Auth-->>Prov: PRF output, unwraps the sealed key (localStorage)
+    Prov->>KS: addKey(did, unlocked key)
   end
 
   User->>App: Add TODO
   App->>DB: db.put()
   DB->>KS: sign entry
-  KS->>Worker: sign() (worker mode)
-  Worker-->>DB: Ed25519 signature
+  alt worker
+    KS->>Worker: sign()
+    Worker-->>DB: Ed25519 signature
+  else sealed keystore key
+    KS-->>DB: Ed25519 signature
+  end
 ```
