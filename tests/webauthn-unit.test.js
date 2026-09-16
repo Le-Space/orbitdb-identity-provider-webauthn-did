@@ -4,6 +4,44 @@ import {
   requireChromium,
 } from './helpers/virtual-authenticator.js';
 
+/**
+ * Load `src/index.js` into the page as `window.WebAuthnModule`, retrying a
+ * context reset from the dev server's first navigation.
+ */
+async function loadLibrary(page) {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.waitForLoadState('networkidle');
+  const moduleUrl = `/@fs${process.cwd().replace(/\\/g, '/')}/src/index.js`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await page.evaluate(async (url) => {
+        try {
+          const module = await import(url);
+          window.WebAuthnModule = module;
+          window.moduleLoaded = true;
+        } catch (error) {
+          window.moduleLoadError = String(error?.stack || error);
+          window.moduleLoaded = false;
+        }
+      }, moduleUrl);
+      break;
+    } catch (error) {
+      const isContextReset = String(error).includes(
+        'Execution context was destroyed'
+      );
+      if (!isContextReset || attempt === 2) throw error;
+      await page.waitForLoadState('networkidle');
+    }
+  }
+  await page.waitForFunction(
+    () => window.moduleLoaded === true || !!window.moduleLoadError
+  );
+  const moduleLoadError = await page.evaluate(
+    () => window.moduleLoadError || null
+  );
+  expect(moduleLoadError).toBeNull();
+}
+
 test.describe('WebAuthn DID Provider Unit Tests', () => {
   test.beforeEach(async ({ page, browserName }) => {
     // A real authenticator: the mock that stood here signed random bytes over
@@ -12,37 +50,7 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
     requireChromium(test, browserName);
     await addVirtualAuthenticator(page);
 
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.waitForLoadState('networkidle');
-    const moduleUrl = `/@fs${process.cwd().replace(/\\/g, '/')}/src/index.js`;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        await page.evaluate(async (url) => {
-          try {
-            const module = await import(url);
-            window.WebAuthnModule = module;
-            window.moduleLoaded = true;
-          } catch (error) {
-            window.moduleLoadError = String(error?.stack || error);
-            window.moduleLoaded = false;
-          }
-        }, moduleUrl);
-        break;
-      } catch (error) {
-        const isContextReset = String(error).includes(
-          'Execution context was destroyed'
-        );
-        if (!isContextReset || attempt === 2) throw error;
-        await page.waitForLoadState('networkidle');
-      }
-    }
-    await page.waitForFunction(
-      () => window.moduleLoaded === true || !!window.moduleLoadError
-    );
-    const moduleLoadError = await page.evaluate(
-      () => window.moduleLoadError || null
-    );
-    expect(moduleLoadError).toBeNull();
+    await loadLibrary(page);
   });
 
   test('should detect WebAuthn support correctly', async ({ page }) => {
@@ -289,5 +297,77 @@ test.describe('WebAuthn DID Provider Unit Tests', () => {
     expect(result.base64url).not.toContain('/'); // base64url shouldn't have /
     expect(result.base64url).not.toContain('='); // base64url shouldn't have =
     expect(result.isRoundTrip).toBe(true);
+  });
+});
+
+/**
+ * A largeBlob can only be written to a credential that asked for it when it
+ * was registered. `createCredential` asked for PRF and never for largeBlob, so
+ * every write after it reported `written: false` and stored nothing — while
+ * the demos read the absence of an exception as success (#48). The varsig
+ * provider's `createCredential` already asks; this one did not.
+ */
+test.describe('largeBlob is requested at registration (#48)', () => {
+  test.beforeEach(async ({ browserName }) => {
+    requireChromium(test, browserName);
+  });
+
+  test('a new credential can carry a largeBlob, and reads it back', async ({
+    page,
+  }) => {
+    await addVirtualAuthenticator(page); // with large-blob support
+    await loadLibrary(page);
+
+    const result = await page.evaluate(async () => {
+      const {
+        WebAuthnDIDProvider,
+        writeLargeBlobMetadata,
+        readLargeBlobMetadata,
+      } = window.WebAuthnModule;
+      const credential = await WebAuthnDIDProvider.createCredential({
+        userId: 'blob',
+        displayName: 'Blob',
+      });
+      const payload = new TextEncoder().encode('carried by the key');
+      const { extensionResults } = await writeLargeBlobMetadata({
+        credentialId: credential.rawCredentialId,
+        payload,
+      });
+      const { blob } = await readLargeBlobMetadata({
+        credentialId: credential.rawCredentialId,
+      });
+      return {
+        supported: credential.extensionSupport?.largeBlob,
+        written: extensionResults.largeBlob?.written,
+        readBack: blob ? new TextDecoder().decode(blob) : null,
+      };
+    });
+
+    expect(result.supported).toBe(true);
+    expect(result.written).toBe(true);
+    expect(result.readBack).toBe('carried by the key');
+  });
+
+  test('an authenticator without large-blob support still registers', async ({
+    page,
+  }) => {
+    // `preferred`, not `required`: asking must not cost anyone their passkey.
+    await addVirtualAuthenticator(page, { hasLargeBlob: false });
+    await loadLibrary(page);
+
+    const result = await page.evaluate(async () => {
+      const credential =
+        await window.WebAuthnModule.WebAuthnDIDProvider.createCredential({
+          userId: 'no-blob',
+          displayName: 'No Blob',
+        });
+      return {
+        created: Boolean(credential?.rawCredentialId),
+        supported: credential.extensionSupport?.largeBlob,
+      };
+    });
+
+    expect(result.created).toBe(true);
+    expect(result.supported).toBe(false);
   });
 });

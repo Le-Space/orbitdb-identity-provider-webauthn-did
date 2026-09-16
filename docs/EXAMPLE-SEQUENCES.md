@@ -124,14 +124,11 @@ and the suites assert them.
 
 What the **(+1)** at creation is, checked against the demos:
 
-- **Default** — a `largeBlob` write of the identity metadata. It costs a
-  prompt and stores nothing: the demo creates its passkey with
-  `WebAuthnDIDProvider.createCredential`, which does not request `largeBlob` at
-  registration, so the write reports `written: false`
-  ([#48](https://github.com/Le-Space/orbitdb-identity-provider-webauthn-did/issues/48)).
-  The demo marks the step as succeeded without reading `written`.
-- **Varsig** — the same write, and here it can succeed: varsig's
-  `createCredential` does request `largeBlob` at registration.
+- **Default** — a `largeBlob` write of the identity metadata. It can store
+  where the authenticator supports `largeBlob`, since registration asks for it
+  (`preferred`). The demo marks the step as succeeded without reading
+  `written`, so where it is not supported the step still reads as done.
+- **Varsig** — the same write, with the same caveat.
 - **Sealed keystore, worker signer** — the encrypted-keystore demo makes no
   `largeBlob` write at creation at all, so these two `(+1)` do not match its
   code. Either the counts or the demo is out of date; this page does not know
