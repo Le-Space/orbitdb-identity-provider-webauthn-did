@@ -7,8 +7,10 @@ delete process.env.NO_COLOR;
  *
  * These import the package directly and never open a page, so they need
  * neither a browser nor a demo server. The main playwright.config.js declares
- * a `webServer`, which makes every run there boot and build a demo — fine in
- * CI, too slow to sit in front of `npm version` / `npm publish`.
+ * a `webServer`, which makes every run there boot and build a demo — too slow
+ * to sit in front of `npm version` / `npm publish`, and needless in CI, where
+ * the "Run Node-context tests" step runs this config. Listing a file here is
+ * what makes CI run it.
  *
  * Files listed here that do not exist yet are simply not matched, so this
  * config stays valid regardless of which branches have landed.

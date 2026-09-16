@@ -16,7 +16,7 @@ Which one is picked comes from the test filename and the `USE_ENCRYPTED_DEMO` /
 `playwright.node.config.js` selects only the Node-context suites. They import
 the package directly and need neither a browser nor a demo server, so they run
 in seconds. `test:ci` — what `preversion` and `prepublishOnly` invoke — points
-here.
+here, and so does CI.
 
 ## Counting the tests
 
@@ -35,8 +35,19 @@ pnpm exec playwright test --list --config=playwright.node.config.js
 
 ## CI
 
-`.github/workflows/ci.yml` runs each test file as its own step, in Chromium.
-Two details worth knowing:
+`.github/workflows/ci.yml` runs the Node-context suites in one step,
+`pnpm run test:node`, before it installs any browser. Every other test file is
+its own step, in Chromium.
+
+A file in `tests/` runs in CI only if something selects it, so a new one needs
+either an entry in `playwright.node.config.js` — if it opens no page — or a
+step of its own. `scripts/check-ci-runs-every-test.mjs` runs early in the job
+and fails it when neither is there; run it locally with
+`node scripts/check-ci-runs-every-test.mjs`. It exists because forgetting this
+happened twice: five suites had never run in CI before 0.4.0, and eight more
+between July and September 2026.
+
+Two details worth knowing about the Chromium steps:
 
 - `webauthn-unit` runs with `CI` cleared. It loads the package through Vite's
   `/@fs` endpoint, which only the dev server exposes; CI otherwise starts

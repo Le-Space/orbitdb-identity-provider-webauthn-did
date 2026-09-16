@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Changed
+
+- CI now runs all 22 test files. Eight never ran there: `identity-forgery`,
+  `p256-signature-shapes`, `session-keystore`, `webauthn-debug-log`,
+  `webauthn-extension-support`, `webauthn-user-handle`,
+  `webauthn-varsig-challenge` and `worker-signer`. They were listed in
+  `playwright.node.config.js`, which only the local `preversion` and
+  `prepublishOnly` hooks ran, while `release.yml` publishes with
+  `--ignore-scripts` because CI is its gate — so no automated gate ran them
+  before a release. CI now runs that config in one step, before installing
+  browsers; `standalone-toolkit`, `webauthn-attestation-parsing` and
+  `webauthn-two-peer-replication` lose their separate steps, which booted a
+  demo server they do not use.
+- `scripts/check-ci-runs-every-test.mjs` fails CI when a file in `tests/` is
+  selected by no step. This is the second time suites went unrun: 0.4.0 found
+  five.
+
 ## 0.5.4
 
 Fixes a verification bug that refused about one P-256 passkey identity in
