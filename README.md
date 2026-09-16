@@ -179,6 +179,37 @@ const ucanUcantoSigner = signer.toUcantoSigner({
 
 The verifier side and app protocol should define which domain label is required. IPFS deployment does not change this requirement.
 
+### Passkeys for smart accounts (P-256)
+
+One passkey can be both the OrbitDB identity and the key of a smart account that verifies P-256 WebAuthn signatures on-chain, such as Uniswap's [Calibur](https://github.com/Uniswap/calibur) with Base's [webauthn-sol](https://github.com/base/webauthn-sol). The standalone export hands wallet code the key and the signature parts; turning them into a transaction (key hashes, ABI encoding, the account client) stays in the wallet.
+
+```javascript
+import {
+  getP256CredentialDescriptor,
+  signP256Challenge,
+} from '@le-space/orbitdb-identity-provider-webauthn-did/standalone';
+
+// A credential from either createCredential, storage, largeBlob or signer.credential
+const descriptor = getP256CredentialDescriptor(credential);
+if (!descriptor) throw new Error('This passkey has no usable P-256 key');
+// { credentialId, rawCredentialId, x, y, rpId, userVerification: 'required' }
+
+// Exactly 32 bytes, e.g. a user operation hash
+const { authenticatorData, clientDataJSON, challengeIndex, typeIndex, r, s } =
+  await signP256Challenge(descriptor, hash);
+```
+
+- **Key.** `x` and `y` are 32-byte big-endian `Uint8Array`s, like `publicKey.x`/`y` on the default path; Calibur's `abi.encode(uint256 x, uint256 y)` is the two concatenated. They come from `publicKey` (`{ x, y }` or SEC1 bytes) or, failing that, from a P-256 `did:key`; where both are present they must agree. `rpId` is the one `createCredential` returns; a credential stored before it returned one falls back to `window.location.hostname`.
+- **`null`** for RS256 and Ed25519 keys, for the placeholder `createCredential` writes when it cannot read the public key (also once largeBlob metadata has dropped its `synthetic` flag: the point is not on the curve), and for anything unreadable.
+- **Signing.** Unlike other requests, this one pins `allowCredentials` to the descriptor, whatever `configureWebAuthn` says, and requires user verification. An assertion from another credential is refused. The challenge is used as the WebAuthn challenge itself, as Calibur passes its hash.
+- **Result**: the fields of webauthn-sol's `WebAuthnAuth`. `r` and `s` are 32 bytes big-endian, `s` normalised to low-s (webauthn-sol refuses `s > n/2`). `clientDataJSON` is a string; `typeIndex` and `challengeIndex` are the UTF-8 byte offsets of `"type":"webauthn.get"` and `"challenge":"<base64url(challenge), unpadded>"` in it. The signature is verified against `x`/`y` before it is returned; anything a verifier would refuse throws instead.
+
+| Signing mode                                   | Descriptor                                                                                                        |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Default (passkey DID), hardware P-256 (varsig) | yes: the DID encodes the same key                                                                                 |
+| Keystore or worker Ed25519 DID                 | yes, from the credential's `x`/`y`; the DID does not commit to the passkey, so link the wallet key to it yourself |
+| Hardware Ed25519 (varsig)                      | `null`: there is no P-256 key                                                                                     |
+
 ### Keystore-based DID (WebAuthn + OrbitDB keystore)
 
 ```mermaid

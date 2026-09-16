@@ -18,6 +18,8 @@ export interface WebAuthnVarsigCredential {
   publicKey: Uint8Array;
   algorithm: WebAuthnAlgorithm;
   cose?: unknown;
+  /** Relying party id the credential is registered under. */
+  rpId?: string;
   [key: string]: unknown;
 }
 
@@ -133,6 +135,56 @@ export function extractPrfSeedFromCredential(
 ): Promise<
   { seed: Uint8Array; source: 'prf' } | { seed: null; source: 'none' }
 >;
+
+/** A passkey's P-256 key, as wallet code needs it. */
+export interface P256CredentialDescriptor {
+  /** Unpadded base64url of `rawCredentialId`. */
+  credentialId: string;
+  rawCredentialId: Uint8Array;
+  /** Public key x coordinate: 32 bytes, big-endian. */
+  x: Uint8Array;
+  /** Public key y coordinate: 32 bytes, big-endian. */
+  y: Uint8Array;
+  rpId: string;
+  /** `signP256Challenge` always requires user verification. */
+  userVerification: 'required';
+}
+
+/**
+ * An assertion over a 32-byte challenge, in the fields of webauthn-sol's
+ * `WebAuthnAuth` (the verifier Uniswap's Calibur uses).
+ */
+export interface P256ChallengeSignature {
+  authenticatorData: Uint8Array;
+  clientDataJSON: string;
+  /** UTF-8 byte offset of `"challenge":"<base64url(challenge)>"` in `clientDataJSON`. */
+  challengeIndex: number;
+  /** UTF-8 byte offset of `"type":"webauthn.get"` in `clientDataJSON`. */
+  typeIndex: number;
+  /** 32 bytes, big-endian. */
+  r: Uint8Array;
+  /** 32 bytes, big-endian, normalised to low-s (s ≤ n/2). */
+  s: Uint8Array;
+}
+
+/**
+ * Describe a credential's P-256 key, from either `createCredential` path or a
+ * stored copy. `null` for RS256 or Ed25519 keys, the placeholder key written
+ * when registration could not read the public key, and anything unreadable.
+ */
+export function getP256CredentialDescriptor(
+  credential: unknown
+): P256CredentialDescriptor | null;
+
+/**
+ * Sign exactly 32 bytes with the descriptor's passkey (`allowCredentials`
+ * pinned, user verification required). Rejects an assertion from another
+ * credential, and anything that would not verify against `x`/`y`.
+ */
+export function signP256Challenge(
+  descriptor: P256CredentialDescriptor,
+  challenge: Uint8Array | ArrayBuffer
+): Promise<P256ChallengeSignature>;
 
 export interface WorkerKeystoreClient {
   initWithPrfSeed(prfSeed: Uint8Array): Promise<void>;

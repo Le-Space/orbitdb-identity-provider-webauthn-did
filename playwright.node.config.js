@@ -30,6 +30,7 @@ export default defineConfig({
     'worker-signer.test.js',
     'p256-signature-shapes.test.js',
     'webauthn-recovery.test.js',
+    'p256-wallet-primitives.test.js',
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,

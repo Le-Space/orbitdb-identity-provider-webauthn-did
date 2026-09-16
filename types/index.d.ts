@@ -89,6 +89,11 @@ export interface WebAuthnCredentialInfo {
   credentialId: string;
   rawCredentialId: Uint8Array;
   publicKey: WebAuthnPublicKey | Uint8Array;
+  /**
+   * Relying party id the credential is registered under. Returned by
+   * `createCredential`; absent from credentials stored before it was.
+   */
+  rpId?: string;
   userId?: string;
   displayName?: string;
   /** Random 64-byte WebAuthn user handle, base64url. Not derived from userId. */

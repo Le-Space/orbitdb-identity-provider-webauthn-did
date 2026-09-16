@@ -27,6 +27,11 @@ export {
 } from './webauthn/credential.js';
 
 export {
+  getP256CredentialDescriptor,
+  signP256Challenge,
+} from './webauthn/p256-wallet.js';
+
+export {
   createWorkerKeystoreClient,
   createWorkerSigner,
   isWorkerKeystoreAvailable,

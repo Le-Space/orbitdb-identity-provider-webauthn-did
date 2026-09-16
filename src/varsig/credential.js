@@ -140,6 +140,8 @@ async function createWebAuthnVarsigCredential(options = {}) {
     did,
     algorithm,
     cose: { kty, alg, crv },
+    // The relying party the credential is scoped to; see createCredential.
+    rpId: domain || window.location.hostname,
   };
 }
 
