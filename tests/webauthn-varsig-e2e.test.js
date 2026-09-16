@@ -92,3 +92,42 @@ test.describe('WebAuthn Varsig Demo E2E', () => {
     });
   });
 });
+
+/**
+ * Same defect as the default path's demo: a declined largeBlob write throws
+ * nothing, and the step was reported as done (#48).
+ */
+test.describe('the varsig largeBlob step reports what was written', () => {
+  const step = (page) =>
+    page.locator(
+      '[data-testid="recovery-step"][data-label="Write varsig metadata to largeBlob"]'
+    );
+
+  async function createCredential(page) {
+    await page.goto('/');
+    await page.waitForSelector('button:has-text("Create Credential")', {
+      timeout: 30000,
+    });
+    await page.click('button:has-text("Create Credential")');
+    await expect(
+      page.locator('text=Credential created successfully!')
+    ).toBeVisible({ timeout: 30000 });
+  }
+
+  test.beforeEach(async ({ browserName }) => {
+    requireChromium(test, browserName);
+  });
+
+  test('succeeds where the authenticator stores the blob', async ({ page }) => {
+    await addVirtualAuthenticator(page);
+    await createCredential(page);
+    await expect(step(page)).toHaveAttribute('data-status', 'success');
+  });
+
+  test('warns, rather than succeeding, where it does not', async ({ page }) => {
+    await addVirtualAuthenticator(page, { hasLargeBlob: false });
+    await createCredential(page);
+    await expect(step(page)).toHaveAttribute('data-status', 'warning');
+    await expect(step(page)).toContainText('not written');
+  });
+});

@@ -151,3 +151,37 @@ test.describe('the default path', () => {
     expect(left).toEqual([]);
   });
 });
+
+/**
+ * A largeBlob write the authenticator declines throws nothing: the outcome is
+ * only in `extensionResults.largeBlob.written`. The demo read the absence of an
+ * exception as success, so a passkey that would never restore from the
+ * authenticator was reported as carrying its identity metadata (#48).
+ */
+test.describe('the largeBlob step reports what was written', () => {
+  const step = (page) =>
+    page.locator(
+      '[data-testid="recovery-step"][data-label="Write identity metadata to largeBlob"]'
+    );
+
+  test.beforeEach(async ({ browserName }) => {
+    requireChromium(test, browserName);
+  });
+
+  test('succeeds where the authenticator stores the blob', async ({ page }) => {
+    await addVirtualAuthenticator(page); // with large-blob support
+    await page.goto('/');
+    await createCredential(page);
+    await expect(step(page)).toHaveAttribute('data-status', 'success');
+  });
+
+  test('warns, rather than succeeding, where it does not', async ({ page }) => {
+    // The browser still reports the extension, so the demo attempts the write;
+    // the authenticator declines it.
+    await addVirtualAuthenticator(page, { hasLargeBlob: false });
+    await page.goto('/');
+    await createCredential(page);
+    await expect(step(page)).toHaveAttribute('data-status', 'warning');
+    await expect(step(page)).toContainText('not written');
+  });
+});
