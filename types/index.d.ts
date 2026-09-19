@@ -430,6 +430,52 @@ export function createVerificationResult(
 
 export { VerificationUtils };
 
+/**
+ * Restoring on a device that has stored nothing (#61).
+ */
+export interface RestoredIdentity {
+  did: string;
+  publicKey: { x: Uint8Array; y: Uint8Array };
+  credentialId: Uint8Array;
+  signingKey: Uint8Array;
+  prfInput: Uint8Array;
+}
+
+export interface RestoreIdentityOptions {
+  rpId?: string;
+  timeout?: number;
+  signingKeyType?: string;
+  onTouch?: (step: { touch: number; of: number }) => void;
+}
+
+export const PRF_INPUT_INFO: string;
+
+export function prfInputForRelyingParty(rpId?: string): Promise<Uint8Array>;
+
+export function recoverPublicKeyCandidates(
+  assertion: unknown
+): Promise<Array<{ x: bigint; y: bigint }>>;
+
+export function recoverPublicKey(
+  first: unknown,
+  second: unknown
+): Promise<{ x: Uint8Array; y: Uint8Array }>;
+
+export function restoreIdentityFromAuthenticator(
+  options?: RestoreIdentityOptions
+): Promise<RestoredIdentity>;
+
+export function deriveSigningKeyBytes(
+  seed: Uint8Array,
+  did: string,
+  keyType?: string
+): Promise<Uint8Array>;
+
+export function getPrfOutput(
+  credential: Record<string, unknown>,
+  options?: { rpId?: string }
+): Promise<Uint8Array | null>;
+
 declare const defaultExport: {
   WebAuthnDIDProvider: typeof WebAuthnDIDProvider;
   OrbitDBWebAuthnIdentityProvider: typeof OrbitDBWebAuthnIdentityProvider;
