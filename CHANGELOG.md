@@ -2,6 +2,43 @@
 
 ## Unreleased
 
+### Added
+
+- **An identity can be restored on a device that has stored nothing** (#61).
+  `restoreIdentityFromAuthenticator()` touches the same passkey twice: once
+  with user verification and the PRF input every device can compute, once for a
+  second signature. Two ECDSA signatures admit exactly one common public key —
+  which an assertion does not carry, and which is why the identity metadata has
+  had to live in largeBlob or `localStorage` until now. From it: the DID, and
+  the signing key derived from the PRF output with the DID mixed in. The pieces
+  are exported on their own as well: `prfInputForRelyingParty()`,
+  `recoverPublicKey()` and `recoverPublicKeyCandidates()`.
+
+  Measured on hardware before it was written — one YubiKey, a Galaxy Fold 5 and
+  a Galaxy A57, 2026-09-19: the same PRF value on both phones, the same DID
+  recovered from two signatures, the same derived signing key. What of that is
+  machine-checkable runs in `tests/webauthn-recovery.test.js`, against a
+  software authenticator with a real P-256 key.
+
+  Nothing stands in for a missing PRF: an authenticator without it gets a
+  refusal, because an identity derived from something else is a different
+  identity that looks like success.
+
+### Changed
+
+- **The PRF input is now fixed per relying party** instead of drawn at random
+  per credential (#61). It was stored with the credential metadata, so the
+  derived signing key — and with it the identity — was reachable only from the
+  device that kept that metadata; a second device asking the same authenticator
+  a different question got a different answer. The input is not a secret, the
+  output is. Credentials registered earlier keep working: their stored input is
+  still used when there is one, and `getPrfOutput()` now falls back to the
+  derivable input instead of giving up when there is none.
+- **`createDID` refuses a key it cannot encode.** Its `catch` built a
+  "base58-like" identifier out of the same coordinates: a string that looked
+  like a DID, was not `did:key`, and could not be reproduced by anything else
+  reading that key — including this library on another device. It throws now.
+
 ### Changed
 
 - CI now runs all 22 test files. Eight never ran there: `identity-forgery`,

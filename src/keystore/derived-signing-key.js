@@ -35,6 +35,7 @@ import {
 
 import { CRYPTO_ALGORITHMS, KEY_TYPES } from '../constants.js';
 import { buildCredentialRequestOptions } from '../webauthn/config.js';
+import { prfInputForRelyingParty } from '../webauthn/prf-input.js';
 
 const log = logger('orbitdb-identity-provider-webauthn-did:derived-key');
 
@@ -126,12 +127,13 @@ export async function deriveSigningKeyBytes(
  * @returns {Promise<Uint8Array|null>} PRF output, or null.
  */
 export async function getPrfOutput(credential, { rpId } = {}) {
-  // Without the original input the output would differ per call, which is
-  // worse than not deriving at all.
-  if (!credential?.prfInput) {
-    log('credential has no stored prfInput; cannot derive a stable key');
-    return null;
-  }
+  // A credential registered before #61 carries the random input it was made
+  // with, and that input is the only one its authenticator answers the same
+  // way twice. Without one, fall back to the input every device can compute
+  // (#61): a credential registered since then was asked exactly that, so a
+  // second device needs nothing from the first.
+  const prfInput =
+    credential?.prfInput ?? (await prfInputForRelyingParty(rpId));
 
   if (typeof navigator === 'undefined' || !navigator.credentials?.get) {
     log('no WebAuthn available; cannot derive a key');
@@ -153,7 +155,7 @@ export async function getPrfOutput(credential, { rpId } = {}) {
         credentialId: rawCredentialId,
         rpId: rpId ?? globalThis.window?.location?.hostname,
         userVerification: 'required',
-        extensions: { prf: { eval: { first: credential.prfInput } } },
+        extensions: { prf: { eval: { first: prfInput } } },
       })
     );
 
