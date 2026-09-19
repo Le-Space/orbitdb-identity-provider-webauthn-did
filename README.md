@@ -386,18 +386,22 @@ If you change anything that touches signing, identity documents or verification,
 
 ## Identity Recovery Summary
 
-Current identity recovery behavior in this repo:
+Since **0.6.0** an identity can be restored on a device that has stored nothing:
 
-- Discoverable passkeys are the default.
-- Discoverable authentication can recover the credential ID used for assertion.
-- Discoverable authentication does not reliably re-expose the credential public key.
-- Because of that, OrbitDB identity recovery requires metadata persistence.
-- The demos now try `largeBlob` first for identity metadata recovery.
-- If `largeBlob` is not supported or has no metadata, the demos fall back to local browser storage.
+- Discoverable passkeys are the default, so a device that knows no credential ID can still authenticate.
+- A single assertion does not expose the credential's public key — but **two do**. An ECDSA signature admits exactly two public keys, and only the signer's is in both sets, so `recoverPublicKey()` returns it and the DID follows. Every candidate is checked against the signature it came from, so the recovery cannot invent a key.
+- The PRF input is fixed per relying party, so a second device asks the authenticator the same question and receives the same secret; the signing key is derived from it with the DID mixed in.
+- `restoreIdentityFromAuthenticator()` does both touches and returns the DID, the public key and the signing key.
+
+Metadata persistence is therefore a **convenience, not a requirement**. The demos still try `largeBlob` first and fall back to browser storage, which saves a touch of the key; neither is needed to reconstruct the identity.
 
 Practical implication:
 
-- If you create a passkey on one browser profile and later open the app in a fresh profile, the passkey may still exist in the platform passkey manager, but the app can only reconstruct the OrbitDB identity if it can recover metadata from `largeBlob` or some other persisted mapping.
+- A passkey created in one browser profile reconstructs the same OrbitDB identity in a fresh profile — or on another phone — with nothing carried over. Measured on one YubiKey across a Galaxy Fold 5 and a Galaxy A57 (2026-09-19): same PRF value, same recovered DID, same derived signing key.
+- An authenticator without PRF gets a **refusal**, not a substitute. An identity derived from something else is a different identity that looks like success.
+- Credentials registered before 0.6.0 keep the random PRF input stored with them, so their identities do not move.
+
+Getting the _database_ back is a separate problem, and the two halves together are written up in [Getting a database back on a device that has nothing](https://github.com/NiKrause/orbitdb-storage-bridge/blob/main/docs/RECOVERY-ON-A-SECOND-DEVICE.md).
 
 ## Upstream Packages and Temporary Forks
 
