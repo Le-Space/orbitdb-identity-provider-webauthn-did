@@ -1,6 +1,19 @@
 # Changes
 
-## Unreleased
+## 0.6.0
+
+An identity can be restored on a second device with **nothing stored**: two
+touches of the same passkey give back the DID and the signing key, so
+largeBlob and `localStorage` become a convenience rather than the only road.
+Measured on two phones with one YubiKey before it was written (#61).
+
+Nothing existing moves: a credential registered before this keeps the PRF
+input it was made with, and the identity it derives is unchanged. Credentials
+registered from here on are asked the input every device can compute, which is
+what makes the restore work. Two behaviours do change — `getPrfOutput()` now
+falls back to that derivable input instead of returning `null` when a
+credential has none stored, and `createDID()` throws instead of inventing a
+"base58-like" identifier when it cannot encode a key.
 
 ### Added
 
