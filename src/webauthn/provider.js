@@ -16,6 +16,7 @@ import {
   KEYSTORE_ENCRYPTION_METHODS,
 } from '../constants.js';
 import {
+  ERROR_CODES,
   WebAuthnIdentityError,
   WebAuthnAuthenticationError,
   WebAuthnCredentialError,
@@ -26,6 +27,7 @@ import {
   buildCredentialRequestOptions,
 } from './config.js';
 import { logWebAuthnResponse } from './debug-log.js';
+import { prfInputForRelyingParty } from './prf-input.js';
 import {
   p256PublicKeyBytes,
   verifyWebAuthnProof,
@@ -173,7 +175,8 @@ export class WebAuthnDIDProvider {
 
       if (keystoreEncryptionMethod === KEYSTORE_ENCRYPTION_METHODS.PRF) {
         const prfConfig = KeystoreEncryption.addPRFToCredentialOptions(
-          credentialOptions.publicKey
+          credentialOptions.publicKey,
+          await prfInputForRelyingParty(domain)
         );
         credentialOptions.publicKey = prfConfig.credentialOptions;
         prfInput = prfConfig.prfInput;
@@ -199,14 +202,19 @@ export class WebAuthnDIDProvider {
       };
     }
 
-    // Request PRF even when the keystore is not encrypted. The stored input is
-    // what lets the OrbitDB signing key be derived reproducibly later, so a
-    // credential registered without it can never get a reproducible identity.
+    // Request PRF even when the keystore is not encrypted: it is what lets the
+    // OrbitDB signing key be derived reproducibly later, so a credential
+    // registered without it can never get a reproducible identity. The input
+    // is fixed per relying party rather than drawn at random (#61), so a
+    // second device asks the authenticator the same question and gets the same
+    // answer — without that, "the same passkey" still means a different key on
+    // every device.
     // Requesting the extension is harmless where it is unsupported: the
     // authenticator simply returns no PRF results.
     if (!prfInput) {
       const prfConfig = KeystoreEncryption.addPRFToCredentialOptions(
-        credentialOptions.publicKey
+        credentialOptions.publicKey,
+        await prfInputForRelyingParty(domain)
       );
       credentialOptions.publicKey = prfConfig.credentialOptions;
       prfInput = prfConfig.prfInput;
@@ -581,38 +589,16 @@ export class WebAuthnDIDProvider {
       const multikeyEncoded = base58btc.encode(multikey);
       return `${DID_KEY_PREFIX}${multikeyEncoded}`;
     } catch (error) {
-      console.warn(
-        'Failed to create DID with multiformats, using fallback:',
-        error
+      // No fallback encoding. What stood here invented a "base58-like"
+      // identifier out of the same coordinates — a string that looks like a
+      // DID, is not `did:key`, and cannot be reproduced by anything else that
+      // reads this key, including this library on another device. An identity
+      // nobody else computes the same way is worse than no identity, and it
+      // fails silently, at registration, where nothing checks it again.
+      throw new WebAuthnIdentityError(
+        `could not encode the public key as a did:key: ${error.message}`,
+        { code: ERROR_CODES.INVALID_INPUT, cause: error }
       );
-
-      // Fallback: Simple DID creation without multiformats dependency
-      const { x, y } = credentialInfo.publicKey;
-
-      // Create a hash-based approach for consistency
-      const combined = new Uint8Array(x.length + y.length);
-      combined.set(x, 0);
-      combined.set(y, x.length);
-
-      // Simple base58-like encoding for fallback
-      const base58Chars =
-        '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-      let encoded = 'z'; // base58btc prefix
-
-      for (let i = 0; i < Math.min(combined.length, 32); i += 4) {
-        const chunk = combined.slice(i, i + 4);
-        let value = 0;
-        for (let j = 0; j < chunk.length; j++) {
-          value = value * 256 + chunk[j];
-        }
-
-        for (let k = 0; k < 6; k++) {
-          encoded += base58Chars[value % 58];
-          value = Math.floor(value / 58);
-        }
-      }
-
-      return `${DID_KEY_PREFIX}${encoded}`;
     }
   }
 

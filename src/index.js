@@ -297,6 +297,23 @@ export {
   isSessionKeystore,
 } from './keystore/session-keystore.js';
 export { PrfUnavailableError } from './errors.js';
+// Restoring on a device that has stored nothing (#61): the fixed PRF input,
+// the public key recovered from two assertions, and the two together.
+export {
+  PRF_INPUT_INFO,
+  prfInputForRelyingParty,
+} from './webauthn/prf-input.js';
+export {
+  recoverPublicKey,
+  recoverPublicKeyCandidates,
+} from './webauthn/recovery.js';
+export { restoreIdentityFromAuthenticator } from './webauthn/restore.js';
+// The two halves of it, for a caller that already holds one: a PRF output, or
+// a credential it wants the output for.
+export {
+  deriveSigningKeyBytes,
+  getPrfOutput,
+} from './keystore/derived-signing-key.js';
 
 export default {
   WebAuthnDIDProvider,
