@@ -308,6 +308,12 @@ export {
   recoverPublicKeyCandidates,
 } from './webauthn/recovery.js';
 export { restoreIdentityFromAuthenticator } from './webauthn/restore.js';
+// The two halves of it, for a caller that already holds one: a PRF output, or
+// a credential it wants the output for.
+export {
+  deriveSigningKeyBytes,
+  getPrfOutput,
+} from './keystore/derived-signing-key.js';
 
 export default {
   WebAuthnDIDProvider,
