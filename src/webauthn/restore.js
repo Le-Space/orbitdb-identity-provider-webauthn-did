@@ -116,7 +116,8 @@ export async function restoreIdentityFromAuthenticator({
   log('restored %s from the authenticator alone', did);
 
   const rawCredentialId = new Uint8Array(first.rawId);
-  const credentialId = WebAuthnDIDProvider.arrayBufferToBase64url(rawCredentialId);
+  const credentialId =
+    WebAuthnDIDProvider.arrayBufferToBase64url(rawCredentialId);
   return {
     did,
     publicKey,

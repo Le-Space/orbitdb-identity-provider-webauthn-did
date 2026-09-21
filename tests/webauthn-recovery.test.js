@@ -256,7 +256,9 @@ test.describe('the step after restore: handing the identity to OrbitDB', () => {
   const envelope = (identity) =>
     JSON.parse(
       new TextDecoder().decode(
-        WebAuthnDIDProvider.base64urlToArrayBuffer(identity.signatures.publicKey)
+        WebAuthnDIDProvider.base64urlToArrayBuffer(
+          identity.signatures.publicKey
+        )
       )
     );
 

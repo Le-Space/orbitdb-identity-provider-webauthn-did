@@ -55,7 +55,9 @@ export class WebAuthnDIDProvider {
     this.rawCredentialId =
       rawCredentialId ??
       (typeof credentialId === 'string'
-        ? new Uint8Array(WebAuthnDIDProvider.base64urlToArrayBuffer(credentialId))
+        ? new Uint8Array(
+            WebAuthnDIDProvider.base64urlToArrayBuffer(credentialId)
+          )
         : credentialId
           ? new Uint8Array(credentialId)
           : undefined);
