@@ -436,9 +436,14 @@ export { VerificationUtils };
 export interface RestoredIdentity {
   did: string;
   publicKey: { x: Uint8Array; y: Uint8Array };
-  credentialId: Uint8Array;
+  /** The credential id as base64url text. Before 0.7.0 this was the bytes. */
+  credentialId: string;
+  /** The credential id as bytes. */
+  rawCredentialId: Uint8Array;
   signingKey: Uint8Array;
   prfInput: Uint8Array;
+  /** Ready for `OrbitDBWebAuthnIdentityProviderFunction({ webauthnCredential })`. */
+  credential: WebAuthnCredentialInfo;
 }
 
 export interface RestoreIdentityOptions {

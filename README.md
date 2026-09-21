@@ -391,7 +391,7 @@ Since **0.6.0** an identity can be restored on a device that has stored nothing:
 - Discoverable passkeys are the default, so a device that knows no credential ID can still authenticate.
 - A single assertion does not expose the credential's public key — but **two do**. An ECDSA signature admits exactly two public keys, and only the signer's is in both sets, so `recoverPublicKey()` returns it and the DID follows. Every candidate is checked against the signature it came from, so the recovery cannot invent a key.
 - The PRF input is fixed per relying party, so a second device asks the authenticator the same question and receives the same secret; the signing key is derived from it with the DID mixed in.
-- `restoreIdentityFromAuthenticator()` does both touches and returns the DID, the public key and the signing key.
+- `restoreIdentityFromAuthenticator()` does both touches and returns the DID, the public key and the signing key — and, since 0.7.0, the credential the provider takes as it is: `OrbitDBWebAuthnIdentityProviderFunction({ webauthnCredential: restored.credential })`.
 
 Metadata persistence is therefore a **convenience, not a requirement**. The demos still try `largeBlob` first and fall back to browser storage, which saves a touch of the key; neither is needed to reconstruct the identity.
 

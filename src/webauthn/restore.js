@@ -45,7 +45,11 @@ const log = logger('orbitdb-identity-provider-webauthn-did:restore');
  * @param {(step: {touch: number, of: number}) => void} [options.onTouch] -
  *   Called before each ceremony, so an application can say which touch this is.
  * @returns {Promise<{did: string, publicKey: {x: Uint8Array, y: Uint8Array},
- *   credentialId: Uint8Array, signingKey: Uint8Array, prfInput: Uint8Array}>}
+ *   credentialId: string, rawCredentialId: Uint8Array, signingKey: Uint8Array,
+ *   prfInput: Uint8Array, credential: Object}>} `credential` is what
+ *   `OrbitDBWebAuthnIdentityProviderFunction({ webauthnCredential })` takes.
+ *   `credentialId` is the base64url text, as everywhere else in this package,
+ *   and `rawCredentialId` the bytes (before 0.7.0, `credentialId` was the bytes).
  */
 export async function restoreIdentityFromAuthenticator({
   rpId,
@@ -111,11 +115,18 @@ export async function restoreIdentityFromAuthenticator({
   );
   log('restored %s from the authenticator alone', did);
 
+  const rawCredentialId = new Uint8Array(first.rawId);
+  const credentialId =
+    WebAuthnDIDProvider.arrayBufferToBase64url(rawCredentialId);
   return {
     did,
     publicKey,
-    credentialId: new Uint8Array(first.rawId),
+    credentialId,
+    rawCredentialId,
     signingKey,
     prfInput,
+    // Ready for the provider as it is, so nobody has to know which of the two
+    // ids it wants under which name.
+    credential: { credentialId, rawCredentialId, publicKey, prfInput },
   };
 }
