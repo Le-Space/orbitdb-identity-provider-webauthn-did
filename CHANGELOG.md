@@ -1,5 +1,29 @@
 # Changes
 
+## 0.7.0
+
+**One breaking change, in the function 0.6.0 added.** `restoreIdentityFromAuthenticator()`
+returned the credential id as bytes, under `credentialId` — the name the rest of this package
+uses for the base64url text. An application that passed the bytes on as `rawCredentialId`, and
+so gave the provider no text, got a third touch of the key and then an exception: `WebAuthn
+signing error: Cannot read properties of undefined (reading 'substring')`. That happened on two
+phones on 21 September, in funkpost's recovery page.
+
+- `credentialId` is now the base64url **text** and `rawCredentialId` the **bytes**, as
+  `WebAuthnCredentialInfo` has always typed them.
+- New: `credential`, the credential the provider takes as it is —
+  `OrbitDBWebAuthnIdentityProviderFunction({ webauthnCredential: restored.credential })`.
+- The provider derives either form of the id from the other, so a credential that brings only
+  one of them signs instead of failing after the touch.
+- `sign()` no longer builds a debug line from a field that may be missing.
+
+**Migrating from 0.6.0:** read the bytes from `restored.rawCredentialId` instead of
+`restored.credentialId`, or hand `restored.credential` to the provider.
+
+**Tested now:** the step after the restore — giving the identity to OrbitDB and signing with it
+— which no test reached before. Both new tests fail on 0.6.0, one of them with the exception
+above, word for word.
+
 ## 0.6.0
 
 An identity can be restored on a second device with **nothing stored**: two
