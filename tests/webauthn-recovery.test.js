@@ -25,6 +25,9 @@ import { restoreIdentityFromAuthenticator } from '../src/webauthn/restore.js';
 import { deriveSigningKeyBytes } from '../src/keystore/derived-signing-key.js';
 import { WebAuthnDIDProvider } from '../src/webauthn/provider.js';
 import { PrfUnavailableError } from '../src/errors.js';
+import { Identities, MemoryStorage, useIdentityProvider } from '@orbitdb/core';
+import { OrbitDBWebAuthnIdentityProviderFunction } from '../src/keystore/provider.js';
+import { createSessionKeystore } from '../src/keystore/session-keystore.js';
 
 const hex = (bytes) =>
   [...new Uint8Array(bytes)]
@@ -212,5 +215,96 @@ test.describe('createDID', () => {
         publicKey: { x: new Uint8Array(4), y: new Uint8Array(4) },
       })
     ).rejects.toThrow(/could not encode the public key/);
+  });
+});
+
+test.describe('the step after restore: handing the identity to OrbitDB', () => {
+  // What a second device does next, and what no test reached before 0.7.0:
+  // on two phones on 21 September it touched the key a third time and threw.
+  let authenticator;
+  let restore;
+
+  test.beforeEach(async () => {
+    authenticator = await createMockAuthenticator({ rpId: 'localhost' });
+    restore = installMockAuthenticator(authenticator);
+    try {
+      useIdentityProvider(OrbitDBWebAuthnIdentityProviderFunction);
+    } catch {
+      // registered by an earlier test
+    }
+  });
+
+  test.afterEach(() => restore?.());
+
+  /** A device with nothing but the authenticator and OrbitDB. */
+  async function identityFrom(webauthnCredential) {
+    const keystore = await createSessionKeystore();
+    const identities = await Identities({
+      keystore,
+      storage: await MemoryStorage(),
+    });
+    const identity = await identities.createIdentity({
+      provider: OrbitDBWebAuthnIdentityProviderFunction({
+        webauthnCredential,
+        signingKeyType: 'secp256k1',
+      }),
+    });
+    return { identity, identities, keystore };
+  }
+
+  /** The WebAuthn envelope OrbitDB keeps in the identity document. */
+  const envelope = (identity) =>
+    JSON.parse(
+      new TextDecoder().decode(
+        WebAuthnDIDProvider.base64urlToArrayBuffer(identity.signatures.publicKey)
+      )
+    );
+
+  test('takes the credential restore returns as it is, and signs with it', async () => {
+    await WebAuthnDIDProvider.createCredential({
+      userId: 'someone',
+      domain: 'localhost',
+    });
+    const restored = await restoreIdentityFromAuthenticator({
+      rpId: 'localhost',
+    });
+
+    expect(typeof restored.credentialId).toBe('string');
+    expect(restored.rawCredentialId).toBeInstanceOf(Uint8Array);
+
+    const { identity, identities, keystore } = await identityFrom(
+      restored.credential
+    );
+    expect(identity.id).toBe(restored.did);
+    expect(await identities.verifyIdentity(identity)).toBe(true);
+    expect(envelope(identity).credentialId).toBe(restored.credentialId);
+    await keystore.close();
+  });
+
+  test('a credential that brings only its bytes still signs, and names itself', async () => {
+    // How an application passed 0.6.0's restore on: the bytes as
+    // rawCredentialId, no text. It got through the touch and then threw in a
+    // debug line, `credentialId.substring` on undefined.
+    await WebAuthnDIDProvider.createCredential({
+      userId: 'someone',
+      domain: 'localhost',
+    });
+    const restored = await restoreIdentityFromAuthenticator({
+      rpId: 'localhost',
+    });
+    const bytes = new Uint8Array(
+      restored.rawCredentialId ?? restored.credentialId
+    );
+
+    const { identity, identities, keystore } = await identityFrom({
+      rawCredentialId: bytes,
+      publicKey: restored.publicKey,
+      prfInput: restored.prfInput,
+    });
+    expect(await identities.verifyIdentity(identity)).toBe(true);
+    expect(envelope(identity).credentialId).toBe(
+      WebAuthnDIDProvider.arrayBufferToBase64url(bytes)
+    );
+    await keystore.close();
   });
 });
