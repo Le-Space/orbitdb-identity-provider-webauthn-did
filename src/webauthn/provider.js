@@ -46,9 +46,26 @@ export class WebAuthnDIDProvider {
    * @param {Uint8Array} credentialInfo.rawCredentialId - Raw credential ID bytes.
    */
   constructor(credentialInfo) {
-    this.credentialId = credentialInfo.credentialId;
+    // The id twice, as WebAuthnCredentialInfo types it: text for the signature
+    // envelope, bytes for the authenticator. Either gives the other, so a
+    // credential that brings only its bytes (as 0.6.0's restore handed them
+    // out, under the text's name) still signs, instead of getting through the
+    // touch and then failing.
+    const { credentialId, rawCredentialId } = credentialInfo;
+    this.rawCredentialId =
+      rawCredentialId ??
+      (typeof credentialId === 'string'
+        ? new Uint8Array(WebAuthnDIDProvider.base64urlToArrayBuffer(credentialId))
+        : credentialId
+          ? new Uint8Array(credentialId)
+          : undefined);
+    this.credentialId =
+      typeof credentialId === 'string'
+        ? credentialId
+        : this.rawCredentialId
+          ? WebAuthnDIDProvider.arrayBufferToBase64url(this.rawCredentialId)
+          : undefined;
     this.publicKey = credentialInfo.publicKey;
-    this.rawCredentialId = credentialInfo.rawCredentialId;
     this.type = IDENTITY_TYPES.WEBAUTHN;
   }
 
@@ -712,8 +729,9 @@ export class WebAuthnDIDProvider {
       };
 
       webauthnLog('Proof created successfully: %o', {
-        credentialId: webauthnProof.credentialId.substring(0, 16) + '...',
-        dataHash: webauthnProof.dataHash.substring(0, 16) + '...',
+        // A debug line must not be what fails a signature.
+        credentialId: `${String(webauthnProof.credentialId).slice(0, 16)}...`,
+        dataHash: `${String(webauthnProof.dataHash).slice(0, 16)}...`,
       });
 
       // Return the proof as a base64url encoded string for OrbitDB
