@@ -1,5 +1,45 @@
 # Changes
 
+## 0.8.0
+
+Two functions for wallets, and nothing that changes for anyone else. They were written against
+0.5.4 on 16 September and vendored into simple-todo's `escrow01` as `0.5.5-p256.8366ed8`, but
+never pushed or released until now — which is why 0.6.0 and 0.7.0 do not have them, and why #70
+took their absence for a removal.
+
+### Added
+
+- **Passkey primitives for wallets**, in `./standalone` (#60). A smart
+  account that verifies P-256 WebAuthn signatures on-chain — Uniswap's
+  Calibur, through webauthn-sol — can use the identity's passkey, without
+  the wallet duplicating key extraction and DER parsing or creating a
+  second passkey when it cannot recover the key.
+  - `getP256CredentialDescriptor(credential)` returns
+    `{ credentialId, rawCredentialId, x, y, rpId, userVerification }`, with
+    `x` and `y` as 32-byte big-endian `Uint8Array`s, from either credential
+    shape, a stored or JSON copy, or a P-256 `did:key` alone (a varsig DID
+    holds the key compressed). It returns `null` for RS256 and Ed25519 keys,
+    for anything unreadable, and for the placeholder `createCredential`
+    writes when it cannot read the public key — also once that has lost its
+    `synthetic` flag, which largeBlob metadata does not carry: the point has
+    to lie on the curve.
+  - `signP256Challenge(descriptor, challenge)` signs exactly 32 bytes, with
+    `allowCredentials` pinned to the descriptor whatever the discoverable
+    credential policy, and user verification required. It refuses an
+    assertion whose `rawId` differs and returns
+    `{ authenticatorData, clientDataJSON, challengeIndex, typeIndex, r, s }`:
+    `r` and `s` left-padded to 32 bytes, `s` normalised to low-s, and the
+    indices as the byte offsets of `"type":"webauthn.get"` and
+    `"challenge":"…"` that webauthn-sol reads. The signature is verified
+    against `x`/`y` before it is returned.
+
+### Changed
+
+- `createCredential` returns `rpId` on both paths, and a stored varsig
+  (hardware signer) credential keeps it. An assertion has to name the rpId
+  the credential was registered under, which need not be the page's
+  hostname.
+
 ## 0.7.0
 
 **One breaking change, in the function 0.6.0 added.** `restoreIdentityFromAuthenticator()`

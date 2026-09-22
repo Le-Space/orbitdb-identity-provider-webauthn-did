@@ -19,6 +19,7 @@ export function storeWebAuthnVarsigCredential(
     did: credential.did,
     algorithm: credential.algorithm,
     cose: credential.cose || null,
+    ...(credential.rpId ? { rpId: credential.rpId } : {}),
   };
   localStorage.setItem(key, JSON.stringify(payload));
 }
@@ -40,6 +41,8 @@ export function loadWebAuthnVarsigCredential(
     did: parsed.did,
     algorithm: parsed.algorithm,
     cose: parsed.cose || null,
+    // Absent from credentials stored before rpId was recorded.
+    ...(parsed.rpId ? { rpId: parsed.rpId } : {}),
   };
 }
 

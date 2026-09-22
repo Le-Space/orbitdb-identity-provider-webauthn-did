@@ -77,6 +77,7 @@ Returns a credential info object containing:
 - `credentialId`
 - `rawCredentialId`
 - `publicKey`
+- `rpId` (the relying party the credential is registered under)
 - `userId`
 - `displayName`
 - `attestationObject`
@@ -347,6 +348,22 @@ const ucanSigner = signer.toUcantoSigner({
 - `loadWebAuthnCredentialSafe(key?)`
 - `clearWebAuthnCredentialSafe(key?)`
 - `extractPrfSeedFromCredential(credential)`
+
+### P-256 Wallet Primitives
+
+For smart accounts that verify P-256 WebAuthn signatures (for example Calibur
+with webauthn-sol). See the README section "Passkeys for smart accounts".
+
+- `getP256CredentialDescriptor(credential)` →
+  `{ credentialId, rawCredentialId, x, y, rpId, userVerification: 'required' }`
+  or `null` (RS256, Ed25519, placeholder or unreadable key). `x` and `y` are
+  32-byte big-endian `Uint8Array`s.
+- `signP256Challenge(descriptor, challenge)` → `Promise` of
+  `{ authenticatorData, clientDataJSON, challengeIndex, typeIndex, r, s }`.
+  `challenge` must be exactly 32 bytes. `allowCredentials` is pinned to the
+  descriptor, user verification is required, an assertion from another
+  credential is refused. `r` and `s` are 32 bytes with `s` low; the indices
+  are UTF-8 byte offsets in `clientDataJSON`.
 
 ### Worker Keystore Client
 

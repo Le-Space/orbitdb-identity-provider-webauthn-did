@@ -301,6 +301,9 @@ export class WebAuthnDIDProvider {
         ),
         rawCredentialId: new Uint8Array(credential.rawId),
         publicKey,
+        // The relying party the credential is scoped to. An assertion has to
+        // name the same one, and `domain` need not be this page's hostname.
+        rpId: domain || window.location.hostname,
         userId,
         displayName,
         // Nothing in this package looks a credential up by handle — recovery
