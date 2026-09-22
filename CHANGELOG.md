@@ -1,10 +1,11 @@
 # Changes
 
-## Unreleased
+## 0.8.0
 
-Written against 0.5.4 on 16 September and vendored into simple-todo's `escrow01` as
-`0.5.5-p256.8366ed8`, but never pushed or released until now — which is why 0.6.0 and 0.7.0 do
-not have these two functions, and why #70 took their absence for a removal.
+Two functions for wallets, and nothing that changes for anyone else. They were written against
+0.5.4 on 16 September and vendored into simple-todo's `escrow01` as `0.5.5-p256.8366ed8`, but
+never pushed or released until now — which is why 0.6.0 and 0.7.0 do not have them, and why #70
+took their absence for a removal.
 
 ### Added
 
