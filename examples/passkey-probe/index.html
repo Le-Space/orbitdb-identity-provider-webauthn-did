@@ -1,0 +1,965 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT -->
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Passkey probe</title>
+    <meta
+      name="description"
+      content="Prüft auf echter Hardware, ob ein Sicherheitsschlüssel eine Identität per PRF oder largeBlob auf ein zweites Gerät tragen kann."
+    />
+    <meta name="robots" content="noindex" />
+    <!-- Before the first paint: the language (the address, then the last choice,
+         then the browser) and a theme chosen earlier — probe-ui.js keeps both. -->
+    <script>
+      (function(){var d=document.documentElement,s=function(k){try{return localStorage.getItem(k)}catch(e){return null}},q=new URLSearchParams(location.search).get("lang"),l=q==="de"||q==="en"?q:s("passkey-probe:lang");if(l!=="de"&&l!=="en"){l="en";var a=navigator.languages&&navigator.languages.length?navigator.languages:[navigator.language];for(var i=0;i<a.length;i++){if(/^de\b/i.test(a[i])){l="de";break}if(/^en\b/i.test(a[i]))break}}d.lang=l;var t=s("passkey-probe:theme");if(t==="dark"||t==="light")d.dataset.theme=t})();
+    </script>
+    <style>
+      /* Light by default, dark when the system asks or the toggle says so.
+         Three states, not two: an explicit choice stamps data-theme, and the
+         common case stamps nothing at all. */
+      :root {
+        --bg: #fbfaf8;
+        --panel: #ffffff;
+        --ink: #1a1a1c;
+        --ink-2: #55555c;
+        --ink-3: #74747c;
+        --line: #e0dedb;
+        --accent: #3b4ea8;
+        --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
+        --good: #12694b;
+        --good-soft: color-mix(in srgb, var(--good) 12%, transparent);
+        --bad: #a52020;
+        --bad-soft: color-mix(in srgb, var(--bad) 12%, transparent);
+        --warn: #8a5a00;
+        --warn-soft: color-mix(in srgb, var(--warn) 14%, transparent);
+        --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+          --bg: #15161a;
+          --panel: #1d1f24;
+          --ink: #eceef2;
+          --ink-2: #a8adb8;
+          --ink-3: #8b909b;
+          --line: #2e3138;
+          --accent: #8ea2ff;
+          --good: #46c78f;
+          --bad: #ff7a70;
+          --warn: #e0a54a;
+        }
+      }
+      :root[data-theme="dark"] {
+        --bg: #15161a;
+        --panel: #1d1f24;
+        --ink: #eceef2;
+        --ink-2: #a8adb8;
+        --ink-3: #8b909b;
+        --line: #2e3138;
+        --accent: #8ea2ff;
+        --good: #46c78f;
+        --bad: #ff7a70;
+        --warn: #e0a54a;
+      }
+      /* Came from the brand stylesheet, and the page cannot work without it:
+         both languages are in the markup, and this is what hides one. */
+      [data-lang]:not([data-lang=""]) { display: none; }
+      :root:lang(en) [data-lang="en"], :root:lang(de) [data-lang="de"] { display: revert; }
+      .page-controls {
+        position: fixed;
+        top: 10px;
+        right: 12px;
+        display: flex;
+        gap: 6px;
+        z-index: 2;
+      }
+      .chip {
+        font-size: 1rem;
+        line-height: 1;
+        padding: 7px 9px;
+        border-radius: 999px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        color: var(--ink);
+        cursor: pointer;
+      }
+      * { box-sizing: border-box; }
+      a { color: var(--accent); }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: var(--font);
+        line-height: 1.55;
+      }
+      /* Room at the top for the language and theme buttons. */
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 56px 16px 64px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      h1 { font-size: 1.5rem; margin: 0; text-wrap: balance; }
+      h2 { font-size: 1rem; margin: 0 0 8px; }
+      p { margin: 0; }
+      .lede { color: var(--ink-2); }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .steps { display: grid; gap: 8px; }
+      button {
+        font: inherit;
+        font-weight: 600;
+        text-align: left;
+        padding: 12px 14px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--accent-soft);
+        color: var(--accent);
+        cursor: pointer;
+      }
+      button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      button:disabled { opacity: 0.5; cursor: progress; }
+      button small { display: block; font-weight: 400; color: var(--ink-2); }
+      .mono { font-family: var(--font-mono); font-size: 0.85rem; }
+      /* Stacked on a phone, which is the only place this page is used: side by
+         side, the longest label takes the width and a fingerprint — the thing
+         being compared — breaks across lines. */
+      dl { display: grid; grid-template-columns: 1fr; margin: 0; }
+      dt { color: var(--ink-2); font-size: 0.75rem; margin-top: 8px; }
+      dt:first-child { margin-top: 0; }
+      dd { margin: 0; overflow-wrap: anywhere; }
+      @media (min-width: 560px) {
+        dl { grid-template-columns: max-content 1fr; gap: 4px 12px; }
+        dt { font-size: inherit; margin-top: 0; }
+      }
+      .log { display: flex; flex-direction: column; gap: 8px; }
+      .entry { border-left: 3px solid var(--line); padding: 6px 10px; border-radius: 4px; }
+      .entry.good { border-color: var(--good); background: var(--good-soft); }
+      .entry.bad { border-color: var(--bad); background: var(--bad-soft); }
+      .entry.warn { border-color: var(--warn); background: var(--warn-soft); }
+      .entry b { display: block; }
+      .fp { font-family: var(--font-mono); font-size: 1.15rem; letter-spacing: 0.04em; }
+      table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+      th, td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--line); vertical-align: top; }
+      .scroll { overflow-x: auto; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header class="panel">
+        <h1><span data-lang="de">Passkey-Probe</span><span data-lang="en">Passkey probe</span></h1>
+        <p class="lede" data-lang="de">
+          Beantwortet eine Frage auf echter Hardware: <b>Kann ein Sicherheitsschlüssel eine Identität
+          auf ein zweites Gerät tragen</b> — per <b>PRF</b>, per <b>largeBlob</b>, oder gar nicht?
+          Ein Schlüssel, zwei Telefone, dieselbe Adresse.
+        </p>
+        <p class="lede" data-lang="en">
+          Answers one question on real hardware: <b>can a security key carry an identity to a
+          second device</b> — by <b>PRF</b>, by <b>largeBlob</b>, or not at all? One key, two
+          phones, the same address.
+        </p>
+        <p class="lede" data-lang="de">
+          Und die zweite Frage, aus
+          <a href="https://github.com/Le-Space/orbitdb-identity-provider-webauthn-did/issues/61">#61</a>:
+          <b>Lässt sich die Identität auf dem zweiten Gerät ganz ohne gespeicherte Daten wiederherstellen</b>
+          — nur aus dem Schlüssel, mit zwei Berührungen?
+        </p>
+        <p class="lede" data-lang="en">
+          And the second question, from
+          <a href="https://github.com/Le-Space/orbitdb-identity-provider-webauthn-did/issues/61">#61</a>:
+          <b>can the identity be restored on the second device with no stored data at all</b> —
+          from the key alone, with two touches?
+        </p>
+        <p class="lede" data-lang="de">
+          Diese Seite legt einen eigenen Test-Passkey an. Sie hat mit keiner echten Identität zu tun, und
+          sie zeigt den geheimen PRF-Wert nie an — nur einen kurzen Fingerabdruck zum Vergleichen.
+        </p>
+        <p class="lede" data-lang="en">
+          This page creates a test passkey of its own. It has nothing to do with any real identity,
+          and it never shows the secret PRF value — only a short fingerprint to compare.
+        </p>
+      </header>
+
+      <section class="panel" aria-labelledby="env-h">
+        <h2 id="env-h"><span data-lang="de">Dieser Browser</span><span data-lang="en">This browser</span></h2>
+        <dl class="mono" id="env"></dl>
+      </section>
+
+      <section class="panel" aria-labelledby="steps-h">
+        <h2 id="steps-h"><span data-lang="de">Schritte</span><span data-lang="en">Steps</span></h2>
+        <div class="steps">
+          <button id="create" type="button">
+            <span data-lang="de">1 · Test-Passkey auf dem Sicherheitsschlüssel anlegen
+              <small>Nur auf dem ersten Telefon. Im Dialog „Sicherheitsschlüssel“ wählen.</small></span>
+            <span data-lang="en">1 · Create a test passkey on the security key
+              <small>On the first phone only. Choose the security key in the dialog.</small></span>
+          </button>
+          <button id="prf" type="button">
+            <span data-lang="de">2 · PRF-Wert lesen
+              <small>Auf beiden Telefonen. Die Fingerabdrücke müssen gleich sein.</small></span>
+            <span data-lang="en">2 · Read the PRF value
+              <small>On both phones. The fingerprints must match.</small></span>
+          </button>
+          <button id="write" type="button">
+            <span data-lang="de">3 · largeBlob schreiben
+              <small>Nur auf dem ersten Telefon, nach Schritt 1 oder 2.</small></span>
+            <span data-lang="en">3 · Write a largeBlob
+              <small>On the first phone only, after step 1 or 2.</small></span>
+          </button>
+          <button id="read" type="button">
+            <span data-lang="de">4 · largeBlob lesen
+              <small>Auf beiden Telefonen.</small></span>
+            <span data-lang="en">4 · Read the largeBlob
+              <small>On both phones.</small></span>
+          </button>
+          <button id="recover" type="button">
+            <span data-lang="de">5 · Identität ohne gespeicherte Daten wiederherstellen
+              <small>Auf beiden Telefonen. Zweimal berühren: einmal mit PIN, einmal nur berühren.</small></span>
+            <span data-lang="en">5 · Restore the identity with no stored data
+              <small>On both phones. Two touches: once with the PIN, once just a touch.</small></span>
+          </button>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="log-h">
+        <h2 id="log-h"><span data-lang="de">Ergebnisse</span><span data-lang="en">Results</span></h2>
+        <div class="log" id="log" aria-live="polite">
+          <p class="lede"><span data-lang="de">Noch nichts geprüft.</span><span data-lang="en">Nothing checked yet.</span></p>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="read-h">
+        <h2 id="read-h"><span data-lang="de">So liest man das Ergebnis</span><span data-lang="en">How to read the result</span></h2>
+        <div class="scroll" data-lang="de">
+          <table>
+            <thead><tr><th>Beobachtung</th><th>Bedeutung</th></tr></thead>
+            <tbody>
+              <tr><td>PRF-Fingerabdruck auf <b>beiden</b> Telefonen gleich</td><td>Die Identität kann per PRF wandern.</td></tr>
+              <tr><td>PRF-Fingerabdruck verschieden</td><td>Nur aussagekräftig, wenn das <b>Passkey-Kennzeichen</b> auf beiden Telefonen gleich ist — sonst wurde ein anderer Passkey gewählt.</td></tr>
+              <tr><td>„kein PRF-Ergebnis“</td><td>Dieser Browser oder Schlüssel liefert kein PRF.</td></tr>
+              <tr><td>Anlegen: <span class="mono">largeBlob.supported = false</span></td><td>largeBlob steht für diesen Passkey nicht zur Verfügung — Schreiben wird scheitern. <b>Nur hier</b> lässt sich „nicht unterstützt“ von „leer“ unterscheiden; beim Lesen sieht beides gleich aus.</td></tr>
+              <tr><td>Schreiben: <span class="mono">written = true</span>, auf dem anderen Telefon lesbar</td><td>Die Identität kann per largeBlob wandern.</td></tr>
+              <tr><td>Schreiben: <span class="mono">written = false</span> oder fehlt</td><td>Nichts wurde gespeichert — obwohl der Browser keinen Fehler geworfen hat.</td></tr>
+              <tr><td>Schritt 5 zeigt denselben <b>DID-Fingerabdruck</b> wie Schritt 1 auf demselben Gerät</td><td>Der öffentliche Schlüssel lässt sich auf echter Hardware aus zwei Signaturen zurückgewinnen.</td></tr>
+              <tr><td>Schritt 5 auf <b>beiden</b> Telefonen: DID-, PRF- und Signierschlüssel-Fingerabdruck gleich</td><td>Die Identität lässt sich auf einem zweiten Gerät ohne gespeicherte Daten wiederherstellen — der Vorschlag aus #61 trägt.</td></tr>
+              <tr><td>PRF-Fingerabdruck in Schritt 5 anders als in Schritt 2</td><td>Richtig so: Schritt 5 benutzt die PRF-Eingabe aus #61, Schritt 2 eine eigene. Verglichen wird Schritt 5 mit Schritt 5.</td></tr>
+              <tr><td>Schritt 5: „kein ES256“</td><td>Dieser Passkey signiert nicht mit P-256 (sondern z. B. EdDSA). Aus solchen Signaturen lässt sich der öffentliche Schlüssel nicht zurückgewinnen.</td></tr>
+              <tr><td>Schritt 5: DID ja, aber „kein PRF-Ergebnis“</td><td>Die Adresse (DID) ist da, der Signierschlüssel nicht. Die Bibliothek verweigert in diesem Fall, statt einen Ersatz zu erfinden.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="scroll" data-lang="en">
+          <table>
+            <thead><tr><th>Observation</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td>PRF fingerprint the same on <b>both</b> phones</td><td>The identity can travel by PRF.</td></tr>
+              <tr><td>PRF fingerprint different</td><td>Only meaningful if the <b>passkey ID</b> is the same on both phones — otherwise a different passkey was chosen.</td></tr>
+              <tr><td>“no PRF result”</td><td>This browser or key does not deliver PRF.</td></tr>
+              <tr><td>Create: <span class="mono">largeBlob.supported = false</span></td><td>largeBlob is not available for this passkey — writing will fail. <b>Only here</b> can “not supported” be told from “empty”; on reading, both look the same.</td></tr>
+              <tr><td>Write: <span class="mono">written = true</span>, readable on the other phone</td><td>The identity can travel by largeBlob.</td></tr>
+              <tr><td>Write: <span class="mono">written = false</span> or missing</td><td>Nothing was stored — although the browser threw no error.</td></tr>
+              <tr><td>Step 5 shows the same <b>DID fingerprint</b> as step 1 on the same device</td><td>The public key can be recovered from two signatures on real hardware.</td></tr>
+              <tr><td>Step 5 on <b>both</b> phones: DID, PRF and signing-key fingerprints the same</td><td>The identity can be restored on a second device with no stored data — the proposal from #61 holds.</td></tr>
+              <tr><td>PRF fingerprint in step 5 different from step 2</td><td>As it should be: step 5 uses the PRF input from #61, step 2 one of its own. Compare step 5 with step 5.</td></tr>
+              <tr><td>Step 5: “no ES256”</td><td>This passkey does not sign with P-256 (but, for example, with EdDSA). The public key cannot be recovered from such signatures.</td></tr>
+              <tr><td>Step 5: DID yes, but “no PRF result”</td><td>The address (DID) is there, the signing key is not. In this case the library refuses rather than invent a substitute.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script type="module">
+      import { lang } from "./probe-ui.js";
+
+      // What the page says, in both languages. A result is written in the language
+      // of the moment it arrived; the environment above is redrawn on a switch.
+      const WORDS = {
+        de: {
+          rpId: "Adresse (rpId)",
+          secure: "sicherer Kontext",
+          yes: "ja",
+          no: "nein",
+          error: "Fehler",
+          message: "Meldung",
+          notAvailable: "nicht verfügbar (älterer Browser)",
+          browser: "Browser",
+          unreported: "fehlt (nicht gemeldet)",
+          passkeyId: "Passkey-Kennzeichen",
+          algorithm: "Algorithmus",
+          didFp: "DID-Fingerabdruck",
+          created: "1 · Passkey angelegt",
+          createStep: "1 · Anlegen",
+          prfGot: "2 · PRF-Wert erhalten",
+          prfFp: "PRF-Fingerabdruck",
+          prfNone: "2 · kein PRF-Ergebnis",
+          prfInResult: "prf im Ergebnis",
+          presentEmpty: "vorhanden, aber ohne Wert",
+          missing: "fehlt ganz",
+          prfStep: "2 · PRF lesen",
+          firstStep12: "3 · Zuerst Schritt 1 oder 2",
+          why: "warum",
+          writeNeedsOne: "Schreiben verlangt genau einen bekannten Passkey.",
+          written: "3 · largeBlob geschrieben",
+          notWritten: "3 · largeBlob NICHT geschrieben",
+          content: "Inhalt",
+          writeStep: "3 · largeBlob schreiben",
+          read: "4 · largeBlob gelesen",
+          noBlob: "4 · kein largeBlob",
+          blobInResult: "largeBlob im Ergebnis",
+          blobEmpty: "leer — nichts gespeichert, oder vom Schlüssel nicht unterstützt (das zeigt nur largeBlob.supported beim Anlegen)",
+          blobMissing: "fehlt ganz — der Browser kennt die Erweiterung nicht",
+          readStep: "4 · largeBlob lesen",
+          loading: "5 · Seite lädt noch",
+          prfInputPending: "Die PRF-Eingabe wird noch berechnet. Gleich noch einmal drücken.",
+          touch1: "erste Berührung",
+          touch2: "zweite Berührung",
+          evaluation: "Auswertung",
+          noEs256: "5 · kein ES256 — Schlüssel nicht rückgewinnbar",
+          signature: "Signatur",
+          notP256: "keine P-256-Signatur; vermutlich EdDSA oder RSA",
+          candidates: "Kandidaten",
+          candidateCounts: (a, b, both) => `${a} aus Signatur 1 · ${b} aus Signatur 2 · ${both} in beiden`,
+          notUnique: "5 · kein eindeutiger Schlüssel",
+          didNoPrf: "5 · DID zurückgewonnen, aber kein PRF-Ergebnis",
+          signingKey: "Signierschlüssel",
+          refused: "nicht ableitbar — ohne PRF verweigert die Bibliothek",
+          prfFp61: "PRF-Fingerabdruck (Eingabe aus #61)",
+          signingFp: "Signierschlüssel-Fingerabdruck",
+          restored: "5 · Identität wiederhergestellt — ohne gespeicherte Daten",
+          noScalar: "kein gültiger secp256k1-Schlüssel ableitbar",
+        },
+        en: {
+          rpId: "address (rpId)",
+          secure: "secure context",
+          yes: "yes",
+          no: "no",
+          error: "error",
+          message: "message",
+          notAvailable: "not available (older browser)",
+          browser: "browser",
+          unreported: "missing (not reported)",
+          passkeyId: "passkey ID",
+          algorithm: "algorithm",
+          didFp: "DID fingerprint",
+          created: "1 · passkey created",
+          createStep: "1 · create",
+          prfGot: "2 · PRF value received",
+          prfFp: "PRF fingerprint",
+          prfNone: "2 · no PRF result",
+          prfInResult: "prf in the result",
+          presentEmpty: "present, but without a value",
+          missing: "missing entirely",
+          prfStep: "2 · read PRF",
+          firstStep12: "3 · step 1 or 2 first",
+          why: "why",
+          writeNeedsOne: "Writing needs exactly one known passkey.",
+          written: "3 · largeBlob written",
+          notWritten: "3 · largeBlob NOT written",
+          content: "content",
+          writeStep: "3 · write largeBlob",
+          read: "4 · largeBlob read",
+          noBlob: "4 · no largeBlob",
+          blobInResult: "largeBlob in the result",
+          blobEmpty: "empty — nothing stored, or not supported by the key (only largeBlob.supported at creation tells which)",
+          blobMissing: "missing entirely — the browser does not know the extension",
+          readStep: "4 · read largeBlob",
+          loading: "5 · the page is still loading",
+          prfInputPending: "The PRF input is still being computed. Press again in a moment.",
+          touch1: "first touch",
+          touch2: "second touch",
+          evaluation: "evaluation",
+          noEs256: "5 · no ES256 — key not recoverable",
+          signature: "signature",
+          notP256: "not a P-256 signature; probably EdDSA or RSA",
+          candidates: "candidates",
+          candidateCounts: (a, b, both) => `${a} from signature 1 · ${b} from signature 2 · ${both} in both`,
+          notUnique: "5 · no unique key",
+          didNoPrf: "5 · DID recovered, but no PRF result",
+          signingKey: "signing key",
+          refused: "not derivable — without PRF the library refuses",
+          prfFp61: "PRF fingerprint (input from #61)",
+          signingFp: "signing-key fingerprint",
+          restored: "5 · identity restored — with no stored data",
+          noScalar: "no valid secp256k1 key derivable",
+        },
+      };
+      const w = () => WORDS[lang.get()] ?? WORDS.en;
+
+      // Fixed, public, and deliberately meaningless: the same 32 bytes on every
+      // device, so both phones evaluate PRF against the same input. It is not a
+      // key — the secret is the authenticator's, and only its fingerprint is shown.
+      // Embedded rather than hashed at load, so no await sits between the click
+      // and the WebAuthn call: some browsers drop the user gesture across one.
+      const SALT = hexToBytes("66756e6b706f73742070617373206b65792070726f6265207631202d20707266");
+
+      /** @type {ArrayBuffer | null} */
+      let lastCredentialId = null;
+
+      const $ = (id) => document.getElementById(id);
+      const enc = new TextEncoder();
+      const dec = new TextDecoder();
+
+      function hexToBytes(hex) {
+        const out = new Uint8Array(hex.length / 2);
+        for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+        return out;
+      }
+
+      const toHex = (buf) =>
+        [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+
+      /** A short, comparable fingerprint of secret or opaque bytes — never the bytes. */
+      async function fingerprint(buf) {
+        const digest = await crypto.subtle.digest("SHA-256", buf);
+        return toHex(digest).slice(0, 16).match(/.{4}/g).join(" ");
+      }
+
+      const random = (n) => crypto.getRandomValues(new Uint8Array(n));
+
+      let first = true;
+      function log(kind, title, rows = []) {
+        const box = $("log");
+        if (first) {
+          box.textContent = "";
+          first = false;
+        }
+        const entry = document.createElement("div");
+        entry.className = `entry ${kind}`;
+        const time = new Date().toLocaleTimeString();
+        const b = document.createElement("b");
+        b.textContent = `${time} · ${title}`;
+        entry.append(b);
+        if (rows.length) {
+          const dl = document.createElement("dl");
+          dl.className = "mono";
+          for (const [k, v] of rows) {
+            const dt = document.createElement("dt");
+            dt.textContent = k;
+            const dd = document.createElement("dd");
+            dd.textContent = v;
+            if (/Fingerabdruck|fingerprint/.test(k)) dd.className = "fp";
+            dl.append(dt, dd);
+          }
+          entry.append(dl);
+        }
+        box.prepend(entry);
+      }
+
+      /** The error, word for word. Swallowing this is how the original problem hid. */
+      function logError(step, error) {
+        log("bad", `${step}: ${w().error}`, [
+          ["name", error?.name ?? "—"],
+          [w().message, error?.message ?? String(error)],
+        ]);
+      }
+
+      const fmt = (value) => (value === undefined ? w().unreported : String(value));
+
+      /** Disable while a ceremony runs, so a second tap cannot start another. */
+      function guarded(button, run) {
+        button.addEventListener("click", () => {
+          button.disabled = true;
+          run().finally(() => (button.disabled = false));
+        });
+      }
+
+      // ── the identity, derived as the library derives it ──────────────────
+      // Mirrors @le-space/orbitdb-identity-provider-webauthn-did 0.5.4, so that
+      // "the same identity" here means the DID and signing key the library
+      // would produce, not a lookalike of them.
+
+      // The PRF input #61 proposes: fixed per relying party instead of random
+      // per credential, so a second device reaches the same output from the
+      // authenticator alone. Hashed at load rather than at the click, so no
+      // await sits between the gesture and the WebAuthn call.
+      let prfInputV2 = null;
+      crypto.subtle
+        .digest("SHA-256", enc.encode(`orbitdb-identity-provider-webauthn-did:prf:v2:${location.hostname}`))
+        .then((digest) => (prfInputV2 = new Uint8Array(digest)));
+
+      const bytesToBigInt = (bytes) => BigInt(`0x${toHex(bytes) || "0"}`);
+      const bigIntTo32 = (value) => hexToBytes(value.toString(16).padStart(64, "0"));
+
+      // P-256, to recover a public key from a signature. Only public values go
+      // through this arithmetic — the signature, the signed bytes, the curve —
+      // so plain BigInt is fine, and every candidate it yields must also pass
+      // WebCrypto's own ECDSA verify before it counts.
+      const P256 = {
+        p: 0xffffffff00000001000000000000000000000000ffffffffffffffffffffffffn,
+        n: 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n,
+        b: 0x5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604bn,
+        g: {
+          x: 0x6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296n,
+          y: 0x4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5n,
+        },
+      };
+
+      const mod = (a, m) => ((a % m) + m) % m;
+
+      function powMod(base, exponent, m) {
+        let result = 1n;
+        base = mod(base, m);
+        for (; exponent > 0n; exponent >>= 1n) {
+          if (exponent & 1n) result = (result * base) % m;
+          base = (base * base) % m;
+        }
+        return result;
+      }
+
+      /** Inverse modulo a prime, by extended Euclid. */
+      function invMod(a, m) {
+        let [oldR, r] = [mod(a, m), m];
+        let [oldS, s] = [1n, 0n];
+        while (r !== 0n) {
+          const q = oldR / r;
+          [oldR, r] = [r, oldR - q * r];
+          [oldS, s] = [s, oldS - q * s];
+        }
+        return mod(oldS, m);
+      }
+
+      /** Affine point addition; null is the point at infinity. */
+      function addPoints(a, b) {
+        const { p } = P256;
+        if (!a) return b;
+        if (!b) return a;
+        let slope;
+        if (a.x === b.x) {
+          if (mod(a.y + b.y, p) === 0n) return null;
+          slope = mod((3n * a.x * a.x - 3n) * invMod(2n * a.y, p), p);
+        } else {
+          slope = mod((b.y - a.y) * invMod(b.x - a.x, p), p);
+        }
+        const x = mod(slope * slope - a.x - b.x, p);
+        return { x, y: mod(slope * (a.x - x) - a.y, p) };
+      }
+
+      function multiply(point, scalar) {
+        let result = null;
+        for (let k = scalar, addend = point; k > 0n; k >>= 1n) {
+          if (k & 1n) result = addPoints(result, addend);
+          addend = addPoints(addend, addend);
+        }
+        return result;
+      }
+
+      /** Every P-256 key that could have produced signature (r, s) over this digest. */
+      function recoveryCandidates(r, s, digest) {
+        const { p, n, b, g } = P256;
+        if (r <= 0n || r >= n || s <= 0n || s >= n) return [];
+        // R's x coordinate is r. It could also be r + n where that is below p;
+        // the chance is about 2^-128, which does not earn a branch.
+        const x = r;
+        const ySquared = mod(x * x * x - 3n * x + b, p);
+        const y = powMod(ySquared, (p + 1n) / 4n, p); // p ≡ 3 (mod 4)
+        if ((y * y) % p !== ySquared) return [];
+        const rInverse = invMod(r, n);
+        const eG = multiply(g, mod(-mod(digest, n) * rInverse, n));
+        const u2 = mod(s * rInverse, n);
+        return (y === 0n ? [y] : [y, p - y])
+          .map((ry) => addPoints(eG, multiply({ x, y: ry }, u2)))
+          .filter(Boolean);
+      }
+
+      /** r and s of an ES256 (DER) signature, or null when it is not one. */
+      function parseDerSignature(signature) {
+        const bytes = new Uint8Array(signature);
+        let i = 0;
+        const length = () => {
+          let len = bytes[i++];
+          if (len & 0x80) {
+            const count = len & 0x7f;
+            len = 0;
+            for (let j = 0; j < count; j++) len = (len << 8) | bytes[i++];
+          }
+          return len;
+        };
+        const integer = () => {
+          if (bytes[i++] !== 0x02) return null;
+          const len = length();
+          const value = bytes.slice(i, i + len);
+          i += len;
+          return value.length === len && len > 0 ? bytesToBigInt(value) : null;
+        };
+        if (bytes[i++] !== 0x30) return null;
+        const total = length();
+        if (i + total !== bytes.length) return null;
+        const r = integer();
+        const s = integer();
+        return r !== null && s !== null && i === bytes.length ? { r, s } : null;
+      }
+
+      const uncompressed = ({ x, y }) => new Uint8Array([0x04, ...bigIntTo32(x), ...bigIntTo32(y)]);
+
+      async function verifiesWith(point, signedBytes, { r, s }) {
+        try {
+          const key = await crypto.subtle.importKey(
+            "raw",
+            uncompressed(point),
+            { name: "ECDSA", namedCurve: "P-256" },
+            false,
+            ["verify"]
+          );
+          const raw = new Uint8Array([...bigIntTo32(r), ...bigIntTo32(s)]);
+          return await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key, raw, signedBytes);
+        } catch {
+          return false;
+        }
+      }
+
+      /** The keys an assertion could have been signed with, each verified — or null if not ES256. */
+      async function candidatesFrom(assertion) {
+        const { authenticatorData, clientDataJSON, signature } = assertion.response;
+        const rs = parseDerSignature(signature);
+        if (!rs) return null;
+        // WebAuthn signs authenticatorData ‖ SHA-256(clientDataJSON).
+        const clientDataHash = new Uint8Array(await crypto.subtle.digest("SHA-256", clientDataJSON));
+        const signedBytes = new Uint8Array([...new Uint8Array(authenticatorData), ...clientDataHash]);
+        const digest = bytesToBigInt(new Uint8Array(await crypto.subtle.digest("SHA-256", signedBytes)));
+        const verified = [];
+        for (const point of recoveryCandidates(rs.r, rs.s, digest)) {
+          if (await verifiesWith(point, signedBytes, rs)) verified.push(point);
+        }
+        return verified;
+      }
+
+      const BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+      function base58btc(bytes) {
+        let value = bytesToBigInt(bytes);
+        let out = "";
+        for (; value > 0n; value /= 58n) out = BASE58[Number(value % 58n)] + out;
+        for (const byte of bytes) {
+          if (byte !== 0) break;
+          out = `1${out}`;
+        }
+        return `z${out}`;
+      }
+
+      /** As WebAuthnDIDProvider.createDID: the p256-pub multicodec, then the uncompressed point. */
+      const didFromPoint = (point) => `did:key:${base58btc(new Uint8Array([0x80, 0x24, ...uncompressed(point)]))}`;
+
+      async function didFromSpki(spki) {
+        const key = await crypto.subtle.importKey("spki", spki, { name: "ECDSA", namedCurve: "P-256" }, true, ["verify"]);
+        const raw = new Uint8Array(await crypto.subtle.exportKey("raw", key));
+        return didFromPoint({ x: bytesToBigInt(raw.slice(1, 33)), y: bytesToBigInt(raw.slice(33, 65)) });
+      }
+
+      const SECP256K1_N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
+
+      /** As deriveSigningKeyBytes with its default secp256k1: HKDF over the PRF output, the DID mixed in. */
+      async function derivedSigningKey(prfOutput, did) {
+        const base = await crypto.subtle.importKey("raw", prfOutput, "HKDF", false, ["deriveBits"]);
+        for (let counter = 0; counter < 256; counter++) {
+          const info = enc.encode(`orbitdb-identity-provider-webauthn-did:signing-key:v1:${did}:${counter}`);
+          const bits = await crypto.subtle.deriveBits(
+            { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(0), info },
+            base,
+            256
+          );
+          const scalar = bytesToBigInt(new Uint8Array(bits));
+          if (scalar > 0n && scalar < SECP256K1_N) return bits;
+        }
+        throw new Error(w().noScalar);
+      }
+
+      const ALGORITHMS = { [-7]: "ES256 (P-256)", [-8]: "EdDSA (Ed25519)", [-257]: "RS256 (RSA)" };
+
+      // ── environment ──────────────────────────────────────────────────────
+      async function describeEnvironment() {
+        const rows = [
+          [w().rpId, location.hostname],
+          [w().secure, String(window.isSecureContext)],
+          ["WebAuthn", typeof window.PublicKeyCredential === "function" ? w().yes : w().no],
+        ];
+        if (typeof PublicKeyCredential?.getClientCapabilities === "function") {
+          try {
+            const caps = await PublicKeyCredential.getClientCapabilities();
+            for (const key of ["extension:prf", "extension:largeBlob", "hybridTransport", "passkeyPlatformAuthenticator"]) {
+              rows.push([key, fmt(caps[key])]);
+            }
+          } catch (error) {
+            rows.push(["getClientCapabilities", `${w().error}: ${error?.name}`]);
+          }
+        } else {
+          rows.push(["getClientCapabilities", w().notAvailable]);
+        }
+        rows.push([w().browser, navigator.userAgent]);
+        const dl = $("env");
+        dl.textContent = ""; // drawn again when the language changes
+        for (const [k, v] of rows) {
+          const dt = document.createElement("dt");
+          dt.textContent = k;
+          const dd = document.createElement("dd");
+          dd.textContent = v;
+          dl.append(dt, dd);
+        }
+      }
+
+      // ── 1 · create on the security key ───────────────────────────────────
+      guarded($("create"), async () => {
+        try {
+          const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
+          const credential = await navigator.credentials.create({
+            publicKey: {
+              rp: { name: "passkey probe" },
+              user: { id: random(16), name: `probe ${stamp}`, displayName: `probe ${stamp}` },
+              challenge: random(32),
+              pubKeyCredParams: [
+                { type: "public-key", alg: -7 },
+                { type: "public-key", alg: -8 },
+                { type: "public-key", alg: -257 },
+              ],
+              authenticatorSelection: {
+                // The security key, not the phone's own passkey manager — the
+                // opposite of what the identity provider hard-codes.
+                authenticatorAttachment: "cross-platform",
+                residentKey: "required",
+                requireResidentKey: true,
+                userVerification: "required",
+              },
+              // Both carriers requested here, at creation: a security key only
+              // sets up large-blob storage for a credential that asks for it now.
+              extensions: { prf: {}, largeBlob: { support: "preferred" }, credProps: true },
+              timeout: 120000,
+              attestation: "none",
+            },
+          });
+          lastCredentialId = credential.rawId;
+          const ext = credential.getClientExtensionResults?.() ?? {};
+          // Green only when both carriers are available. A passkey that was
+          // created but cannot carry an identity either way is not a success
+          // for what this page is asking, and colouring it one is the same
+          // mistake as a message that reads fine and means nothing.
+          const both = ext.prf?.enabled === true && ext.largeBlob?.supported === true;
+          const neither = ext.prf?.enabled !== true && ext.largeBlob?.supported !== true;
+          const algorithm = credential.response.getPublicKeyAlgorithm?.();
+          const rows = [
+            [w().passkeyId, await fingerprint(credential.rawId)],
+            ["prf.enabled", fmt(ext.prf?.enabled)],
+            ["largeBlob.supported", fmt(ext.largeBlob?.supported)],
+            ["credProps.rk", fmt(ext.credProps?.rk)],
+            ["authenticatorAttachment", fmt(credential.authenticatorAttachment)],
+            [w().algorithm, ALGORITHMS[algorithm] ?? fmt(algorithm)],
+          ];
+          // The DID from the key the authenticator just handed over — the value
+          // step 5 has to reach again, from signatures alone.
+          if (algorithm === -7) {
+            const did = await didFromSpki(credential.response.getPublicKey());
+            rows.push([w().didFp, await fingerprint(enc.encode(did))], ["DID", did]);
+          }
+          log(both ? "good" : neither ? "bad" : "warn", w().created, rows);
+        } catch (error) {
+          logError(w().createStep, error);
+        }
+      });
+
+      // ── 2 · read PRF ──────────────────────────────────────────────────────
+      guarded($("prf"), async () => {
+        try {
+          const assertion = await navigator.credentials.get({
+            publicKey: {
+              challenge: random(32),
+              userVerification: "required",
+              timeout: 120000,
+              extensions: { prf: { eval: { first: SALT } } },
+            },
+          });
+          lastCredentialId = assertion.rawId;
+          const ext = assertion.getClientExtensionResults?.() ?? {};
+          const output = ext.prf?.results?.first;
+          if (output) {
+            log("good", w().prfGot, [
+              [w().passkeyId, await fingerprint(assertion.rawId)],
+              [w().prfFp, await fingerprint(output)],
+            ]);
+          } else {
+            log("bad", w().prfNone, [
+              [w().passkeyId, await fingerprint(assertion.rawId)],
+              [w().prfInResult, ext.prf ? w().presentEmpty : w().missing],
+            ]);
+          }
+        } catch (error) {
+          logError(w().prfStep, error);
+        }
+      });
+
+      // ── 3 · write largeBlob ──────────────────────────────────────────────
+      guarded($("write"), async () => {
+        if (!lastCredentialId) {
+          log("warn", w().firstStep12, [[w().why, w().writeNeedsOne]]);
+          return;
+        }
+        try {
+          const message = `passkey probe ${new Date().toISOString()}`;
+          const assertion = await navigator.credentials.get({
+            publicKey: {
+              challenge: random(32),
+              userVerification: "required",
+              timeout: 120000,
+              allowCredentials: [{ type: "public-key", id: lastCredentialId }],
+              extensions: { largeBlob: { write: enc.encode(message) } },
+            },
+          });
+          const ext = assertion.getClientExtensionResults?.() ?? {};
+          const written = ext.largeBlob?.written;
+          log(written === true ? "good" : "bad", written === true ? w().written : w().notWritten, [
+            [w().passkeyId, await fingerprint(assertion.rawId)],
+            ["largeBlob.written", fmt(written)],
+            [w().content, written === true ? message : "—"],
+          ]);
+        } catch (error) {
+          logError(w().writeStep, error);
+        }
+      });
+
+      // ── 4 · read largeBlob ───────────────────────────────────────────────
+      guarded($("read"), async () => {
+        try {
+          const assertion = await navigator.credentials.get({
+            publicKey: {
+              challenge: random(32),
+              userVerification: "required",
+              timeout: 120000,
+              extensions: { largeBlob: { read: true } },
+            },
+          });
+          lastCredentialId = assertion.rawId;
+          const ext = assertion.getClientExtensionResults?.() ?? {};
+          const blob = ext.largeBlob?.blob;
+          if (blob) {
+            log("good", w().read, [
+              [w().passkeyId, await fingerprint(assertion.rawId)],
+              [w().content, dec.decode(blob)],
+            ]);
+          } else {
+            // Reading cannot tell "not supported" from "nothing stored": Chrome
+            // returns an empty `largeBlob` for a key without large-blob support
+            // too — checked against a virtual authenticator that has none. Only
+            // `largeBlob.supported` at creation answers that, so say so instead
+            // of guessing, which is how the original message went wrong.
+            log("bad", w().noBlob, [
+              [w().passkeyId, await fingerprint(assertion.rawId)],
+              [
+                w().blobInResult,
+                ext.largeBlob
+                  ? w().blobEmpty
+                  : w().blobMissing,
+              ],
+            ]);
+          }
+        } catch (error) {
+          logError(w().readStep, error);
+        }
+      });
+
+      // ── 5 · restore the identity with nothing stored ─────────────────────
+      guarded($("recover"), async () => {
+        if (!prfInputV2) {
+          log("warn", w().loading, [[w().why, w().prfInputPending]]);
+          return;
+        }
+        let stage = w().touch1;
+        try {
+          // First touch: pick the passkey, sign, and evaluate PRF — with the
+          // PIN, because a security key answers PRF differently with and
+          // without user verification, and the library always asks with it.
+          const first = await navigator.credentials.get({
+            publicKey: {
+              challenge: random(32),
+              userVerification: "required",
+              timeout: 120000,
+              extensions: { prf: { eval: { first: prfInputV2 } } },
+            },
+          });
+          lastCredentialId = first.rawId;
+          const prfOutput = first.getClientExtensionResults?.()?.prf?.results?.first;
+
+          // Second touch: the same passkey, another challenge. It only has to
+          // sign, so it asks for no PIN.
+          stage = w().touch2;
+          const second = await navigator.credentials.get({
+            publicKey: {
+              challenge: random(32),
+              userVerification: "discouraged",
+              timeout: 120000,
+              allowCredentials: [{ type: "public-key", id: first.rawId }],
+            },
+          });
+
+          stage = w().evaluation;
+          const rows = [[w().passkeyId, await fingerprint(first.rawId)]];
+          const a = await candidatesFrom(first);
+          const b = await candidatesFrom(second);
+          if (!a || !b) {
+            log("bad", w().noEs256, [
+              ...rows,
+              [w().signature, w().notP256],
+            ]);
+            return;
+          }
+          // Each signature admits two keys; only the signer's is in both.
+          const shared = a.filter((p) => b.some((q) => p.x === q.x && p.y === q.y));
+          rows.push([w().candidates, w().candidateCounts(a.length, b.length, shared.length)]);
+          if (shared.length !== 1) {
+            log("bad", w().notUnique, rows);
+            return;
+          }
+          const did = didFromPoint(shared[0]);
+          rows.push([w().didFp, await fingerprint(enc.encode(did))]);
+          if (!prfOutput) {
+            log("warn", w().didNoPrf, [
+              ...rows,
+              [w().signingKey, w().refused],
+              ["DID", did],
+            ]);
+            return;
+          }
+          rows.push(
+            [w().prfFp61, await fingerprint(prfOutput)],
+            [w().signingFp, await fingerprint(await derivedSigningKey(prfOutput, did))],
+            ["DID", did]
+          );
+          log("good", w().restored, rows);
+        } catch (error) {
+          logError(`5 · ${stage}`, error);
+        }
+      });
+
+      lang.subscribe(() => describeEnvironment());
+    </script>
+    <script type="module">
+      import { mountControls, lang } from "./probe-ui.js";
+
+      const HEAD = {
+        de: {
+          title: "Passkey-Probe",
+          description:
+            "Prüft auf echter Hardware, ob ein Sicherheitsschlüssel eine Identität per PRF oder largeBlob auf ein zweites Gerät tragen kann.",
+        },
+        en: {
+          title: "Passkey probe",
+          description:
+            "Checks on real hardware whether a security key can carry an identity to a second device, by PRF or by largeBlob.",
+        },
+      };
+      lang.subscribe((code) => {
+        document.title = HEAD[code].title;
+        document.querySelector('meta[name="description"]').setAttribute("content", HEAD[code].description);
+      });
+      mountControls();
+    </script>
+  </body>
+</html>

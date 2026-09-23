@@ -53,6 +53,9 @@ jobs:
           cp -R examples/webauthn-todo-demo/build pages/webauthn-todo-demo
           cp -R examples/ed25519-encrypted-keystore-demo/build pages/ed25519-encrypted-keystore-demo
           cp -R examples/webauthn-varsig-demo/build pages/webauthn-varsig-demo
+          # Static, no build step: what is served is what a reader gets by
+          # opening the file, which is the whole claim the probe makes.
+          cp -R examples/passkey-probe pages/passkey-probe
           cat > pages/index.html <<'HTML'
           <!doctype html>
           <html lang="en">
@@ -156,6 +159,10 @@ jobs:
                   <a class="demo" href="./webauthn-todo-demo/">
                     <strong>WebAuthn DID Todo</strong>
                     <span>The simpler WebAuthn DID identity flow for a local-first OrbitDB todo app.</span>
+                  </a>
+                  <a class="demo" href="./passkey-probe/">
+                    <strong>Passkey probe</strong>
+                    <span>Does this phone's authenticator support PRF, and does a key derived from it survive a second device? Five steps, no build, bilingual.</span>
                   </a>
                 </div>
               </main>
