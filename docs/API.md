@@ -187,6 +187,65 @@ Returns the current WebAuthn config.
 
 Restores default WebAuthn config.
 
+### Identity Restore
+
+#### `restoreIdentityFromAuthenticator(options?)`
+
+Reconstructs an identity on a device that has stored nothing — a second device,
+or the same one after its profile was cleared. Two touches of the same passkey:
+the first is asked with the relying party's fixed PRF input, the second signs
+another challenge, and the two signatures together give back the credential's
+public key, which a single assertion does not carry. The DID follows from that
+key, and the signing key from the PRF output with the DID mixed in.
+
+```js
+import { restoreIdentityFromAuthenticator } from '@le-space/orbitdb-identity-provider-webauthn-did';
+
+const restored = await restoreIdentityFromAuthenticator({
+  onTouch: ({ touch, of }) => setStatus(`Touch ${touch} of ${of}`),
+});
+
+const identity = await identities.createIdentity({
+  provider: OrbitDBWebAuthnIdentityProviderFunction({
+    webauthnCredential: restored.credential,
+  }),
+});
+```
+
+Options, all optional:
+
+- `rpId` — relying party id; the current host by default.
+- `timeout` — per touch, in ms; `120000`. Generous on purpose: an NFC key has to
+  be found, held and read.
+- `signingKeyType` — `'secp256k1'` by default, as the keystore wants it. Pass
+  the same type the identity was created with.
+- `onTouch({ touch, of })` — called before each ceremony, so an application can
+  say which touch this is rather than leaving a person wondering why they are
+  asked twice.
+
+Returns `{ did, publicKey: { x, y }, credentialId, rawCredentialId, signingKey,
+prfInput, credential }`. `credential` is what
+`OrbitDBWebAuthnIdentityProviderFunction({ webauthnCredential })` takes;
+`credentialId` is base64url text and `rawCredentialId` the bytes (before 0.7.0,
+`credentialId` was the bytes).
+
+Putting `signingKey` into the keystore under the DID before OrbitDB builds the
+identity spares one further touch: the provider would otherwise read the PRF
+output a second time to derive the very same key.
+
+Throws rather than substituting anything:
+
+- `WebAuthnIdentityError` (`WEBAUTHN_NOT_SUPPORTED`) where WebAuthn is absent,
+  and when no credential is offered for this relying party.
+- `PrfUnavailableError` when the authenticator cannot evaluate PRF. Nothing
+  stands in for it: an identity derived from something else is a different
+  identity that looks like success.
+
+Since 0.6.0. Measured on hardware across two phones sharing one YubiKey, and
+used in [funkpost's recovery example](https://github.com/NiKrause/funkpost/tree/main/examples/recovery);
+the database half of the same problem is in
+[orbitdb-storage-bridge](https://github.com/NiKrause/orbitdb-storage-bridge/blob/main/docs/RECOVERY-ON-A-SECOND-DEVICE.md).
+
 ### largeBlob Metadata Helpers
 
 These helpers encode and recover identity metadata used by the demo recovery
@@ -200,8 +259,13 @@ flows.
 - `writeLargeBlobMetadata(credentialId, payload, options)`
 
 Discoverable passkeys can identify a credential later, but WebAuthn assertions
-do not reliably return the public key after registration. Persisted metadata is
-therefore still required to reconstruct an OrbitDB identity.
+do not reliably return the public key after registration. Persisted metadata was
+therefore the only way to reconstruct an identity until 0.6.0; since then
+`restoreIdentityFromAuthenticator()` does it from two signatures instead, and a
+stored copy only spares the touches. `largeBlob` is the less dependable place to
+keep one: Android Chrome writes the blob and does not return it on read, while
+desktop Chrome reads it
+([#48](https://github.com/Le-Space/orbitdb-identity-provider-webauthn-did/issues/48)).
 
 ### Credential Storage Helpers
 
