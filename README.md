@@ -389,12 +389,12 @@ Three consumers that show the package doing a whole job rather than one call:
   — a page that takes a security key and nothing else, and ends up with an
   identity OrbitDB accepts and a list it can write to. Its browser test stands
   a virtual authenticator in for the YubiKey the two phones used.
-- [orbitdb-storage-bridge, *Getting a database back on a device that has
-  nothing*](https://github.com/NiKrause/orbitdb-storage-bridge/blob/main/docs/RECOVERY-ON-A-SECOND-DEVICE.md)
+- [orbitdb-storage-bridge, _Getting a database back on a device that has
+  nothing_](https://github.com/NiKrause/orbitdb-storage-bridge/blob/main/docs/RECOVERY-ON-A-SECOND-DEVICE.md)
   — the other half of a recovery: this package returns the identity, that one
   returns the database, and the PRF output is what both are derived from.
 - [simple-todo `escrow01`](https://github.com/Le-Space/simple-todo/tree/main/apps/escrow01)
-  — one passkey as the OrbitDB identity *and* the admin key of a Calibur smart
+  — one passkey as the OrbitDB identity _and_ the admin key of a Calibur smart
   account, using the P-256 primitives of the standalone export.
 
 ## Documentation
