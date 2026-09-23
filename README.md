@@ -21,12 +21,12 @@ This package provides:
 - Registration is still the point where this package extracts the credential public key from attestation.
 - Later `navigator.credentials.get()` assertions do not reliably return the public key again, so identity reconstruction still needs metadata from somewhere else.
 
-In this repo today, metadata recovery works in two layers:
+Since **0.6.0** the passkey alone is enough, and stored metadata is a convenience rather than a requirement:
 
-- **Preferred recovery path**: store identity metadata in WebAuthn `largeBlob` and recover it later through discoverable authentication.
-- **Fallback recovery path**: store the same metadata in browser `localStorage`.
+- **From the authenticator**: `restoreIdentityFromAuthenticator()` asks the same passkey twice and reconstructs the DID from the two signatures and the signing key from the PRF output, with nothing kept anywhere — see [Identity Recovery Summary](#identity-recovery-summary).
+- **From a stored copy**, when an application keeps one: WebAuthn `largeBlob`, or browser `localStorage`. It costs no touch at all, which is the only reason to keep one.
 
-This means discoverable credentials remove the need to pre-select the credential for authentication, but they do not by themselves eliminate the need for identity metadata persistence.
+`largeBlob` is requested at registration since 0.5.4 ([#55](https://github.com/Le-Space/orbitdb-identity-provider-webauthn-did/pull/55)), but it is not a path to rely on. Measured on hardware: Android Chrome writes the blob and does not return it on read, while desktop Chrome reads it ([#48](https://github.com/Le-Space/orbitdb-identity-provider-webauthn-did/issues/48)).
 
 **Which option, and what each one actually gives you:**
 
@@ -105,11 +105,10 @@ For the DID-based flow:
 - later discoverable `navigator.credentials.get()` proves possession of the credential, but usually returns only `rawId`, `authenticatorData`, `clientDataJSON`, `signature`, and maybe `userHandle`
 - that assertion is not enough on its own to reconstruct the DID
 
-To address this, the demos now attempt to:
+Two ways past that, and the first keeps nothing:
 
-1. write identity metadata to `largeBlob` after passkey creation
-2. recover that metadata later through discoverable authentication
-3. fall back to local browser storage if `largeBlob` is unavailable or empty
+1. `restoreIdentityFromAuthenticator()` — two discoverable assertions, from which `recoverPublicKey()` returns the credential's public key and with it the DID (0.6.0)
+2. metadata written at registration — `largeBlob` where it comes back, otherwise browser storage — which the demos still do, because a stored copy spares both touches
 
 ### Hardware-Secured Varsig Quick Start
 
@@ -181,7 +180,7 @@ The verifier side and app protocol should define which domain label is required.
 
 ### Passkeys for smart accounts (P-256)
 
-One passkey can be both the OrbitDB identity and the key of a smart account that verifies P-256 WebAuthn signatures on-chain, such as Uniswap's [Calibur](https://github.com/Uniswap/calibur) with Base's [webauthn-sol](https://github.com/base/webauthn-sol). The standalone export hands wallet code the key and the signature parts; turning them into a transaction (key hashes, ABI encoding, the account client) stays in the wallet.
+Since **0.8.0**, one passkey can be both the OrbitDB identity and the key of a smart account that verifies P-256 WebAuthn signatures on-chain, such as Uniswap's [Calibur](https://github.com/Uniswap/calibur) with Base's [webauthn-sol](https://github.com/base/webauthn-sol). The standalone export hands wallet code the key and the signature parts; turning them into a transaction (key hashes, ABI encoding, the account client) stays in the wallet.
 
 ```javascript
 import {
@@ -382,6 +381,22 @@ The identity for each option is built by one module under
 API; `docs/EXAMPLE-SEQUENCES.md` walks through the three sequences and their
 prompt counts.
 
+### In other repositories
+
+Three consumers that show the package doing a whole job rather than one call:
+
+- [funkpost `examples/recovery`](https://github.com/NiKrause/funkpost/tree/main/examples/recovery)
+  — a page that takes a security key and nothing else, and ends up with an
+  identity OrbitDB accepts and a list it can write to. Its browser test stands
+  a virtual authenticator in for the YubiKey the two phones used.
+- [orbitdb-storage-bridge, _Getting a database back on a device that has
+  nothing_](https://github.com/NiKrause/orbitdb-storage-bridge/blob/main/docs/RECOVERY-ON-A-SECOND-DEVICE.md)
+  — the other half of a recovery: this package returns the identity, that one
+  returns the database, and the PRF output is what both are derived from.
+- [simple-todo `escrow01`](https://github.com/Le-Space/simple-todo/tree/main/apps/escrow01)
+  — one passkey as the OrbitDB identity _and_ the admin key of a Calibur smart
+  account, using the P-256 primitives of the standalone export.
+
 ## Documentation
 
 - `docs/API.md`
@@ -424,11 +439,14 @@ Since **0.6.0** an identity can be restored on a device that has stored nothing:
 - The PRF input is fixed per relying party, so a second device asks the authenticator the same question and receives the same secret; the signing key is derived from it with the DID mixed in.
 - `restoreIdentityFromAuthenticator()` does both touches and returns the DID, the public key and the signing key — and, since 0.7.0, the credential the provider takes as it is: `OrbitDBWebAuthnIdentityProviderFunction({ webauthnCredential: restored.credential })`.
 
-Metadata persistence is therefore a **convenience, not a requirement**. The demos still try `largeBlob` first and fall back to browser storage, which saves a touch of the key; neither is needed to reconstruct the identity.
+**What that costs the person holding the key.** Two presentations of it: with a security key, two taps; with a platform passkey, two fingerprints. A third follows when OrbitDB builds the identity and asks for its signature — unless the application puts the returned `signingKey` into its keystore first, in which case the restore's own PRF read is not repeated. Applications can name each step through the `onTouch` callback rather than leaving a person wondering why they are being asked again.
+
+Metadata persistence is therefore a **convenience, not a requirement**. A stored copy spares those touches, which is why the demos still write one; `largeBlob` is the less dependable half of that, since Android Chrome writes it but does not return it ([#48](https://github.com/Le-Space/orbitdb-identity-provider-webauthn-did/issues/48)).
 
 Practical implication:
 
 - A passkey created in one browser profile reconstructs the same OrbitDB identity in a fresh profile — or on another phone — with nothing carried over. Measured on one YubiKey across a Galaxy Fold 5 and a Galaxy A57 (2026-09-19): same PRF value, same recovered DID, same derived signing key.
+- The same thing, as an application rather than a measurement: on 2026-09-21 a Fold 5 made a list and was reset, and an A57 holding the same YubiKey had the same identity, brought the list back with the key alone and wrote to it ([funkpost#93](https://github.com/NiKrause/funkpost/issues/93)). The page it ran is [`examples/recovery`](https://github.com/NiKrause/funkpost/tree/main/examples/recovery) there, with a browser test that stands a virtual authenticator in for the key.
 - An authenticator without PRF gets a **refusal**, not a substitute. An identity derived from something else is a different identity that looks like success.
 - Credentials registered before 0.6.0 keep the random PRF input stored with them, so their identities do not move.
 
