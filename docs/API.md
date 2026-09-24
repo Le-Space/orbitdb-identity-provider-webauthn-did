@@ -242,7 +242,7 @@ Throws rather than substituting anything:
   identity that looks like success.
 
 Since 0.6.0. Measured on hardware across two phones sharing one YubiKey, and
-used in [funkpost's recovery example](https://github.com/NiKrause/funkpost/tree/main/examples/recovery);
+used in [the recovery example](https://github.com/NiKrause/orbitdb-storage-bridge/tree/main/examples/svelte/recovery);
 the database half of the same problem is in
 [orbitdb-storage-bridge](https://github.com/NiKrause/orbitdb-storage-bridge/blob/main/docs/RECOVERY-ON-A-SECOND-DEVICE.md).
 

@@ -359,7 +359,8 @@ sequenceDiagram
 ## Examples
 
 Three demo apps, one per option, in one pnpm workspace (`examples/README.md`
-has the install). Each proves its option in the browser: a real
+has the install), and a probe that measures the authenticator itself. Each
+demo proves its option in the browser: a real
 authenticator (Chromium's virtual one in CI), a badge that is the verdict of
 the same checks a peer makes, and a panel that runs those checks on two
 forgeries.
@@ -375,6 +376,12 @@ forgeries.
 - `examples/webauthn-varsig-demo/` — varsig: the passkey signs every write,
   no keystore. Live:
   https://le-space.github.io/orbitdb-identity-provider-webauthn-did/webauthn-varsig-demo/
+- `examples/passkey-probe/` — not an option but an instrument, for the
+  authenticator in front of you: create a passkey, ask for PRF, derive a key
+  from it, write an encrypted record, read it back, recover it on what stands
+  in for a second device. One static file in two languages, no build step, so
+  what is served is what a reader gets by opening it. Live:
+  https://le-space.github.io/orbitdb-identity-provider-webauthn-did/passkey-probe/
 
 The identity for each option is built by one module under
 `examples/shared/lib/options/`, which is also the shortest way to read the
@@ -385,10 +392,12 @@ prompt counts.
 
 Three consumers that show the package doing a whole job rather than one call:
 
-- [funkpost `examples/recovery`](https://github.com/NiKrause/funkpost/tree/main/examples/recovery)
+- [orbitdb-storage-bridge `examples/svelte/recovery`](https://github.com/NiKrause/orbitdb-storage-bridge/tree/main/examples/svelte/recovery)
   — a page that takes a security key and nothing else, and ends up with an
   identity OrbitDB accepts and a list it can write to. Its browser test stands
-  a virtual authenticator in for the YubiKey the two phones used.
+  a virtual authenticator in for the YubiKey the two phones used. It ran in
+  funkpost until 2026-09-23, and moved to the packages it demonstrates. Live:
+  https://nikrause.github.io/orbitdb-storage-bridge/recovery/
 - [orbitdb-storage-bridge, _Getting a database back on a device that has
   nothing_](https://github.com/NiKrause/orbitdb-storage-bridge/blob/main/docs/RECOVERY-ON-A-SECOND-DEVICE.md)
   — the other half of a recovery: this package returns the identity, that one
@@ -446,7 +455,7 @@ Metadata persistence is therefore a **convenience, not a requirement**. A stored
 Practical implication:
 
 - A passkey created in one browser profile reconstructs the same OrbitDB identity in a fresh profile — or on another phone — with nothing carried over. Measured on one YubiKey across a Galaxy Fold 5 and a Galaxy A57 (2026-09-19): same PRF value, same recovered DID, same derived signing key.
-- The same thing, as an application rather than a measurement: on 2026-09-21 a Fold 5 made a list and was reset, and an A57 holding the same YubiKey had the same identity, brought the list back with the key alone and wrote to it ([funkpost#93](https://github.com/NiKrause/funkpost/issues/93)). The page it ran is [`examples/recovery`](https://github.com/NiKrause/funkpost/tree/main/examples/recovery) there, with a browser test that stands a virtual authenticator in for the key.
+- The same thing, as an application rather than a measurement: on 2026-09-21 a Fold 5 made a list and was reset, and an A57 holding the same YubiKey had the same identity, brought the list back with the key alone and wrote to it ([funkpost#93](https://github.com/NiKrause/funkpost/issues/93)). The page it ran is [`examples/svelte/recovery`](https://github.com/NiKrause/orbitdb-storage-bridge/tree/main/examples/svelte/recovery), which has since moved to orbitdb-storage-bridge, with a browser test that stands a virtual authenticator in for the key.
 - An authenticator without PRF gets a **refusal**, not a substitute. An identity derived from something else is a different identity that looks like success.
 - Credentials registered before 0.6.0 keep the random PRF input stored with them, so their identities do not move.
 

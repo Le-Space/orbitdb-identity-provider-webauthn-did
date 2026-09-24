@@ -9,8 +9,13 @@ for all of them.
 | `ed25519-encrypted-keystore-demo` | keystore DID + `encryptKeystore`, or a worker signer | an Ed25519 key sealed by the passkey and unlocked into memory for the session — or one that never leaves a Web Worker |
 | `webauthn-varsig-demo` | varsig | the passkey itself, every write |
 
+Beside them, `passkey-probe/` — one static file, in neither the workspace nor
+any build: it asks the authenticator in front of you whether it evaluates PRF,
+derives a key from it, and recovers that key on what stands in for a second
+device. Pages copies it over as it is, and it opens from disk just as well.
+
 Three more live outside this repository, and they show the package doing a
-whole job: [funkpost `examples/recovery`](https://github.com/NiKrause/funkpost/tree/main/examples/recovery)
+whole job: [orbitdb-storage-bridge `examples/svelte/recovery`](https://github.com/NiKrause/orbitdb-storage-bridge/tree/main/examples/svelte/recovery)
 (a security key, and nothing else, becomes a working identity),
 [orbitdb-storage-bridge's second-device
 procedure](https://github.com/NiKrause/orbitdb-storage-bridge/blob/main/docs/RECOVERY-ON-A-SECOND-DEVICE.md)
@@ -31,7 +36,7 @@ pnpm --dir examples/webauthn-todo-demo run dev
 ```
 
 `pnpm --dir examples -r run build` builds all three; that is what CI and the
-Pages deploy run.
+Pages deploy run. The probe has nothing to build.
 
 ## Layout
 
