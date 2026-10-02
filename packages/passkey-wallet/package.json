@@ -1,0 +1,53 @@
+{
+  "name": "@le-space/passkey-wallet",
+  "version": "0.0.0-cde6878",
+  "description": "A passkey as the admin key of a Uniswap Calibur account (EIP-7702, ERC-4337 EntryPoint v0.8), signed with the WebAuthn DID provider's P-256 primitives, and session keys for Zama user decryption.",
+  "type": "module",
+  "main": "src/index.js",
+  "types": "types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "import": "./src/index.js"
+    }
+  },
+  "files": [
+    "src/",
+    "types/",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "passkey",
+    "webauthn",
+    "p256",
+    "calibur",
+    "eip-7702",
+    "erc-4337",
+    "account-abstraction",
+    "viem",
+    "zama",
+    "fhevm"
+  ],
+  "author": "OrbitDB Community",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Le-Space/orbitdb-identity-provider-webauthn-did.git",
+    "directory": "packages/passkey-wallet"
+  },
+  "bugs": {
+    "url": "https://github.com/Le-Space/orbitdb-identity-provider-webauthn-did/issues"
+  },
+  "homepage": "https://github.com/Le-Space/orbitdb-identity-provider-webauthn-did/tree/main/packages/passkey-wallet#readme",
+  "peerDependencies": {
+    "viem": "^2.56.5",
+    "@le-space/orbitdb-identity-provider-webauthn-did": "*"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

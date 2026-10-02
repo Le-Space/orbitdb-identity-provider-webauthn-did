@@ -118,6 +118,7 @@
     "libp2p": "^3.3.4",
     "mocha": "^10.0.0",
     "prettier": "^3.6.2",
+    "viem": "^2.56.5",
     "vite-plugin-node-polyfills": "^0.24.0"
   },
   "engines": {
@@ -145,7 +146,7 @@
       "iso-web": "^3.1.2",
       "iso-webauthn-varsig": "npm:@le-space/iso-webauthn-varsig@^0.3.0",
       "conf>ajv": "^8.18.0",
-      "ajv>fast-uri": "^3.1.6"
+      "ajv>fast-uri": "^3.1.8"
     },
     "onlyBuiltDependencies": [
       "@ipshipyard/node-datachannel",
