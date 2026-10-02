@@ -296,7 +296,7 @@ export {
   createSessionKeystore,
   isSessionKeystore,
 } from './keystore/session-keystore.js';
-export { PrfUnavailableError } from './errors.js';
+export { PrfUnavailableError, VaultError } from './errors.js';
 // Restoring on a device that has stored nothing (#61): the fixed PRF input,
 // the public key recovered from two assertions, and the two together.
 export {
@@ -314,6 +314,21 @@ export {
   deriveSigningKeyBytes,
   getPrfOutput,
 } from './keystore/derived-signing-key.js';
+// Read the PRF output once and derive everything from that one answer, and keep
+// what must outlive one security key in a vault any registered one can open.
+export {
+  readPrfOutput,
+  deriveSubkey,
+  deriveAesKey,
+} from './keystore/prf-keys.js';
+export {
+  createVault,
+  openVault,
+  addSlot,
+  removeSlot,
+  replacePayload,
+  slotIdFor,
+} from './keystore/vault.js';
 
 export default {
   WebAuthnDIDProvider,

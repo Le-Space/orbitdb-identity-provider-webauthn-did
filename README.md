@@ -209,6 +209,24 @@ const { authenticatorData, clientDataJSON, challengeIndex, typeIndex, r, s } =
 | Keystore or worker Ed25519 DID                 | yes, from the credential's `x`/`y`; the DID does not commit to the passkey, so link the wallet key to it yourself |
 | Hardware Ed25519 (varsig)                      | `null`: there is no P-256 key                                                                                     |
 
+### One touch, and a second security key
+
+Since **0.9.0**, an application that keeps data under keys from the passkey reads the PRF output once with `readPrfOutput()`, derives each key from it with `deriveSubkey()` or `deriveAesKey()`, and hands the same output to the identity provider as `prfOutput`: unlocking and signing cost one touch. What has to outlive one security key goes into a vault, with a slot for every registered authenticator, so a second YubiKey opens what the first one sealed.
+
+```javascript
+const prfOutput = await readPrfOutput(credential);
+const slot = {
+  slotKey: await deriveAesKey(prfOutput, 'myapp/vault-slot/v1'),
+  rawCredentialId: credential.rawCredentialId,
+};
+const { vault, vaultKey } = await createVault(payload, slot); // later: openVault(vault, slot)
+
+// With the vault open, touch the second key and give it a slot of its own.
+const withSecondKey = await addSlot(vault, vaultKey, secondKeysSlot);
+```
+
+How it works, and what a vault does not do: [docs/API.md](docs/API.md#prf-keys-and-vaults).
+
 ### Keystore-based DID (WebAuthn + OrbitDB keystore)
 
 ```mermaid

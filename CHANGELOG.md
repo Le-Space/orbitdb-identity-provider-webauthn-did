@@ -1,5 +1,43 @@
 # Changes
 
+## 0.9.0
+
+What applications kept writing for themselves, once and here: one read of the PRF output for every
+key an application derives from it, and a vault, so that a second security key can open what the
+first one sealed. Nothing changes for code that does not call it, and every derivation that exists
+today gives the same bytes.
+
+### Added
+
+- **`readPrfOutput(credential, options?)`**: one assertion, the PRF output. It always asks with a
+  fixed input — the credential's own, else the relying party's from `prfInputForRelyingParty` —
+  and never with a random one, whose answer would never come back. `PrfUnavailableError` when the
+  authenticator has no PRF; a refused prompt stays the browser's `NotAllowedError`.
+- **`deriveSubkey(prfOutput, info, { length })` and `deriveAesKey(prfOutput, info)`**: HKDF-SHA-256
+  with an empty salt, as bytes or as a non-extractable AES-GCM key. They give the same bytes as the
+  HKDF that Le-Space/belege, Le-Space/invoice and simple-todo's escrow01 each wrote themselves, and
+  as this package's signing-key derivation, which now runs on them. Vectors from all four are
+  tests.
+- **Vaults**: `createVault`, `openVault`, `addSlot`, `removeSlot`, `replacePayload`, `slotIdFor`
+  and `VaultError`. A random vault key seals the payload, and each registered authenticator gets a
+  slot holding that key, sealed under a key from its own PRF output, so any of them opens the
+  vault. The record is plain JSON with nothing secret in the clear; every ciphertext is bound to
+  the vault id and every slot to its authenticator. Removing a slot revokes nothing already
+  opened. Tested in Chromium with two virtual authenticators, each with its own PRF secret, as two
+  YubiKeys have.
+- **`prfOutput`**, an identity-provider option: the OrbitDB signing key is derived from a PRF
+  output the application already read, so unlocking its data and creating the identity cost one
+  touch instead of two. It is the same key the provider derives when it asks itself.
+- All of it in `./standalone` as well, and declared in `types/`.
+
+### Changed
+
+- `extractPrfSeedFromCredential` says on the console when it has no `prfInput`: it then asks a
+  random question, and the seed it returns never comes back. What it returns is unchanged.
+- `types/index.d.ts` declared `extractPrfSeedFromCredential` as synchronous and returning bytes. It
+  is async and returns `{ seed, source }`, as `types/standalone.d.ts` already said.
+  `PrfUnavailableError` is now declared in the root types as well.
+
 ## 0.8.0
 
 Two functions for wallets, and nothing that changes for anyone else. They were written against
