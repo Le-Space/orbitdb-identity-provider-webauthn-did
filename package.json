@@ -118,6 +118,7 @@
     "libp2p": "^3.3.4",
     "mocha": "^10.0.0",
     "prettier": "^3.6.2",
+    "viem": "^2.56.5",
     "vite-plugin-node-polyfills": "^0.24.0"
   },
   "engines": {
