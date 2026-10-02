@@ -28,11 +28,11 @@
  * @returns {Promise<CaliburPasskeyAccount>}
  */
 export function toCaliburPasskeyAccount(parameters: {
-    client: AccountClient;
-    address: Address;
-    descriptor: P256CredentialDescriptor;
-    verificationGasLimit?: bigint | undefined;
-    nonceKeyManager?: import("viem").NonceManager | undefined;
+  client: AccountClient;
+  address: Address;
+  descriptor: P256CredentialDescriptor;
+  verificationGasLimit?: bigint | undefined;
+  nonceKeyManager?: import('viem').NonceManager | undefined;
 }): Promise<CaliburPasskeyAccount>;
 /**
  * @typedef {import('viem').Address} Address
@@ -85,29 +85,41 @@ export function toCaliburPasskeyAccount(parameters: {
  * prefund; pass less for a chain known to have the precompile.
  */
 export const DEFAULT_VERIFICATION_GAS_LIMIT: 800000n;
-export type Address = import("viem").Address;
-export type Hex = import("viem").Hex;
-export type Key = import("./calibur.js").Key;
+export type Address = import('viem').Address;
+export type Hex = import('viem').Hex;
+export type Key = import('./calibur.js').Key;
 /**
  * What `getP256CredentialDescriptor` returns: the passkey's credential id, its
  * P-256 key as 32-byte coordinates, and the rpId it is registered under.
  */
-export type P256CredentialDescriptor = import("@le-space/orbitdb-identity-provider-webauthn-did/standalone").P256CredentialDescriptor;
+export type P256CredentialDescriptor =
+  import('@le-space/orbitdb-identity-provider-webauthn-did/standalone').P256CredentialDescriptor;
 /**
  * The client a smart account reads chain state through; a public client will
  * do.
  */
-export type AccountClient = import("viem").Client<import("viem").Transport, import("viem").Chain | undefined, import("viem").JsonRpcAccount | import("viem").LocalAccount | undefined>;
+export type AccountClient = import('viem').Client<
+  import('viem').Transport,
+  import('viem').Chain | undefined,
+  import('viem').JsonRpcAccount | import('viem').LocalAccount | undefined
+>;
 /**
  * The smart account `toCaliburPasskeyAccount` returns: a viem SmartAccount for
  * EntryPoint v0.8, extended with Calibur's ABI, the passkey descriptor, its
  * Calibur key and key hash.
  */
-export type CaliburPasskeyAccount = import("viem/account-abstraction").SmartAccount<import("viem/account-abstraction").SmartAccountImplementation<typeof entryPoint08Abi, "0.8", {
-    abi: typeof caliburAbi;
-    descriptor: P256CredentialDescriptor;
-    key: Key;
-    keyHash: Hex;
-}>>;
+export type CaliburPasskeyAccount =
+  import('viem/account-abstraction').SmartAccount<
+    import('viem/account-abstraction').SmartAccountImplementation<
+      typeof entryPoint08Abi,
+      '0.8',
+      {
+        abi: typeof caliburAbi;
+        descriptor: P256CredentialDescriptor;
+        key: Key;
+        keyHash: Hex;
+      }
+    >
+  >;
 import { entryPoint08Abi } from 'viem/account-abstraction';
 import { caliburAbi } from './abi.js';

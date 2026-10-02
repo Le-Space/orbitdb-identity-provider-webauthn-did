@@ -13,20 +13,27 @@
  *   settings: { isAdmin: boolean, expiration: number, hook: Address } | undefined,
  * }>}
  */
-export function getCaliburKeyState({ client, address, keyHash, implementation, }: {
-    client: AccountClient;
-    address: Address;
-    keyHash: Hex;
-    implementation?: Address | undefined;
+export function getCaliburKeyState({
+  client,
+  address,
+  keyHash,
+  implementation,
+}: {
+  client: AccountClient;
+  address: Address;
+  keyHash: Hex;
+  implementation?: Address | undefined;
 }): Promise<{
-    delegatedTo: Address | undefined;
-    isCalibur: boolean;
-    isRegistered: boolean;
-    settings: {
+  delegatedTo: Address | undefined;
+  isCalibur: boolean;
+  isRegistered: boolean;
+  settings:
+    | {
         isAdmin: boolean;
         expiration: number;
         hook: Address;
-    } | undefined;
+      }
+    | undefined;
 }>;
 /**
  * Prepare a Calibur account for a passkey.
@@ -58,69 +65,89 @@ export function getCaliburKeyState({ client, address, keyHash, implementation, }
  * @returns {CaliburPasskeySetup}
  */
 export function createCaliburPasskeySetup(parameters: {
-    descriptor: P256PublicKey;
-    calls?: readonly Call[] | undefined;
-    keySettings?: KeySettings | undefined;
-    implementation?: Address | undefined;
+  descriptor: P256PublicKey;
+  calls?: readonly Call[] | undefined;
+  keySettings?: KeySettings | undefined;
+  implementation?: Address | undefined;
 }): CaliburPasskeySetup;
-export type Address = import("viem").Address;
-export type Hex = import("viem").Hex;
-export type Call = import("./calibur.js").Call;
-export type KeySettings = import("./calibur.js").KeySettings;
-export type P256PublicKey = import("./calibur.js").P256PublicKey;
-export type AccountClient = import("./account.js").AccountClient;
+export type Address = import('viem').Address;
+export type Hex = import('viem').Hex;
+export type Call = import('./calibur.js').Call;
+export type KeySettings = import('./calibur.js').KeySettings;
+export type P256PublicKey = import('./calibur.js').P256PublicKey;
+export type AccountClient = import('./account.js').AccountClient;
 /**
  * Path (a)'s smart account: signed by the setup key, delegating under
  * EIP-7702.
  */
-export type CaliburSetupAccount = import("viem/account-abstraction").SmartAccount<import("viem/account-abstraction").SmartAccountImplementation<typeof entryPoint08Abi, "0.8", {
-    abi: typeof caliburAbi;
-    keyHash: Hex;
-}, true>>;
+export type CaliburSetupAccount =
+  import('viem/account-abstraction').SmartAccount<
+    import('viem/account-abstraction').SmartAccountImplementation<
+      typeof entryPoint08Abi,
+      '0.8',
+      {
+        abi: typeof caliburAbi;
+        keyHash: Hex;
+      },
+      true
+    >
+  >;
 /**
  * What `createCaliburPasskeySetup` returns. The setup key is in none of its
  * fields.
  */
 export type CaliburPasskeySetup = {
-    readonly address: Address;
-    readonly key: import("./calibur.js").Key;
-    readonly keyHash: Hex;
-    readonly implementation: Address;
-    readonly calls: readonly {
-        to: Address;
-        value: bigint;
-        data: Hex;
-    }[];
-    readonly discarded: boolean;
-    signAuthorization(parameters: {
-        chainId: number;
-        nonce: number;
-    }): Promise<import("viem").SignedAuthorization>;
-    toSmartAccount(parameters: {
-        client: AccountClient;
-        nonceKeyManager?: import("viem").NonceManager | undefined;
-    }): Promise<CaliburSetupAccount>;
-    sendUserOperation(bundlerClient: import("viem/account-abstraction").BundlerClient | {
-        client?: AccountClient | undefined;
-        sendUserOperation: Function;
-    }, parameters?: {
-        client?: AccountClient | undefined;
-        [key: string]: unknown;
-    }): Promise<Hex>;
-    sendTransaction(walletClient: import("viem").WalletClient | {
-        account?: {
-            address: Address;
-        } | undefined;
-        chain?: import("viem").Chain | undefined;
-        sendTransaction: Function;
-    }, parameters?: {
-        client?: AccountClient | undefined;
-        executor?: Address | undefined;
-        deadline?: bigint | undefined;
-        gas?: bigint | undefined;
-    }): Promise<Hex>;
-    isActive(client: AccountClient): Promise<boolean>;
-    discard(): void;
+  readonly address: Address;
+  readonly key: import('./calibur.js').Key;
+  readonly keyHash: Hex;
+  readonly implementation: Address;
+  readonly calls: readonly {
+    to: Address;
+    value: bigint;
+    data: Hex;
+  }[];
+  readonly discarded: boolean;
+  signAuthorization(parameters: {
+    chainId: number;
+    nonce: number;
+  }): Promise<import('viem').SignedAuthorization>;
+  toSmartAccount(parameters: {
+    client: AccountClient;
+    nonceKeyManager?: import('viem').NonceManager | undefined;
+  }): Promise<CaliburSetupAccount>;
+  sendUserOperation(
+    bundlerClient:
+      | import('viem/account-abstraction').BundlerClient
+      | {
+          client?: AccountClient | undefined;
+          sendUserOperation: Function;
+        },
+    parameters?: {
+      client?: AccountClient | undefined;
+      [key: string]: unknown;
+    }
+  ): Promise<Hex>;
+  sendTransaction(
+    walletClient:
+      | import('viem').WalletClient
+      | {
+          account?:
+            | {
+                address: Address;
+              }
+            | undefined;
+          chain?: import('viem').Chain | undefined;
+          sendTransaction: Function;
+        },
+    parameters?: {
+      client?: AccountClient | undefined;
+      executor?: Address | undefined;
+      deadline?: bigint | undefined;
+      gas?: bigint | undefined;
+    }
+  ): Promise<Hex>;
+  isActive(client: AccountClient): Promise<boolean>;
+  discard(): void;
 };
 import { entryPoint08Abi } from 'viem/account-abstraction';
 import { caliburAbi } from './abi.js';

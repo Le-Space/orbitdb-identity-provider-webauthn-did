@@ -5,9 +5,9 @@
  * @returns {{ to: Address, value: bigint, data: Hex }[]}
  */
 export function normalizeCalls(calls: readonly Call[]): {
-    to: Address;
-    value: bigint;
-    data: Hex;
+  to: Address;
+  value: bigint;
+  data: Hex;
 }[];
 /**
  * The Calibur key for a passkey: `Key(KeyType.WebAuthnP256, abi.encode(x, y))`.
@@ -34,9 +34,9 @@ export function encodeKeySettings(settings?: KeySettings): bigint;
  * @returns {{ isAdmin: boolean, expiration: number, hook: Address }}
  */
 export function decodeKeySettings(settings: bigint): {
-    isAdmin: boolean;
-    expiration: number;
-    hook: Address;
+  isAdmin: boolean;
+  expiration: number;
+  hook: Address;
 };
 /**
  * `abi.encode(WebAuthn.WebAuthnAuth)`, the signature Calibur hands to
@@ -60,19 +60,23 @@ export function decodeWebAuthnAuth(signature: Hex): DecodedWebAuthnAuth;
  * @param {{ keyHash: Hex, signature: Hex, hookData?: Hex | undefined }} parameters
  * @returns {Hex}
  */
-export function encodeUserOperationSignature({ keyHash, signature, hookData, }: {
-    keyHash: Hex;
-    signature: Hex;
-    hookData?: Hex | undefined;
+export function encodeUserOperationSignature({
+  keyHash,
+  signature,
+  hookData,
+}: {
+  keyHash: Hex;
+  signature: Hex;
+  hookData?: Hex | undefined;
 }): Hex;
 /**
  * @param {Hex} wrappedSignature
  * @returns {{ keyHash: Hex, signature: Hex, hookData: Hex }}
  */
 export function decodeUserOperationSignature(wrappedSignature: Hex): {
-    keyHash: Hex;
-    signature: Hex;
-    hookData: Hex;
+  keyHash: Hex;
+  signature: Hex;
+  hookData: Hex;
 };
 /**
  * The `wrappedSignature` of `execute(SignedBatchedCall, bytes)`:
@@ -80,9 +84,12 @@ export function decodeUserOperationSignature(wrappedSignature: Hex): {
  * @param {{ signature: Hex, hookData?: Hex | undefined }} parameters
  * @returns {Hex}
  */
-export function encodeWrappedSignature({ signature, hookData }: {
-    signature: Hex;
-    hookData?: Hex | undefined;
+export function encodeWrappedSignature({
+  signature,
+  hookData,
+}: {
+  signature: Hex;
+  hookData?: Hex | undefined;
 }): Hex;
 /**
  * `userOp.callData` that makes EntryPoint v0.8 call Calibur's `executeUserOp`,
@@ -93,20 +100,23 @@ export function encodeWrappedSignature({ signature, hookData }: {
  * @param {{ revertOnFailure?: boolean | undefined }} [options]
  * @returns {Hex}
  */
-export function encodeExecuteUserOpCallData(calls: readonly Call[], options?: {
+export function encodeExecuteUserOpCallData(
+  calls: readonly Call[],
+  options?: {
     revertOnFailure?: boolean | undefined;
-}): Hex;
+  }
+): Hex;
 /**
  * @param {Hex} callData
  * @returns {{ calls: { to: Address, value: bigint, data: Hex }[], revertOnFailure: boolean }}
  */
 export function decodeExecuteUserOpCallData(callData: Hex): {
-    calls: {
-        to: Address;
-        value: bigint;
-        data: Hex;
-    }[];
-    revertOnFailure: boolean;
+  calls: {
+    to: Address;
+    value: bigint;
+    data: Hex;
+  }[];
+  revertOnFailure: boolean;
 };
 /**
  * The calls that make a key usable on a Calibur account: `register(key)`, then
@@ -120,27 +130,34 @@ export function decodeExecuteUserOpCallData(callData: Hex): {
  * @param {{ account: Address, key: Key, settings?: KeySettings | undefined }} parameters
  * @returns {{ to: Address, value: bigint, data: Hex }[]}
  */
-export function getRegisterKeyCalls({ account, key, settings, }: {
-    account: Address;
-    key: Key;
-    settings?: KeySettings | undefined;
+export function getRegisterKeyCalls({
+  account,
+  key,
+  settings,
+}: {
+  account: Address;
+  key: Key;
+  settings?: KeySettings | undefined;
 }): {
-    to: Address;
-    value: bigint;
-    data: Hex;
+  to: Address;
+  value: bigint;
+  data: Hex;
 }[];
 /**
  * `revoke(keyHash)` as a self-call. The root key cannot be revoked.
  * @param {{ account: Address, keyHash: Hex }} parameters
  * @returns {{ to: Address, value: bigint, data: Hex }}
  */
-export function getRevokeKeyCall({ account, keyHash }: {
-    account: Address;
-    keyHash: Hex;
+export function getRevokeKeyCall({
+  account,
+  keyHash,
+}: {
+  account: Address;
+  keyHash: Hex;
 }): {
-    to: Address;
-    value: bigint;
-    data: Hex;
+  to: Address;
+  value: bigint;
+  data: Hex;
 };
 /**
  * The EIP-712 typed data `execute(SignedBatchedCall, bytes)` verifies, for a
@@ -153,80 +170,103 @@ export function getRevokeKeyCall({ account, keyHash }: {
  *   implementation?: Address | undefined,
  * }} parameters
  */
-export function getSignedBatchedCallTypedData({ account, chainId, signedBatchedCall, saltPrefix, implementation, }: {
-    account: Address;
-    chainId: number;
-    signedBatchedCall: SignedBatchedCall;
-    saltPrefix?: bigint | undefined;
-    implementation?: Address | undefined;
+export function getSignedBatchedCallTypedData({
+  account,
+  chainId,
+  signedBatchedCall,
+  saltPrefix,
+  implementation,
+}: {
+  account: Address;
+  chainId: number;
+  signedBatchedCall: SignedBatchedCall;
+  saltPrefix?: bigint | undefined;
+  implementation?: Address | undefined;
 }): {
-    readonly domain: {
-        readonly name: "Calibur";
-        readonly version: "1.0.0";
-        readonly chainId: number;
-        readonly verifyingContract: `0x${string}`;
-        readonly salt: `0x${string}`;
+  readonly domain: {
+    readonly name: 'Calibur';
+    readonly version: '1.0.0';
+    readonly chainId: number;
+    readonly verifyingContract: `0x${string}`;
+    readonly salt: `0x${string}`;
+  };
+  readonly types: {
+    readonly SignedBatchedCall: readonly [
+      {
+        readonly name: 'batchedCall';
+        readonly type: 'BatchedCall';
+      },
+      {
+        readonly name: 'nonce';
+        readonly type: 'uint256';
+      },
+      {
+        readonly name: 'keyHash';
+        readonly type: 'bytes32';
+      },
+      {
+        readonly name: 'executor';
+        readonly type: 'address';
+      },
+      {
+        readonly name: 'deadline';
+        readonly type: 'uint256';
+      },
+    ];
+    readonly BatchedCall: readonly [
+      {
+        readonly name: 'calls';
+        readonly type: 'Call[]';
+      },
+      {
+        readonly name: 'revertOnFailure';
+        readonly type: 'bool';
+      },
+    ];
+    readonly Call: readonly [
+      {
+        readonly name: 'to';
+        readonly type: 'address';
+      },
+      {
+        readonly name: 'value';
+        readonly type: 'uint256';
+      },
+      {
+        readonly name: 'data';
+        readonly type: 'bytes';
+      },
+    ];
+  };
+  readonly primaryType: 'SignedBatchedCall';
+  readonly message: {
+    readonly batchedCall: {
+      readonly calls: {
+        to: Address;
+        value: bigint;
+        data: Hex;
+      }[];
+      readonly revertOnFailure: boolean;
     };
-    readonly types: {
-        readonly SignedBatchedCall: readonly [{
-            readonly name: "batchedCall";
-            readonly type: "BatchedCall";
-        }, {
-            readonly name: "nonce";
-            readonly type: "uint256";
-        }, {
-            readonly name: "keyHash";
-            readonly type: "bytes32";
-        }, {
-            readonly name: "executor";
-            readonly type: "address";
-        }, {
-            readonly name: "deadline";
-            readonly type: "uint256";
-        }];
-        readonly BatchedCall: readonly [{
-            readonly name: "calls";
-            readonly type: "Call[]";
-        }, {
-            readonly name: "revertOnFailure";
-            readonly type: "bool";
-        }];
-        readonly Call: readonly [{
-            readonly name: "to";
-            readonly type: "address";
-        }, {
-            readonly name: "value";
-            readonly type: "uint256";
-        }, {
-            readonly name: "data";
-            readonly type: "bytes";
-        }];
-    };
-    readonly primaryType: "SignedBatchedCall";
-    readonly message: {
-        readonly batchedCall: {
-            readonly calls: {
-                to: Address;
-                value: bigint;
-                data: Hex;
-            }[];
-            readonly revertOnFailure: boolean;
-        };
-        readonly nonce: bigint;
-        readonly keyHash: `0x${string}`;
-        readonly executor: `0x${string}`;
-        readonly deadline: bigint;
-    };
+    readonly nonce: bigint;
+    readonly keyHash: `0x${string}`;
+    readonly executor: `0x${string}`;
+    readonly deadline: bigint;
+  };
 };
 /**
  * Calldata for `execute(SignedBatchedCall, bytes wrappedSignature)`.
  * @param {{ signedBatchedCall: SignedBatchedCall, signature: Hex, hookData?: Hex | undefined }} parameters
  * @returns {Hex}
  */
-export function encodeExecuteSignedBatchedCall({ signedBatchedCall, signature, hookData, }: {
-    signedBatchedCall: SignedBatchedCall;
-    signature: Hex;
-    hookData?: Hex | undefined;
+export function encodeExecuteSignedBatchedCall({
+  signedBatchedCall,
+  signature,
+  hookData,
+}: {
+  signedBatchedCall: SignedBatchedCall;
+  signature: Hex;
+  hookData?: Hex | undefined;
 }): Hex;
 /**
  * A user operation signature for gas estimation: the passkey's key hash and a
@@ -242,10 +282,14 @@ export function encodeExecuteSignedBatchedCall({ signedBatchedCall, signature, h
  * @param {{ keyHash: Hex, rpId?: string | undefined, hookData?: Hex | undefined }} parameters
  * @returns {Hex}
  */
-export function getCaliburStubSignature({ keyHash, rpId, hookData, }: {
-    keyHash: Hex;
-    rpId?: string | undefined;
-    hookData?: Hex | undefined;
+export function getCaliburStubSignature({
+  keyHash,
+  rpId,
+  hookData,
+}: {
+  keyHash: Hex;
+  rpId?: string | undefined;
+  hookData?: Hex | undefined;
 }): Hex;
 /** `executeUserOp((address,uint256,bytes,bytes,bytes32,uint256,bytes32,bytes,bytes),bytes32)` */
 export const EXECUTE_USER_OP_SELECTOR: `0x${string}`;
@@ -255,71 +299,71 @@ export const EXECUTE_USER_OP_SELECTOR: `0x${string}`;
  * @type {Hex}
  */
 export const ROOT_STUB_SIGNATURE: Hex;
-export type Address = import("viem").Address;
-export type Hex = import("viem").Hex;
+export type Address = import('viem').Address;
+export type Hex = import('viem').Hex;
 /**
  * A call as Calibur's `Call` struct holds it, and as viem passes calls.
  */
 export type Call = {
-    to: Address;
-    value?: bigint | undefined;
-    data?: Hex | undefined;
+  to: Address;
+  value?: bigint | undefined;
+  data?: Hex | undefined;
 };
 /**
  * A Calibur `Key`: its type and its public key, ABI-encoded.
  */
 export type Key = {
-    keyType: number;
-    publicKey: Hex;
+  keyType: number;
+  publicKey: Hex;
 };
 /**
  * Key settings. `expiration` is a unix timestamp in seconds (0: never);
  * `hook` is a hook contract (the zero address: none).
  */
 export type KeySettings = {
-    isAdmin?: boolean | undefined;
-    expiration?: number | bigint | undefined;
-    hook?: Address | undefined;
+  isAdmin?: boolean | undefined;
+  expiration?: number | bigint | undefined;
+  hook?: Address | undefined;
 };
 /**
  * A P-256 public key as 32-byte big-endian coordinates, the shape
  * `getP256CredentialDescriptor` returns (a descriptor itself will do).
  */
 export type P256PublicKey = {
-    x: Uint8Array | Hex | bigint;
-    y: Uint8Array | Hex | bigint;
+  x: Uint8Array | Hex | bigint;
+  y: Uint8Array | Hex | bigint;
 };
 /**
  * webauthn-sol's `WebAuthnAuth`, as `signP256Challenge` returns it (byte
  * fields may also be hex, and numbers bigints).
  */
 export type WebAuthnAuth = {
-    authenticatorData: Uint8Array | Hex;
-    clientDataJSON: string;
-    challengeIndex: number | bigint;
-    typeIndex: number | bigint;
-    r: Uint8Array | Hex | bigint;
-    s: Uint8Array | Hex | bigint;
+  authenticatorData: Uint8Array | Hex;
+  clientDataJSON: string;
+  challengeIndex: number | bigint;
+  typeIndex: number | bigint;
+  r: Uint8Array | Hex | bigint;
+  s: Uint8Array | Hex | bigint;
 };
 export type DecodedWebAuthnAuth = {
-    authenticatorData: Hex;
-    clientDataJSON: string;
-    challengeIndex: bigint;
-    typeIndex: bigint;
-    r: bigint;
-    s: bigint;
+  authenticatorData: Hex;
+  clientDataJSON: string;
+  challengeIndex: bigint;
+  typeIndex: bigint;
+  r: bigint;
+  s: bigint;
 };
 /**
  * Calibur's `SignedBatchedCall`: a batch the root key (or another key) signs
  * for someone else to submit through `execute(SignedBatchedCall, bytes)`.
  */
 export type SignedBatchedCall = {
-    batchedCall: {
-        calls: readonly Call[];
-        revertOnFailure: boolean;
-    };
-    nonce: bigint;
-    keyHash: Hex;
-    executor: Address;
-    deadline: bigint;
+  batchedCall: {
+    calls: readonly Call[];
+    revertOnFailure: boolean;
+  };
+  nonce: bigint;
+  keyHash: Hex;
+  executor: Address;
+  deadline: bigint;
 };

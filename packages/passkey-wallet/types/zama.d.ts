@@ -10,15 +10,21 @@ export function createZamaSessionKey(): ZamaSessionKey;
  * @param {SealingKey} sealingKey
  * @returns {Promise<ZamaSessionKey>}
  */
-export function openZamaSessionKey(sealed: SealedZamaSessionKey, sealingKey: SealingKey): Promise<ZamaSessionKey>;
+export function openZamaSessionKey(
+  sealed: SealedZamaSessionKey,
+  sealingKey: SealingKey
+): Promise<ZamaSessionKey>;
 /**
  * The ACL for a chain: `acl` when given, else Zama's deployment.
  * @param {{ chainId?: number | undefined, acl?: Address | undefined }} parameters
  * @returns {Address}
  */
-export function getZamaAclAddress({ chainId, acl }: {
-    chainId?: number | undefined;
-    acl?: Address | undefined;
+export function getZamaAclAddress({
+  chainId,
+  acl,
+}: {
+  chainId?: number | undefined;
+  acl?: Address | undefined;
 }): Address;
 /**
  * Calls to Zama's ACL that delegate user decryption to `delegate` — a session
@@ -44,16 +50,16 @@ export function getZamaAclAddress({ chainId, acl }: {
  * @returns {{ to: Address, value: bigint, data: Hex }[]}
  */
 export function getDelegateForUserDecryptionCalls(parameters: {
-    chainId?: number | undefined;
-    acl?: Address | undefined;
-    account?: Address | undefined;
-    delegate: Address;
-    contractAddresses: readonly Address[];
-    expirationDate: bigint | number;
+  chainId?: number | undefined;
+  acl?: Address | undefined;
+  account?: Address | undefined;
+  delegate: Address;
+  contractAddresses: readonly Address[];
+  expirationDate: bigint | number;
 }): {
-    to: Address;
-    value: bigint;
-    data: Hex;
+  to: Address;
+  value: bigint;
+  data: Hex;
 }[];
 /**
  * Calls to Zama's ACL that revoke `delegate`'s user decryption for each
@@ -69,26 +75,26 @@ export function getDelegateForUserDecryptionCalls(parameters: {
  * @returns {{ to: Address, value: bigint, data: Hex }[]}
  */
 export function getRevokeDelegationForUserDecryptionCalls(parameters: {
-    chainId?: number | undefined;
-    acl?: Address | undefined;
-    account?: Address | undefined;
-    delegate: Address;
-    contractAddresses: readonly Address[];
+  chainId?: number | undefined;
+  acl?: Address | undefined;
+  account?: Address | undefined;
+  delegate: Address;
+  contractAddresses: readonly Address[];
 }): {
-    to: Address;
-    value: bigint;
-    data: Hex;
+  to: Address;
+  value: bigint;
+  data: Hex;
 }[];
-export type Address = import("viem").Address;
-export type Hex = import("viem").Hex;
+export type Address = import('viem').Address;
+export type Hex = import('viem').Hex;
 /**
  * A session key: its address, and the key as a viem LocalAccount — the signer
  * for Zama's SDK (wrap it in a wallet client for `ViemSigner`).
  */
 export type ZamaSessionKey = {
-    address: Address;
-    account: import("viem/accounts").PrivateKeyAccount;
-    seal: (sealingKey: SealingKey) => Promise<SealedZamaSessionKey>;
+  address: Address;
+  account: import('viem/accounts').PrivateKeyAccount;
+  seal: (sealingKey: SealingKey) => Promise<SealedZamaSessionKey>;
 };
 /**
  * A caller-provided AES-GCM key: a 256-bit WebCrypto key with encrypt and
@@ -100,9 +106,9 @@ export type SealingKey = CryptoKey | Uint8Array;
  * bound to the ciphertext as associated data.
  */
 export type SealedZamaSessionKey = {
-    version: 1;
-    algorithm: "AES-GCM";
-    address: Address;
-    iv: Hex;
-    ciphertext: Hex;
+  version: 1;
+  algorithm: 'AES-GCM';
+  address: Address;
+  iv: Hex;
+  ciphertext: Hex;
 };
