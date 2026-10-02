@@ -10,6 +10,12 @@ name: Release
 #   - push a tag `v1.2.3`  -> full suite, then publish
 #   - run manually          -> mode: check (default) verifies without publishing
 #
+# Two packages come out of this repository: the provider at the root, and
+# @le-space/passkey-wallet in packages/passkey-wallet. A tag says which one it
+# releases — `v1.2.3` the provider, `passkey-wallet-v1.2.3` the wallet — and a
+# manual run says it in `package`. The test gate is the same full suite either
+# way.
+#
 # Auth defaults to npm Trusted Publishing (OIDC), which needs no token. It has
 # to be configured once on npmjs.com for the package:
 #   Package settings -> Trusted Publisher -> GitHub Actions
@@ -17,11 +23,18 @@ name: Release
 #     workflow:        release.yml
 # Set auth: token to fall back to the NPM_TOKEN secret instead. Note npm is
 # restricting classic 2FA-bypassing tokens for direct publishing, so OIDC is
-# the durable option.
+# the durable option. A package's very first version has to go out with
+# auth: token: the trusted publisher is configured in the package's settings
+# on npmjs.com, and those exist only once the package does.
 
 on:
   workflow_dispatch:
     inputs:
+      package:
+        description: 'which package to release'
+        type: choice
+        options: [provider, passkey-wallet]
+        default: provider
       mode:
         description: 'check = verify only, publish = run tests and publish'
         type: choice
@@ -33,15 +46,45 @@ on:
         options: [oidc, token]
         default: oidc
   push:
-    tags: ['v*']
+    tags: ['v*', 'passkey-wallet-v*']
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  target:
+    name: Which package
+    runs-on: ubuntu-latest
+    outputs:
+      dir: ${{ steps.pick.outputs.dir }}
+      name: ${{ steps.pick.outputs.name }}
+      tag_version: ${{ steps.pick.outputs.tag_version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: pick
+        env:
+          INPUT_PACKAGE: ${{ inputs.package }}
+        run: |
+          # A tag names its package by its prefix; a manual run by `package`.
+          case "$GITHUB_EVENT_NAME:$GITHUB_REF_NAME:$INPUT_PACKAGE" in
+            push:passkey-wallet-v*) dir=packages/passkey-wallet; tag="${GITHUB_REF_NAME#passkey-wallet-v}" ;;
+            push:v*)                dir=.;                       tag="${GITHUB_REF_NAME#v}" ;;
+            *:passkey-wallet)       dir=packages/passkey-wallet; tag= ;;
+            *)                      dir=.;                       tag= ;;
+          esac
+          name="$(node -p "require('./$dir/package.json').name")"
+          echo "releasing $name from $dir"
+          {
+            echo "dir=$dir"
+            echo "name=$name"
+            echo "tag_version=$tag"
+          } >> "$GITHUB_OUTPUT"
+
   verify:
     name: Verify package and auth
+    needs: [target]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -63,17 +106,20 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Tag and package.json version must agree
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: ${{ needs.target.outputs.dir }}
+        env:
+          TAG: ${{ needs.target.outputs.tag_version }}
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
           PKG="$(node -p "require('./package.json').version")"
           echo "tag=$TAG package.json=$PKG"
           if [ "$TAG" != "$PKG" ]; then
-            echo "::error::Tag v$TAG does not match package.json version $PKG"
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $PKG"
             exit 1
           fi
 
       - name: Package contents
+        working-directory: ${{ needs.target.outputs.dir }}
         run: npm pack --dry-run
 
       - name: Check npm token
@@ -89,7 +135,7 @@ jobs:
 
   publish:
     name: Publish to npm
-    needs: [verify, test]
+    needs: [target, verify, test]
     if: github.event_name == 'push' || inputs.mode == 'publish'
     runs-on: ubuntu-latest
     permissions:
@@ -144,6 +190,7 @@ jobs:
       # does not engage, which does not say whether it tried. The verbose log
       # shows whether it attempts the OIDC exchange at all.
       - name: Publish
+        working-directory: ${{ needs.target.outputs.dir }}
         run: |
           publish() { npm publish --access public --provenance --ignore-scripts "$@"; }
 
@@ -177,7 +224,7 @@ jobs:
 
   notify:
     name: Report outcome
-    needs: [publish]
+    needs: [target, publish]
     if: always() && (github.event_name == 'push' || inputs.mode == 'publish')
     runs-on: ubuntu-latest
     steps:
@@ -186,7 +233,7 @@ jobs:
         run: |
           echo "### Published :rocket:" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "\`@le-space/orbitdb-identity-provider-webauthn-did\` at \`${GITHUB_REF_NAME}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`${{ needs.target.outputs.name }}\` at \`${GITHUB_REF_NAME}\`" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Not published
         if: needs.publish.result != 'success'
