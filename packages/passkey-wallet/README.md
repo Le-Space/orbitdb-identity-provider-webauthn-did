@@ -1,27 +1,31 @@
 # @le-space/passkey-wallet
 
 A passkey — the same one that can be your OrbitDB identity through
-[`@le-space/orbitdb-identity-provider-webauthn-did`](../../README.md) — as the
-admin key of a [Uniswap Calibur](https://github.com/Uniswap/calibur) v1.0.0
+[`@le-space/orbitdb-identity-provider-webauthn-did`](https://github.com/Le-Space/orbitdb-identity-provider-webauthn-did#readme)
+— as the admin key of a [Uniswap Calibur](https://github.com/Uniswap/calibur) v1.0.0
 account: an EOA delegated to Calibur with EIP-7702, driven by ERC-4337 user
 operations through EntryPoint v0.8. Plus session keys for Zama user
 decryption.
 
-**Status: unreleased.** It depends on the provider's
-`getP256CredentialDescriptor` and `signP256Challenge`, which are not in a
-published provider version yet, so in this repository the provider is linked
-(`link:../..`).
+```
+npm install @le-space/passkey-wallet @le-space/orbitdb-identity-provider-webauthn-did viem
+```
+
+Both are peer dependencies: the provider from 0.8.0, which brought
+`getP256CredentialDescriptor` and `signP256Challenge`, and `viem` 2.56.5 or
+later. The source lives in `packages/passkey-wallet` of
+[the provider's repository](https://github.com/Le-Space/orbitdb-identity-provider-webauthn-did).
 
 ## How it works
 
-| Piece      | Value                                                                                                                                                                       |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Calibur    | `0x000000009B1D0aF20D8C6d0A44e162d11F9b8f00`, same code on Sepolia and mainnet: `CaliburEntry` from tag v1.0.0 apart from its immutables (the fork test compares Sepolia's) |
-| EntryPoint | v0.8, `0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108`, the one Calibur accepts by default                                                                                      |
-| Passkey    | `Key(KeyType.WebAuthnP256 = 1, abi.encode(uint256 x, uint256 y))`                                                                                                           |
-| Key hash   | `keccak256(abi.encode(uint8 keyType, keccak256(publicKey)))` (KeyLib.hash)                                                                                                  |
-| Signature  | `abi.encode(bytes32 keyHash, bytes abi.encode(WebAuthnAuth), bytes hookData)`, the WebAuthn challenge being the user operation hash                                         |
-| Call data  | `executeUserOp.selector ‖ abi.encode(BatchedCall(calls, revertOnFailure))`                                                                                                  |
+| Piece      | Value                                                                                                                                                                                |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Calibur    | `0x000000009B1D0aF20D8C6d0A44e162d11F9b8f00`, same code on Sepolia and mainnet: `CaliburEntry` from tag v1.0.0 apart from its immutables (the original fork test compared Sepolia's) |
+| EntryPoint | v0.8, `0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108`, the one Calibur accepts by default                                                                                               |
+| Passkey    | `Key(KeyType.WebAuthnP256 = 1, abi.encode(uint256 x, uint256 y))`                                                                                                                    |
+| Key hash   | `keccak256(abi.encode(uint8 keyType, keccak256(publicKey)))` (KeyLib.hash)                                                                                                           |
+| Signature  | `abi.encode(bytes32 keyHash, bytes abi.encode(WebAuthnAuth), bytes hookData)`, the WebAuthn challenge being the user operation hash                                                  |
+| Call data  | `executeUserOp.selector ‖ abi.encode(BatchedCall(calls, revertOnFailure))`                                                                                                           |
 
 1. **Setup.** A secp256k1 key is generated in memory. Its address is the
    account. It signs the EIP-7702 authorization to Calibur and authorises the
@@ -142,7 +146,7 @@ you provide (derived from the passkey's PRF output, say), and
 
 Zama's Sepolia ACL, `0xf0Ffdc93b7E186bC2f8CB3dAA75D86d1930A433D`, is taken
 from `ZamaConfig._getSepoliaConfig()` in `@fhevm/solidity@0.11.1`
-(`config/ZamaConfig.sol`); on the fork it reports `ACL v0.4.0`.
+(`config/ZamaConfig.sol`); on a Sepolia fork it reported `ACL v0.4.0`.
 
 ## Gas
 
@@ -164,42 +168,24 @@ have the precompile.
 
 ## Tests
 
-From the repository root, `pnpm install --frozen-lockfile`, then
-`pnpm --dir packages install --frozen-lockfile`. In `packages/passkey-wallet`:
+This code was restored from the only copy left of it, a packed tarball
+([#77](https://github.com/Le-Space/orbitdb-identity-provider-webauthn-did/pull/77)).
+Its tests were not in that tarball, and neither were the suites they made up:
+the encodings checked against Calibur's own libraries, and setup, user
+operations and Zama delegation on a Sepolia fork, which is where the gas figures
+below and the ACL version above come from. Nothing re-checks those today.
 
-| Command                  | Needs                                                  | Checks                                                                                                                                                            |
-| ------------------------ | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm test`              | nothing                                                | encodings, signing through the provider's mock authenticator, setup, Zama helpers, bundler endpoints                                                              |
-| `pnpm run calibur:fetch` | git, network                                           | clones Calibur v1.0.0 (35d8091) with submodules into `.cache/` (or `CALIBUR_DIR`)                                                                                 |
-| `pnpm run test:calibur`  | Foundry, the checkout                                  | the encodings against Calibur's own libraries, compiled with Calibur's config (`test/calibur/CaliburHarness.sol`), random inputs, with and without the precompile |
-| `pnpm run test:fork`     | anvil, network (`SEPOLIA_RPC_URL`, default publicnode) | both setup paths, passkey user operations, wrong signatures, Zama delegation and revocation, gas, against the real contracts on a Sepolia fork                    |
-| `pnpm run check:types`   | nothing                                                | JSDoc under `tsc --strict`, `types/` up to date, a consumer file compiles                                                                                         |
-
-The fork test has no bundler and no paymaster: EntryPoint `handleOps` is called
-directly from a funded anvil account, gas is prepaid by an EntryPoint deposit,
-and passkeys are software P-256 keys answering WebAuthn-shaped assertions.
-Sponsorship by a real bundler and paymaster, and real authenticators, are
-not tested here.
+What runs is `tests/passkey-wallet-session-key.test.js` in the repository's node
+suite (`pnpm run test:node` at the root): a Zama session key sealed and opened,
+the format pinned by an envelope the vendored build sealed, and refusals of
+another sealing key, an altered ciphertext, an envelope naming another address
+and anything that is not an envelope.
 
 ## Releasing
 
-`release.yml` publishes one package per `v*` tag, the provider, from the
-repository root. Publishing this package as well needs, without touching the
-provider's flow:
-
-- a tag of its own that does not match `v*`, since every `v*` tag publishes
-  the provider — e.g. `passkey-wallet-v0.1.0` — and a job or workflow
-  triggered by it, working in `packages/passkey-wallet`;
-- both installs (the root, then `packages/`) and the tag-version check
-  against this `package.json`;
-- `pnpm test`, `pnpm run check:types` and, with Foundry installed
-  (`foundry-rs/foundry-toolchain`), `calibur:fetch`, `test:calibur` and
-  `test:fork` before publishing;
-- the provider dependency set from `link:../..` to the released provider
-  version that contains `signP256Challenge` — `prepublishOnly` refuses to
-  publish while it is a link;
-- `npm publish --access public --provenance` from that directory; npm
-  configures trusted publishing per package, so `@le-space/passkey-wallet`
-  needs its own trusted-publisher entry for this repository and workflow;
-- `ci.yml`, which `release.yml` reuses as its test gate, runs none of this
-  package's tests today.
+A tag `passkey-wallet-vX.Y.Z` on a commit whose `package.json` here says
+`X.Y.Z` makes the repository's `release.yml` run the full test suite and
+publish this directory to npm with provenance. Trusted publishing needs an
+entry for this package on npmjs.com (repository
+`Le-Space/orbitdb-identity-provider-webauthn-did`, workflow `release.yml`);
+until it exists, the workflow falls back to its `NPM_TOKEN`, as 0.1.0 did.
