@@ -26,7 +26,15 @@ export interface WebAuthnVarsigCredential {
 export interface WebAuthnSignerOptions {
   userId?: string;
   displayName?: string;
+  /**
+   * Which authenticators the browser offers: the device's own, a security key
+   * or phone, or every kind. Default `'any'`: the request names none.
+   */
   authenticatorType?: AuthenticatorType;
+  /** The WebAuthn name for `authenticatorType`; the two must not disagree. */
+  authenticatorAttachment?: AuthenticatorAttachment;
+  /** Not read: a registration always requires user verification. */
+  userVerification?: UserVerificationRequirement;
   forceP256?: boolean;
   domain?: string;
   [key: string]: unknown;

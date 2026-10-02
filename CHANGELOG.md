@@ -2,8 +2,9 @@
 
 ## 0.9.1
 
-`createCredential` honours the choice of authenticator that its options, its types and
-`docs/API.md` have offered all along.
+Every registration honours the choice of authenticator that its options, its types and
+`docs/API.md` have offered all along: `createCredential`, and the varsig registration with the
+standalone signers built on it.
 
 ### Fixed
 
@@ -12,12 +13,25 @@
   dropped them, so the request named no attachment and the browser offered every kind of
   authenticator, a security key as much as the device's own — though the code asked for
   `'platform'`. That stays the default, so nothing changes for a caller that passes neither.
+- The same holds for the varsig registration — `WebAuthnVarsigProvider.createCredential`,
+  `createWebAuthnSigner` and the signers built on it, and `createWebAuthnEd25519Credential` —
+  whose `authenticatorType` was dropped the same way.
 - An unknown value, or the two disagreeing, is a `TypeError` before anyone is asked, instead of
   being ignored.
 
+### Notes
+
+- The varsig registration still requires user verification. Its code asked for `'preferred'`,
+  which never reached the browser either; that line is gone rather than made to work. A varsig
+  signature without the UV flag is refused, when it is made and when it is verified, so with
+  `'preferred'` a security key that cannot verify its user would register a non-discoverable
+  credential and then never sign — measured in Chromium.
+
 Tested in Chromium with a virtual authenticator on the USB transport: offered by default, asked for
-with `'cross-platform'`, never asked with `'platform'`. The vault test from 0.9.0 now also runs with
-two such security keys.
+with `'cross-platform'`, never asked with `'platform'`, through `createCredential` and through the
+varsig registration — which also leaves the device's own authenticator out when asked for
+`'cross-platform'`, and refuses a key that cannot verify its user. The vault test from 0.9.0 now
+also runs with two such security keys.
 
 ## 0.9.0
 

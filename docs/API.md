@@ -502,6 +502,17 @@ const credential = await WebAuthnVarsigProvider.createCredential({
 const identity = await createWebAuthnVarsigIdentity({ credential });
 ```
 
+`WebAuthnVarsigProvider.createCredential(options)` takes `userId`,
+`displayName`, `domain`, `discoverableCredentials`, `forceP256` (offer only
+P-256), and `authenticatorType` / `authenticatorAttachment` as
+`WebAuthnDIDProvider.createCredential` does. Before 0.9.1 it dropped the choice
+of authenticator the same way and offered every kind.
+
+It always requires user verification, whatever the options say. A varsig
+signature without the UV flag is refused, when it is made and when it is
+verified, so a credential registered without user verification could never
+sign.
+
 ## Standalone Export
 
 Use the standalone export when you want WebAuthn signing and worker-keystore
@@ -524,6 +535,10 @@ import {
 - `createWebAuthnP256Signer(options?)`
 - `createWebAuthnEd25519Credential(userId, displayName, options?)`
 - `checkEd25519Support()`
+
+The `create…Signer` functions register as
+`WebAuthnVarsigProvider.createCredential` does and take its options;
+`createWebAuthnEd25519Credential` passes on `options.authenticatorType` alone.
 
 ```js
 const signer = await createWebAuthnSigner({
