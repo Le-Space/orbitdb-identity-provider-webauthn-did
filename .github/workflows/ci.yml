@@ -107,10 +107,10 @@ jobs:
         env:
           CI: ''
 
-      - name: Run vault tests with two authenticators
-        # Loads src/index.js the same way as the unit tests, so the same
+      - name: Run vault and security-key tests
+        # Load src/index.js the same way as the unit tests, so the same
         # dev-server rule applies.
-        run: pnpm exec playwright test tests/vault-two-authenticators.test.js --project=chromium --reporter=github
+        run: pnpm exec playwright test tests/vault-two-authenticators.test.js tests/webauthn-security-key.test.js --project=chromium --reporter=github
         env:
           CI: ''
 

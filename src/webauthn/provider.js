@@ -24,6 +24,7 @@ import {
 } from '../errors.js';
 import {
   buildAuthenticatorSelection,
+  resolveAuthenticatorAttachment,
   buildCredentialRequestOptions,
 } from './config.js';
 import { logWebAuthnResponse } from './debug-log.js';
@@ -115,6 +116,13 @@ export class WebAuthnDIDProvider {
    * @param {boolean} options.encryptKeystore - Enable keystore encryption
    * @param {string} options.keystoreEncryptionMethod - 'prf' (default), 'hmac-secret', or 'largeBlob'
    * @param {boolean} [options.discoverableCredentials] - Override global discoverable credential policy
+   * @param {'platform'|'cross-platform'|'any'} [options.authenticatorType='any'] -
+   *   Which authenticators the browser offers: the device's own, a security
+   *   key or phone, or every kind. `'any'` names none in the request, which is
+   *   what this has sent since 0.2.8.
+   * @param {'platform'|'cross-platform'} [options.authenticatorAttachment] -
+   *   The WebAuthn name for the same choice; refused if it disagrees with
+   *   `authenticatorType`.
    * @returns {Promise<Object>} Credential info with public key and metadata.
    */
   static async createCredential(options = {}) {
@@ -131,10 +139,14 @@ export class WebAuthnDIDProvider {
       ...options,
     };
 
+    // Before any prompt: a choice this cannot honour is the caller's mistake.
+    const authenticatorAttachment = resolveAuthenticatorAttachment(options);
+
     webauthnLog('createCredential() called with options: %o', {
       userId,
       displayName,
       domain,
+      authenticatorAttachment: authenticatorAttachment ?? 'any',
     });
 
     if (!this.isSupported()) {
@@ -177,11 +189,14 @@ export class WebAuthnDIDProvider {
           { alg: -7, type: 'public-key' }, // ES256 (P-256 curve)
           { alg: -257, type: 'public-key' }, // RS256 fallback
         ],
-        authenticatorSelection: buildAuthenticatorSelection({
-          ...options,
-          authenticatorAttachment: 'platform',
-          userVerification: 'required',
-        }),
+        // This named 'platform' from March to October 2026 without effect:
+        // buildAuthenticatorSelection never passed it on, so every kind of
+        // authenticator was offered, security keys included. That stays the
+        // default; `authenticatorType` narrows it.
+        authenticatorSelection: {
+          ...buildAuthenticatorSelection(options),
+          ...(authenticatorAttachment && { authenticatorAttachment }),
+        },
         timeout: 60000,
         attestation: 'none', // Don't need attestation for DID creation
       },

@@ -19,6 +19,7 @@ This package provides:
 - Authentication/assertion requests omit `allowCredentials` by default, so the browser/authenticator can resolve the credential discoverably.
 - You can switch this centrally with `configureWebAuthn({ discoverableCredentials: true|false })`.
 - Registration is still the point where this package extracts the credential public key from attestation.
+- Registration offers every kind of authenticator — the device's own, a security key such as a YubiKey, a phone — unless `createCredential({ authenticatorType: 'platform' | 'cross-platform' })` narrows it (honoured since 0.9.1).
 - Later `navigator.credentials.get()` assertions do not reliably return the public key again, so identity reconstruction still needs metadata from somewhere else.
 
 Since **0.6.0** the passkey alone is enough, and stored metadata is a convenience rather than a requirement:

@@ -131,8 +131,14 @@ export interface CreateCredentialOptions {
   encryptKeystore?: boolean;
   keystoreEncryptionMethod?: KeystoreEncryptionMethod;
   discoverableCredentials?: boolean;
+  /**
+   * Which authenticators the browser offers: the device's own, a security key
+   * or phone, or every kind. Default `'any'`: the request names none.
+   */
   authenticatorType?: AuthenticatorType;
+  /** The WebAuthn name for `authenticatorType`; the two must not disagree. */
   authenticatorAttachment?: AuthenticatorAttachment;
+  /** Not read: a registration always requires user verification. */
   userVerification?: UserVerificationRequirement;
   [key: string]: unknown;
 }
@@ -140,6 +146,7 @@ export interface CreateCredentialOptions {
 export interface WebAuthnConfig {
   discoverableCredentials?: boolean;
   userVerification?: UserVerificationRequirement;
+  /** Not read by `configureWebAuthn`; give `createCredential` an `authenticatorType`. */
   authenticatorAttachment?: AuthenticatorAttachment;
   residentKey?: ResidentKeyRequirement;
   requireResidentKey?: boolean;

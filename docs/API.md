@@ -61,7 +61,17 @@ Options:
 - `encryptKeystore?: boolean`
 - `keystoreEncryptionMethod?: 'prf' | 'largeBlob' | 'hmac-secret'`
 - `discoverableCredentials?: boolean`
-- `authenticatorType?: 'platform' | 'cross-platform' | 'any'`
+- `authenticatorType?: 'platform' | 'cross-platform' | 'any'` — which
+  authenticators the browser offers: the device's own (Touch ID, Windows
+  Hello, a phone's screen lock), a security key or another phone, or every
+  kind. `'any'` is the default and names none in the request.
+- `authenticatorAttachment?: 'platform' | 'cross-platform'` — the WebAuthn name
+  for the same choice. Giving both with different values, or a value neither
+  knows, throws a `TypeError` before anyone is asked.
+
+Before 0.9.1 both were listed here and neither reached the browser: the request
+named no attachment, so every kind of authenticator was offered — a YubiKey as
+much as the device's own. That is still the default.
 
 ```js
 const credential = await WebAuthnDIDProvider.createCredential({

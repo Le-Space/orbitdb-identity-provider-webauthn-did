@@ -34,6 +34,7 @@ export default defineConfig({
     'passkey-wallet-session-key.test.js',
     'prf-keys.test.js',
     'vault.test.js',
+    'webauthn-authenticator-type.test.js',
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
