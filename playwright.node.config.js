@@ -32,6 +32,8 @@ export default defineConfig({
     'webauthn-recovery.test.js',
     'p256-wallet-primitives.test.js',
     'passkey-wallet-session-key.test.js',
+    'prf-keys.test.js',
+    'vault.test.js',
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,

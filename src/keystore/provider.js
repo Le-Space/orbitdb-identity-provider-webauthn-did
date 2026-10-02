@@ -61,6 +61,13 @@ export class OrbitDBWebAuthnIdentityProvider {
    *   `createWorkerSigner`): the identity is its DID, OrbitDB signs through
    *   it, and nothing of it is in this provider or any keystore. Give
    *   `Identities()` the keystore from `createSessionKeystore({ signer })`.
+   * @param {Uint8Array} [options.prfOutput] - The passkey's PRF output, already
+   *   read with `readPrfOutput(webauthnCredential)` — to unlock a vault, say.
+   *   The signing key is then derived from it instead of from a second
+   *   assertion: one touch for both. It has to answer the same PRF input the
+   *   provider would ask, so read it without a `prfInput` of your own. Unused
+   *   with `signer`, `useKeystoreDID` or `deriveSigningKeyFromPrf: false`, and
+   *   once the keystore holds a key for the DID.
    */
   constructor({
     webauthnCredential,
@@ -72,8 +79,17 @@ export class OrbitDBWebAuthnIdentityProvider {
     deriveSigningKeyFromPrf = true,
     signingKeyType = KEY_TYPES.SECP256K1,
     signer = null,
+    prfOutput = null,
   }) {
     if (signer) assertSigner(signer);
+    if (
+      prfOutput != null &&
+      !(prfOutput instanceof Uint8Array && prfOutput.length >= 32)
+    ) {
+      throw new TypeError(
+        'prfOutput must be the PRF output readPrfOutput returns: at least 32 bytes'
+      );
+    }
     this.signer = signer;
     if (![KEY_TYPES.SECP256K1, KEY_TYPES.ED25519].includes(signingKeyType)) {
       throw new Error(
@@ -83,8 +99,11 @@ export class OrbitDBWebAuthnIdentityProvider {
     this.credential = webauthnCredential;
     this.signingKeyType = signingKeyType;
     // Costs one extra assertion the first time an identity is created on a
-    // device. Set false to keep a keystore-generated key instead.
+    // device — none when the application hands over `prfOutput`. Set false to
+    // keep a keystore-generated key instead.
     this.deriveSigningKeyFromPrf = deriveSigningKeyFromPrf;
+    // Held only until the signing key is in the keystore; see getId().
+    this.prfOutput = prfOutput;
     this.webauthnProvider = new WebAuthnDIDProvider(webauthnCredential);
     this.type = IDENTITY_TYPES.WEBAUTHN; // Set instance property
     this.useKeystoreDID = useKeystoreDID; // Flag to use Ed25519 DID from keystore
@@ -167,8 +186,13 @@ export class OrbitDBWebAuthnIdentityProvider {
           did,
           credential: this.credential,
           keyType: this.signingKeyType,
+          seed: this.prfOutput ?? undefined,
         });
         identityLog('Derived signing key: %s', outcome);
+        // The key is in the keystore now, so the secret it came from is not
+        // needed again. Only the reference goes: the bytes are the caller's,
+        // who may still be deriving from them.
+        if (outcome !== 'unavailable') this.prfOutput = null;
       }
     }
 
@@ -749,6 +773,7 @@ export class OrbitDBWebAuthnIdentityProvider {
       deriveSigningKeyFromPrf = true,
       signingKeyType = KEY_TYPES.SECP256K1,
       signer = null,
+      prfOutput = null,
     } = options;
 
     identityLog(
@@ -768,6 +793,7 @@ export class OrbitDBWebAuthnIdentityProvider {
       deriveSigningKeyFromPrf,
       signingKeyType,
       signer,
+      prfOutput,
     });
 
     // If encryption is enabled, create and unlock encrypted keystore
@@ -841,6 +867,7 @@ export class OrbitDBWebAuthnIdentityProvider {
  * @param {boolean} options.encryptKeystore - If true, encrypts the keystore with WebAuthn-protected secret
  * @param {string} options.keystoreEncryptionMethod - Encryption method: 'largeBlob' or 'hmac-secret'
  * @param {string} [options.signingKeyType] - PRF-derived signing key type: 'secp256k1' (default) or 'Ed25519'
+ * @param {Uint8Array} [options.prfOutput] - A PRF output already read with `readPrfOutput`; the signing key is derived from it without asking the passkey again
  * @returns {Function} Provider factory for OrbitDB.
  */
 export function OrbitDBWebAuthnIdentityProviderFunction(options = {}) {

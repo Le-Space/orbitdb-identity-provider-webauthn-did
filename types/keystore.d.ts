@@ -54,6 +54,8 @@ export interface OrbitDBWebAuthnIdentityProviderOptions {
   signingKeyType?: 'secp256k1' | 'Ed25519';
   /** A key that signs elsewhere (e.g. a Web Worker): the identity is its DID. Pair with `createSessionKeystore({ signer })`. */
   signer?: ExternalSigner;
+  /** The PRF output, already read with `readPrfOutput(webauthnCredential)`: the signing key is derived from it, with no second touch. Read it without a `prfInput` of your own. */
+  prfOutput?: Uint8Array;
   [key: string]: unknown;
 }
 

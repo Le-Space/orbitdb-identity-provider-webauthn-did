@@ -31,6 +31,23 @@ export {
   signP256Challenge,
 } from './webauthn/p256-wallet.js';
 
+// The same PRF keys and vaults as the main entry, without OrbitDB: a wallet
+// unlocks with one touch, and its session keys outlive one security key.
+export {
+  readPrfOutput,
+  deriveSubkey,
+  deriveAesKey,
+} from '../keystore/prf-keys.js';
+export {
+  createVault,
+  openVault,
+  addSlot,
+  removeSlot,
+  replacePayload,
+  slotIdFor,
+} from '../keystore/vault.js';
+export { PrfUnavailableError, VaultError } from '../errors.js';
+
 export {
   createWorkerKeystoreClient,
   createWorkerSigner,

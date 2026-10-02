@@ -106,6 +106,9 @@ property:
 - `WebAuthnAuthenticationError`
 - `WebAuthnVerificationError`
 - `KeystoreEncryptionError`
+  - `PrfUnavailableError` (`PRF_UNAVAILABLE`) — the authenticator answered
+    without a PRF output
+  - `VaultError` — a vault refused; see [Vaults](#vaults)
 - `VarsigVerificationError`
 
 ```js
@@ -165,6 +168,9 @@ Common options:
 - `keystoreEncryptionMethod`
 - `keyType`
 - `usePersistentKey`
+- `prfOutput` — a PRF output already read with `readPrfOutput`, so the signing
+  key costs no second touch; see
+  [One touch for the data and the identity](#one-touch-for-the-data-and-the-identity)
 
 ### WebAuthn Configuration
 
@@ -246,6 +252,130 @@ used in [the recovery example](https://github.com/NiKrause/orbitdb-storage-bridg
 the database half of the same problem is in
 [orbitdb-storage-bridge](https://github.com/NiKrause/orbitdb-storage-bridge/blob/main/docs/RECOVERY-ON-A-SECOND-DEVICE.md).
 
+### PRF Keys and Vaults
+
+Since 0.9.0. Applications that keep data under keys from the passkey used to
+write their own HKDF over the PRF output, read it once per key, and had no way
+for a second security key to open what the first one sealed. These functions
+replace that: one read, any number of keys derived from it, and a vault any
+registered authenticator opens.
+
+#### `readPrfOutput(credential, options?)`
+
+One assertion — one touch — returning the credential's PRF output, 32 bytes.
+It always asks the same question: `options.prfInput`, else the input the
+credential was registered with, else `prfInputForRelyingParty(rpId)`, which
+every device computes alike. It never draws a random input, which would give
+bytes that never come back.
+
+- `rpId` — the current host by default.
+- `prfInput` — overrides the credential's. Leave it out when the output also
+  goes to the identity provider, which asks with the credential's.
+
+Throws `PrfUnavailableError` when the authenticator answers without a PRF
+output. A refused prompt stays the browser's `NotAllowedError`, so "the user
+said no" and "this authenticator has no PRF" can be told apart.
+
+#### `deriveSubkey(prfOutput, info, { length = 32 })`
+
+HKDF-SHA-256 with an empty salt, 1 to 8160 bytes. `info` is part of the data
+format: the same output and `info` always give the same bytes, and a different
+`info` gives unrelated ones. Name it after the application and the purpose, and
+version it — `invoice/db-key/v1`; bumping the version rotates the key and makes
+everything sealed under the old one unreadable.
+
+The derivations Le-Space/belege, Le-Space/invoice and simple-todo's escrow01
+wrote for themselves give the same bytes through it, and so does this
+package's own signing key; `tests/prf-keys.test.js` holds vectors from each.
+
+#### `deriveAesKey(prfOutput, info)`
+
+The same derivation as a non-extractable AES-GCM-256 `CryptoKey`: it encrypts
+and decrypts, and no script can read its bytes.
+
+#### One touch for the data and the identity
+
+Hand the output to the identity provider as `prfOutput`, and it derives the
+OrbitDB signing key from it instead of asking the passkey again:
+
+```js
+const prfOutput = await readPrfOutput(credential);
+
+const { payload } = await openVault(vault, {
+  slotKey: await deriveAesKey(prfOutput, 'invoice/vault-slot/v1'),
+  rawCredentialId: credential.rawCredentialId,
+});
+
+const identity = await identities.createIdentity({
+  provider: OrbitDBWebAuthnIdentityProviderFunction({
+    webauthnCredential: credential,
+    prfOutput,
+  }),
+});
+```
+
+It is the same key the provider would have derived by asking itself, so a
+device where nobody hands it over arrives at the same identity document. The
+provider instance drops its reference once the key is in the keystore and
+never alters the bytes; the options object passed to
+`OrbitDBWebAuthnIdentityProviderFunction` still holds them for as long as the
+application keeps it. `encryptKeystore` still asks on its own.
+
+#### Vaults
+
+A key derived from a passkey exists only where that passkey is. A second
+security key has its own PRF secret, so it derives different keys and cannot
+open what the first one sealed. A vault holds what must be the same for every
+key — a database key, database names, a peer seed — sealed under a random
+vault key, and gives each registered authenticator a slot: the vault key,
+sealed under that authenticator's
+`deriveAesKey(prfOutput, '<app>/vault-slot/v1')`. Any slot opens the vault.
+
+- `createVault(payload, { slotKey, rawCredentialId })` → `{ vault, vaultKey }`.
+  The creating authenticator's slot comes with it: a vault without one could
+  never be opened.
+- `openVault(vault, { slotKey, rawCredentialId })` → `{ payload, vaultKey }`.
+- `addSlot(vault, vaultKey, { slotKey, rawCredentialId })` → a new record with
+  the new authenticator's slot. It needs the vault open and the new key
+  touched, so in practice both keys are at one computer.
+- `removeSlot(vault, rawCredentialId)` → a new record without that slot. It
+  needs no key: whoever may write the record may shorten it, so guard the
+  record where it is stored.
+- `replacePayload(vault, vaultKey, payload)` → a new record with a new
+  payload, the same vault key and the same slots.
+- `slotIdFor(rawCredentialId)` → the id a slot is filed under, the SHA-256 of
+  the raw credential id; the id itself is never written into the record.
+
+Each function returns a new record and leaves the one passed in unchanged. The
+record is plain JSON with nothing secret in the clear (format version 1, in
+`src/keystore/vault.js`), so it can be stored anywhere, replicated, and backed
+up in public. Every ciphertext in it is bound to the vault's id, and every slot
+also to its authenticator, so neither can be moved to another vault or
+relabelled to another authenticator.
+
+Refusals are `VaultError`, with `code`:
+
+- `VAULT_MALFORMED` — not a version-1 vault
+- `VAULT_NO_SLOT` — this authenticator has no slot
+- `VAULT_LOCKED` — the key does not open it, or the record was altered
+- `VAULT_SLOT_EXISTS` — the authenticator already has a slot
+- `VAULT_LAST_SLOT` — the last slot cannot go
+
+What a vault does not do:
+
+- **Removing a slot revokes nothing already opened.** An authenticator that
+  opened the vault has seen the vault key, and older copies of the record still
+  carry its slot. Against a stolen key, make a new vault with a new key and move
+  what the old one protected.
+- **It cannot tell the current record from an earlier copy of itself.** Where a
+  rollback matters, the place the record is stored has to say which is current.
+- **It does not make two keys one person.** Each authenticator keeps its own DID
+  and signing key; who may write to a database is its access controller's
+  decision.
+
+`tests/vault-two-authenticators.test.js` runs this in Chromium with two virtual
+authenticators, each with its own PRF secret as two YubiKeys have.
+
 ### largeBlob Metadata Helpers
 
 These helpers encode and recover identity metadata used by the demo recovery
@@ -280,7 +410,11 @@ Safer storage helpers:
 - `storeWebAuthnCredentialSafe(credential, key?)`
 - `loadWebAuthnCredentialSafe(key?)`
 - `clearWebAuthnCredentialSafe(key?)`
-- `extractPrfSeedFromCredential(credential)`
+- `extractPrfSeedFromCredential(credential, options?)` →
+  `{ seed, source: 'prf' }`, or `{ seed: null, source: 'none' }` without PRF.
+  Without a `prfInput` — in `options` or on the credential — it asks a random
+  question, so the seed never comes back and nothing derived from it survives
+  the page; it says so on the console. Prefer `readPrfOutput`.
 
 ### Keystore Encryption Helpers
 
@@ -411,7 +545,15 @@ const ucanSigner = signer.toUcantoSigner({
 - `storeWebAuthnCredentialSafe(credential, key?)`
 - `loadWebAuthnCredentialSafe(key?)`
 - `clearWebAuthnCredentialSafe(key?)`
-- `extractPrfSeedFromCredential(credential)`
+- `extractPrfSeedFromCredential(credential, options?)` — see
+  [Credential Storage Helpers](#credential-storage-helpers)
+
+### PRF Keys and Vaults (standalone)
+
+The same functions as the root export, without OrbitDB: `readPrfOutput`,
+`deriveSubkey`, `deriveAesKey`, `createVault`, `openVault`, `addSlot`,
+`removeSlot`, `replacePayload`, `slotIdFor`, `PrfUnavailableError` and
+`VaultError`. See [PRF Keys and Vaults](#prf-keys-and-vaults).
 
 ### P-256 Wallet Primitives
 

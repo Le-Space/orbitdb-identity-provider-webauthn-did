@@ -36,6 +36,7 @@ import {
 import { CRYPTO_ALGORITHMS, KEY_TYPES } from '../constants.js';
 import { buildCredentialRequestOptions } from '../webauthn/config.js';
 import { prfInputForRelyingParty } from '../webauthn/prf-input.js';
+import { hkdfSha256 } from './prf-keys.js';
 
 const log = logger('orbitdb-identity-provider-webauthn-did:derived-key');
 
@@ -45,30 +46,15 @@ const DERIVATION_INFO = 'orbitdb-identity-provider-webauthn-did:signing-key:v1';
 const SECP256K1_KEY_BYTES = 32;
 
 /**
- * HKDF-SHA256 a 32-byte candidate from the PRF seed.
+ * HKDF-SHA256 a 32-byte candidate from the PRF seed — the same HKDF that
+ * `deriveSubkey` exposes, without its input checks, so this derivation accepts
+ * exactly what it accepted before.
  * @param {Uint8Array} seed - PRF output.
  * @param {string} info - Domain separation string.
  * @returns {Promise<Uint8Array>} 32 bytes.
  */
-async function hkdf(seed, info) {
-  const baseKey = await crypto.subtle.importKey(
-    'raw',
-    seed,
-    CRYPTO_ALGORITHMS.HKDF,
-    false,
-    ['deriveBits']
-  );
-  const bits = await crypto.subtle.deriveBits(
-    {
-      name: CRYPTO_ALGORITHMS.HKDF,
-      hash: CRYPTO_ALGORITHMS.SHA_256,
-      salt: new Uint8Array(0),
-      info: new TextEncoder().encode(info),
-    },
-    baseKey,
-    SECP256K1_KEY_BYTES * 8
-  );
-  return new Uint8Array(bits);
+function hkdf(seed, info) {
+  return hkdfSha256(seed, info, SECP256K1_KEY_BYTES);
 }
 
 /**
@@ -186,6 +172,10 @@ export async function getPrfOutput(credential, { rpId } = {}) {
  * @param {Object} params.credential - Stored WebAuthn credential info.
  * @param {string} [params.rpId] - Relying party id.
  * @param {string} [params.keyType='secp256k1'] - Type of key to derive.
+ * @param {Uint8Array} [params.seed] - A PRF output already read, e.g. by
+ *   `readPrfOutput` while unlocking something else. When given, the passkey is
+ *   not asked again: one touch serves the signing key and whatever else the
+ *   application derives from the same answer.
  * @returns {Promise<'derived'|'existing'|'unavailable'>} What happened.
  */
 export async function ensureDerivedSigningKey({
@@ -194,6 +184,7 @@ export async function ensureDerivedSigningKey({
   credential,
   rpId,
   keyType = KEY_TYPES.SECP256K1,
+  seed: prfSeed,
 }) {
   if (!keystore || !did || !credential) return 'unavailable';
 
@@ -218,7 +209,10 @@ export async function ensureDerivedSigningKey({
     return 'unavailable';
   }
 
-  const seed = await getPrfOutput(credential, { rpId });
+  const seed =
+    prfSeed instanceof Uint8Array
+      ? prfSeed
+      : await getPrfOutput(credential, { rpId });
   if (!seed) {
     log(
       'no PRF output; falling back to a keystore-generated key, so this identity is stable per device but not reproducible across devices'

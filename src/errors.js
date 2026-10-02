@@ -6,6 +6,11 @@ export const ERROR_CODES = Object.freeze({
   KEYSTORE_ENCRYPTION_FAILED: 'KEYSTORE_ENCRYPTION_FAILED',
   VARSIG_VERIFICATION_FAILED: 'VARSIG_VERIFICATION_FAILED',
   INVALID_INPUT: 'INVALID_INPUT',
+  VAULT_MALFORMED: 'VAULT_MALFORMED',
+  VAULT_NO_SLOT: 'VAULT_NO_SLOT',
+  VAULT_LOCKED: 'VAULT_LOCKED',
+  VAULT_SLOT_EXISTS: 'VAULT_SLOT_EXISTS',
+  VAULT_LAST_SLOT: 'VAULT_LAST_SLOT',
 });
 
 export class WebAuthnIdentityError extends Error {
@@ -83,6 +88,22 @@ export class PrfUnavailableError extends KeystoreEncryptionError {
     super(message, options);
     this.name = 'PrfUnavailableError';
     this.code = 'PRF_UNAVAILABLE';
+  }
+}
+
+/**
+ * A vault refused: it is not a vault (`VAULT_MALFORMED`), this authenticator
+ * has no slot in it (`VAULT_NO_SLOT`), the key does not open it or it was
+ * altered (`VAULT_LOCKED`), the authenticator already has a slot
+ * (`VAULT_SLOT_EXISTS`), or the slot is the last one (`VAULT_LAST_SLOT`).
+ */
+export class VaultError extends KeystoreEncryptionError {
+  constructor(message, options = {}) {
+    super(message, {
+      ...options,
+      code: options.code || ERROR_CODES.VAULT_MALFORMED,
+    });
+    this.name = 'VaultError';
   }
 }
 

@@ -574,4 +574,51 @@ test.describe('Standalone WebAuthn Toolkit', () => {
       value: originalCredentials,
     });
   });
+
+  test('extractPrfSeedFromCredential says so when it has to ask a random question', async () => {
+    const navigatorObject = globalThis.navigator || {};
+    const originalCredentials = navigatorObject.credentials;
+    const originalWarn = console.warn;
+    const asked = [];
+    const warnings = [];
+    console.warn = (...args) => warnings.push(args.join(' '));
+    Object.defineProperty(navigatorObject, 'credentials', {
+      configurable: true,
+      value: {
+        get: async (options) => {
+          asked.push(Array.from(options.publicKey.extensions.prf.eval.first));
+          return {
+            getClientExtensionResults: () => ({
+              prf: { results: { first: new Uint8Array(32).fill(7) } },
+            }),
+          };
+        },
+      },
+    });
+
+    try {
+      const credential = { rawCredentialId: new Uint8Array([91, 92, 93]) };
+      await extractPrfSeedFromCredential(credential, { rpId: 'example.test' });
+      await extractPrfSeedFromCredential(credential, { rpId: 'example.test' });
+      // Unchanged: two calls, two different questions …
+      expect(asked[0]).not.toEqual(asked[1]);
+      // … but no longer in silence.
+      expect(warnings).toHaveLength(2);
+      expect(warnings[0]).toMatch(/no prfInput/);
+
+      const fixed = new Uint8Array(32).fill(1);
+      await extractPrfSeedFromCredential(
+        { ...credential, prfInput: fixed },
+        { rpId: 'example.test' }
+      );
+      expect(asked[2]).toEqual(Array.from(fixed));
+      expect(warnings).toHaveLength(2);
+    } finally {
+      console.warn = originalWarn;
+      Object.defineProperty(navigatorObject, 'credentials', {
+        configurable: true,
+        value: originalCredentials,
+      });
+    }
+  });
 });

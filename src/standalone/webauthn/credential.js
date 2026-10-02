@@ -93,6 +93,12 @@ export function clearWebAuthnCredentialSafe(
  * secret at all. A refused or failed assertion is thrown, not turned into
  * "no PRF".
  *
+ * Without a `prfInput` — in `options` or on the credential — the authenticator
+ * is asked a random question, and the seed differs on every call: whatever is
+ * derived from it is lost when the page closes. That is kept as it was, and
+ * now said on the console each time. `readPrfOutput` asks the fixed question
+ * for the relying party instead.
+ *
  * @param {Object} credential
  * @param {{rpId?: string, prfInput?: Uint8Array, discoverableCredentials?: boolean}} [options]
  * @returns {Promise<{seed: Uint8Array, source: 'prf'}|{seed: null, source: 'none'}>}
@@ -109,10 +115,13 @@ export async function extractPrfSeedFromCredential(credential, options = {}) {
     'rawCredentialId'
   );
   const rpId = options.rpId || window.location.hostname;
-  const prfInput =
-    options.prfInput ||
-    credential.prfInput ||
-    crypto.getRandomValues(new Uint8Array(32));
+  let prfInput = options.prfInput || credential.prfInput;
+  if (!prfInput) {
+    console.warn(
+      'extractPrfSeedFromCredential: no prfInput, so the authenticator is asked a random question and this seed will never come back — anything derived from it is lost when the page closes. Pass the prfInput the credential was registered with, or use readPrfOutput.'
+    );
+    prfInput = crypto.getRandomValues(new Uint8Array(32));
+  }
 
   const assertion = await navigator.credentials.get(
     buildCredentialRequestOptions({

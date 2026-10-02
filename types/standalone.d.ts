@@ -284,3 +284,116 @@ export function createWorkerSigner(
   publicKey: Uint8Array;
   sign(data: Uint8Array): Promise<Uint8Array>;
 };
+
+/**
+ * One read of the passkey's PRF output, and the keys derived from it. Read it
+ * once and derive everything from that answer: each read is a touch.
+ */
+export function readPrfOutput(
+  credential: {
+    rawCredentialId: Uint8Array | ArrayBuffer | number[];
+    /** The input the credential was registered with, if it has its own. */
+    prfInput?: Uint8Array;
+    [key: string]: unknown;
+  },
+  options?: {
+    /** Defaults to this page's hostname. */
+    rpId?: string;
+    /** Overrides the credential's input. Never a random one: see the docs. */
+    prfInput?: Uint8Array;
+  }
+): Promise<Uint8Array>;
+
+/** HKDF-SHA-256, empty salt. `info` is part of the data format: version it. */
+export function deriveSubkey(
+  prfOutput: Uint8Array,
+  info: string,
+  options?: { /** 1 to 8160 bytes; default 32. */ length?: number }
+): Promise<Uint8Array>;
+
+/** A non-extractable AES-GCM-256 key whose material is `deriveSubkey(prfOutput, info)`. */
+export function deriveAesKey(
+  prfOutput: Uint8Array,
+  info: string
+): Promise<CryptoKey>;
+
+/**
+ * A secret several authenticators can open: a random vault key seals the
+ * payload, and each authenticator has a slot holding that key. Plain JSON,
+ * nothing secret in the clear.
+ */
+export interface Vault {
+  version: 1;
+  algorithm: 'AES-GCM';
+  /** 16 random bytes, hex. */
+  id: string;
+  payload: { iv: string; ciphertext: string };
+  slots: Array<{
+    /** SHA-256 of the authenticator's raw credential id, hex. */
+    kid: string;
+    iv: string;
+    ciphertext: string;
+  }>;
+}
+
+/** One authenticator's way into a vault. */
+export interface VaultSlotKey {
+  /** `deriveAesKey(prfOutput, '<app>/vault-slot/v1')`, or 32 raw bytes. */
+  slotKey: CryptoKey | Uint8Array;
+  rawCredentialId: Uint8Array;
+}
+
+/** A new vault with one slot, for the authenticator that creates it. */
+export function createVault(
+  payload: Uint8Array,
+  firstSlot: VaultSlotKey
+): Promise<{ vault: Vault; vaultKey: Uint8Array }>;
+
+/** Throws `VaultError`: `VAULT_NO_SLOT`, `VAULT_LOCKED`, `VAULT_MALFORMED`. */
+export function openVault(
+  vault: Vault,
+  slot: VaultSlotKey
+): Promise<{ payload: Uint8Array; vaultKey: Uint8Array }>;
+
+/** A new record with one more slot. Throws `VAULT_SLOT_EXISTS`, `VAULT_LOCKED`. */
+export function addSlot(
+  vault: Vault,
+  vaultKey: Uint8Array,
+  slot: VaultSlotKey
+): Promise<Vault>;
+
+/**
+ * A new record without that authenticator's slot. Revokes nothing already
+ * opened. Throws `VAULT_NO_SLOT`, `VAULT_LAST_SLOT`.
+ */
+export function removeSlot(
+  vault: Vault,
+  rawCredentialId: Uint8Array
+): Promise<Vault>;
+
+/** A new record with a new payload, same key, same slots. Throws `VAULT_LOCKED`. */
+export function replacePayload(
+  vault: Vault,
+  vaultKey: Uint8Array,
+  payload: Uint8Array
+): Promise<Vault>;
+
+/** The slot id an authenticator is filed under. */
+export function slotIdFor(rawCredentialId: Uint8Array): Promise<string>;
+
+export type VaultErrorCode =
+  | 'VAULT_MALFORMED'
+  | 'VAULT_NO_SLOT'
+  | 'VAULT_LOCKED'
+  | 'VAULT_SLOT_EXISTS'
+  | 'VAULT_LAST_SLOT';
+
+/** The authenticator answered without a PRF output; nothing stands in for it. */
+export class PrfUnavailableError extends Error {
+  code: 'PRF_UNAVAILABLE';
+}
+
+/** A vault refused; `code` says why. */
+export class VaultError extends Error {
+  code: VaultErrorCode;
+}
