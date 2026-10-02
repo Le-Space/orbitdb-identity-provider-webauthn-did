@@ -1,5 +1,24 @@
 # Changes
 
+## 0.9.1
+
+`createCredential` honours the choice of authenticator that its options, its types and
+`docs/API.md` have offered all along.
+
+### Fixed
+
+- `authenticatorType` (`'platform'`, `'cross-platform'` or `'any'`) and its WebAuthn name
+  `authenticatorAttachment` reach the browser. Since 0.2.8 neither did: `buildAuthenticatorSelection`
+  dropped them, so the request named no attachment and the browser offered every kind of
+  authenticator, a security key as much as the device's own — though the code asked for
+  `'platform'`. That stays the default, so nothing changes for a caller that passes neither.
+- An unknown value, or the two disagreeing, is a `TypeError` before anyone is asked, instead of
+  being ignored.
+
+Tested in Chromium with a virtual authenticator on the USB transport: offered by default, asked for
+with `'cross-platform'`, never asked with `'platform'`. The vault test from 0.9.0 now also runs with
+two such security keys.
+
 ## 0.9.0
 
 What applications kept writing for themselves, once and here: one read of the PRF output for every
