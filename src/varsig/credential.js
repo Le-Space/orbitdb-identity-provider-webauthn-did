@@ -4,7 +4,10 @@
 import { DIDKey } from 'iso-did';
 import { parseAttestationObject } from 'iso-passkeys';
 import { toArrayBuffer } from './utils.js';
-import { buildAuthenticatorSelection } from '../webauthn/config.js';
+import {
+  buildAuthenticatorSelection,
+  resolveAuthenticatorAttachment,
+} from '../webauthn/config.js';
 import { logWebAuthnResponse } from '../webauthn/debug-log.js';
 
 /**
@@ -62,6 +65,13 @@ function extractCredentialInfo(attestationObject) {
  * @param {string} [options.displayName] - Display name.
  * @param {string} [options.domain] - RP ID / domain.
  * @param {boolean} [options.discoverableCredentials] - Override global discoverable credential policy.
+ * @param {'platform'|'cross-platform'|'any'} [options.authenticatorType='any'] -
+ *   Which authenticators the browser offers, as for
+ *   `WebAuthnDIDProvider.createCredential`. `'any'` names none in the
+ *   request, which is what this has sent since 0.2.8.
+ * @param {'platform'|'cross-platform'} [options.authenticatorAttachment] -
+ *   The WebAuthn name for the same choice; refused if it disagrees with
+ *   `authenticatorType`.
  * @returns {Promise<Object>} Credential info including public key and DID.
  */
 async function createWebAuthnVarsigCredential(options = {}) {
@@ -69,7 +79,6 @@ async function createWebAuthnVarsigCredential(options = {}) {
     userId,
     displayName,
     domain,
-    authenticatorType = 'any',
     forceP256 = false,
   } = {
     userId: `orbitdb-user-${Date.now()}`,
@@ -77,6 +86,9 @@ async function createWebAuthnVarsigCredential(options = {}) {
     domain: window.location.hostname,
     ...options,
   };
+
+  // Before any prompt: a choice this cannot honour is the caller's mistake.
+  const authenticatorAttachment = resolveAuthenticatorAttachment(options);
 
   const publicKey = {
     rp: { name: 'OrbitDB Varsig Identity', id: domain },
@@ -94,13 +106,19 @@ async function createWebAuthnVarsigCredential(options = {}) {
           { type: 'public-key', alg: -7 },
         ],
     attestation: 'none',
-    authenticatorSelection: buildAuthenticatorSelection({
-      ...options,
-      ...(authenticatorType !== 'any' && {
-        authenticatorAttachment: authenticatorType,
-      }),
-      userVerification: 'preferred',
-    }),
+    // This named the attachment and `userVerification: 'preferred'` from March
+    // to October 2026 without effect: buildAuthenticatorSelection passed on
+    // neither, so every kind of authenticator was offered and user
+    // verification was required. Every kind stays the default;
+    // `authenticatorType` narrows it. Verification stays required: a varsig
+    // signature without the UV flag is refused — `verifyWebAuthnAssertion`
+    // insists on it, when signing and when verifying — and asking for less
+    // would let an authenticator that cannot verify the user register here
+    // and then never sign.
+    authenticatorSelection: {
+      ...buildAuthenticatorSelection(options),
+      ...(authenticatorAttachment && { authenticatorAttachment }),
+    },
     // Recovery writes the varsig metadata into the passkey's largeBlob after
     // registration — which an authenticator only allows for a credential that
     // was created asking for it. `preferred` costs nothing where the

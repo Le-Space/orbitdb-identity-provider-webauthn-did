@@ -99,22 +99,20 @@ export function resolveAuthenticatorAttachment(
 
 /**
  * `authenticatorSelection` for a registration. Only the discoverable-credential
- * policy comes from `options` and `configureWebAuthn`; an `authenticatorAttachment`
- * or `userVerification` in `options` is not read here. A registration that
- * wants an attachment adds it itself — see `resolveAuthenticatorAttachment`.
+ * policy comes from `options` and `configureWebAuthn`, and user verification is
+ * always required; an `authenticatorAttachment` or `userVerification` in
+ * `options` is not read. This used to destructure both as if it read them,
+ * which is how two registrations came to name values that never reached the
+ * browser. A registration that wants an attachment adds it itself — see
+ * `resolveAuthenticatorAttachment`.
  */
 export function buildAuthenticatorSelection(options = {}) {
-  const {
-    discoverableCredentials,
-    authenticatorAttachment,
-    userVerification = 'required',
-  } = resolveWebAuthnConfig(options);
+  const { discoverableCredentials } = resolveWebAuthnConfig(options);
 
   return {
-    ...(authenticatorAttachment ? { authenticatorAttachment } : {}),
     requireResidentKey: discoverableCredentials,
     residentKey: discoverableCredentials ? 'required' : 'discouraged',
-    userVerification,
+    userVerification: 'required',
   };
 }
 
