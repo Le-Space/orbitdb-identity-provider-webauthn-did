@@ -47,6 +47,7 @@ export {
   slotIdFor,
 } from '../keystore/vault.js';
 export { PrfUnavailableError, VaultError } from '../errors.js';
+export { createSecretSigner } from '../keystore/secret-signer.js';
 
 export {
   createWorkerKeystoreClient,

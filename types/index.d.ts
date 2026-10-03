@@ -619,6 +619,22 @@ export function replacePayload(
 /** The slot id an authenticator is filed under. */
 export function slotIdFor(rawCredentialId: Uint8Array): Promise<string>;
 
+/**
+ * An Ed25519 signer derived from a secret — an identity that is nobody's
+ * passkey, e.g. the books every key of their owner writes as. Same secret and
+ * `info`, same DID everywhere. Use with `createSessionKeystore({ signer })`
+ * and the provider's `signer` option.
+ */
+export function createSecretSigner(
+  secret: Uint8Array,
+  options: { info: string }
+): Promise<{
+  did: string;
+  type: 'Ed25519';
+  publicKey: Uint8Array;
+  sign(data: Uint8Array): Promise<Uint8Array>;
+}>;
+
 export type VaultErrorCode =
   | 'VAULT_MALFORMED'
   | 'VAULT_NO_SLOT'

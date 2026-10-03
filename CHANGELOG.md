@@ -1,10 +1,39 @@
 # Changes
 
+## 0.10.0
+
+An identity that is nobody's passkey, so that every security key of an owner can write as the same
+one; and the varsig registration's half of 0.9.1's fix, which #83 had entered under 0.9.1 after
+0.9.1 was already published from #81.
+
+### Added
+
+- **`createSecretSigner(secret, { info })`**: an Ed25519 signer derived from at least 32 bytes of
+  secret with HKDF-SHA-256 under `info`, its DID the key's `did:key`. Kept in a vault
+  (`createVault`), the secret gives every key that opens a slot the same identity — the root of a
+  database's `OrbitDBAccessController`, which OrbitDB fixes at creation and a passkey identity
+  would hold for good. In `./standalone` and `./keystore` as well.
+- **`OrbitDBWebAuthnIdentityProviderFunction({ signer })` needs no `webauthnCredential`.** A signer
+  is the whole identity, and no passkey stands behind it. Without either, the provider refuses
+  instead of failing on the missing credential.
+
+### Fixed
+
+- The varsig registration — `WebAuthnVarsigProvider.createCredential`, `createWebAuthnSigner` and
+  the signers built on it, and `createWebAuthnEd25519Credential` — honours `authenticatorType` too,
+  which it dropped the same way (#83). It still requires user verification: its code asked for
+  `'preferred'`, which never reached the browser either, and a varsig signature without the UV flag
+  is refused when it is made and when it is verified.
+
+### Changed
+
+- `createEd25519DidFromPublicKey` lives in `src/keystore/` and is re-exported from where it was, so
+  the main entry can build a `did:key` without importing the worker client.
+
 ## 0.9.1
 
-Every registration honours the choice of authenticator that its options, its types and
-`docs/API.md` have offered all along: `createCredential`, and the varsig registration with the
-standalone signers built on it.
+`createCredential` honours the choice of authenticator that its options, its types and
+`docs/API.md` have offered all along.
 
 ### Fixed
 
@@ -13,25 +42,12 @@ standalone signers built on it.
   dropped them, so the request named no attachment and the browser offered every kind of
   authenticator, a security key as much as the device's own — though the code asked for
   `'platform'`. That stays the default, so nothing changes for a caller that passes neither.
-- The same holds for the varsig registration — `WebAuthnVarsigProvider.createCredential`,
-  `createWebAuthnSigner` and the signers built on it, and `createWebAuthnEd25519Credential` —
-  whose `authenticatorType` was dropped the same way.
 - An unknown value, or the two disagreeing, is a `TypeError` before anyone is asked, instead of
   being ignored.
 
-### Notes
-
-- The varsig registration still requires user verification. Its code asked for `'preferred'`,
-  which never reached the browser either; that line is gone rather than made to work. A varsig
-  signature without the UV flag is refused, when it is made and when it is verified, so with
-  `'preferred'` a security key that cannot verify its user would register a non-discoverable
-  credential and then never sign — measured in Chromium.
-
 Tested in Chromium with a virtual authenticator on the USB transport: offered by default, asked for
-with `'cross-platform'`, never asked with `'platform'`, through `createCredential` and through the
-varsig registration — which also leaves the device's own authenticator out when asked for
-`'cross-platform'`, and refuses a key that cannot verify its user. The vault test from 0.9.0 now
-also runs with two such security keys.
+with `'cross-platform'`, never asked with `'platform'`. The vault test from 0.9.0 now also runs with
+two such security keys.
 
 ## 0.9.0
 

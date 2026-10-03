@@ -40,6 +40,7 @@ export interface ExtensionSupport {
 }
 
 export interface OrbitDBWebAuthnIdentityProviderOptions {
+  /** Required unless `signer` is given. */
   webauthnCredential?: Record<string, unknown>;
   keystore?: unknown;
   usePersistentKey?: boolean;
@@ -95,6 +96,11 @@ export function createSessionKeystore(options?: {
   signer?: ExternalSigner;
 }): Promise<unknown>;
 export function isSessionKeystore(keystore: unknown): boolean;
+/** An Ed25519 signer derived from a secret (HKDF under `info`): an identity that is nobody's passkey. */
+export function createSecretSigner(
+  secret: Uint8Array,
+  options: { info: string }
+): Promise<ExternalSigner>;
 export function assertSigner(signer: unknown): void;
 
 /** The authenticator returned no PRF output; nothing stands in for it. */

@@ -228,6 +228,8 @@ const withSecondKey = await addSlot(vault, vaultKey, secondKeysSlot);
 
 How it works, and what a vault does not do: [docs/API.md](docs/API.md#prf-keys-and-vaults).
 
+Since **0.10.0**, a secret kept in that vault can be an identity of its own: `createSecretSigner(secret, { info })` turns it into an Ed25519 signer for the provider's `signer` option, so every key that opens the vault writes as the same identity — the root of a database's access controller, which a single passkey's identity would hold for good. See [docs/API.md](docs/API.md#an-identity-that-is-nobodys-passkey-createsecretsignersecret--info-).
+
 ### Keystore-based DID (WebAuthn + OrbitDB keystore)
 
 ```mermaid

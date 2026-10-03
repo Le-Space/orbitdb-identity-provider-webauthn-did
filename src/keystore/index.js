@@ -5,4 +5,5 @@ export * from './encryption.js';
 export { default } from './encryption.js';
 export * from './provider.js';
 export * from './session-keystore.js';
+export { createSecretSigner } from './secret-signer.js';
 export { PrfUnavailableError } from '../errors.js';

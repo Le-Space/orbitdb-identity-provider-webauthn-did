@@ -386,6 +386,50 @@ What a vault does not do:
 `tests/vault-two-authenticators.test.js` runs this in Chromium with two virtual
 authenticators, each with its own PRF secret as two YubiKeys have.
 
+#### An identity that is nobody's passkey: `createSecretSigner(secret, { info })`
+
+Since 0.10.0. A database whose access controller is rooted at one passkey's
+identity belongs to that passkey for good: OrbitDB fixes who may grant write
+access when a database is created, and a second security key is a second
+identity. Give the database an identity of its own instead, and let every key
+act as it: keep a random secret in the vault, and turn it into a signer.
+
+```js
+// `secret`: 32 random bytes the application keeps in its vault's payload,
+// so that any slot — any of the owner's keys — gets them back.
+const books = await createSecretSigner(secret, {
+  info: 'invoice/books-identity/v1',
+});
+
+const keystore = await createSessionKeystore({ signer: books });
+const identities = await Identities({ ipfs, keystore });
+const identity = await identities.createIdentity({
+  provider: OrbitDBWebAuthnIdentityProviderFunction({ signer: books }),
+});
+const orbitdb = await createOrbitDB({ ipfs, identities, identity });
+const db = await orbitdb.open('books', {
+  AccessController: OrbitDBAccessController({ write: [books.did] }),
+});
+```
+
+- The key is Ed25519, derived with HKDF-SHA-256 from at least 32 bytes of
+  secret under `info`, and the DID is its `did:key`. The same secret and
+  `info` give the same key, DID and identity document on every device and
+  through every slot; another `info` gives another identity. Version `info`.
+- What comes back is `{ did, type: 'Ed25519', publicKey, sign(data) }`, the
+  shape the `signer` option takes. The private key stays inside `sign`.
+- With `signer`, `OrbitDBWebAuthnIdentityProviderFunction` needs no
+  `webauthnCredential`: no passkey stands behind this identity, and nothing
+  asks one. Peers verify it as any signer identity — the DID's key is the
+  identity's public key.
+- People who should write without holding the secret are granted access under
+  their own identities (`db.access.grant('write', did)`), which can be revoked.
+  The secret's identity, as the root, cannot; against a stolen key, make a new
+  vault with a new secret and move the data.
+
+`tests/secret-signer.test.js` writes through two keys as the same root and has
+an identity from another secret refused.
+
 ### largeBlob Metadata Helpers
 
 These helpers encode and recover identity metadata used by the demo recovery
@@ -577,8 +621,9 @@ const ucanSigner = signer.toUcantoSigner({
 
 The same functions as the root export, without OrbitDB: `readPrfOutput`,
 `deriveSubkey`, `deriveAesKey`, `createVault`, `openVault`, `addSlot`,
-`removeSlot`, `replacePayload`, `slotIdFor`, `PrfUnavailableError` and
-`VaultError`. See [PRF Keys and Vaults](#prf-keys-and-vaults).
+`removeSlot`, `replacePayload`, `slotIdFor`, `createSecretSigner`,
+`PrfUnavailableError` and `VaultError`. See
+[PRF Keys and Vaults](#prf-keys-and-vaults).
 
 ### P-256 Wallet Primitives
 

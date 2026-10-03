@@ -329,6 +329,9 @@ export {
   replacePayload,
   slotIdFor,
 } from './keystore/vault.js';
+// An identity that is nobody's passkey — the books every key of their owner
+// writes as, its secret kept in a vault.
+export { createSecretSigner } from './keystore/secret-signer.js';
 
 export default {
   WebAuthnDIDProvider,
