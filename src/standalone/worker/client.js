@@ -1,5 +1,9 @@
-import { varint } from 'multiformats';
-import { base58btc } from 'multiformats/bases/base58';
+// Lives in keystore/ so the main entry can build an Ed25519 did:key without
+// importing this module, whose `new Worker(new URL(…))` would make bundlers
+// pack the worker into every app.
+import { createEd25519DidFromPublicKey } from '../../keystore/ed25519-did.js';
+
+export { createEd25519DidFromPublicKey };
 
 /**
  * Convert a Uint8Array into a detached ArrayBuffer slice.
@@ -57,30 +61,6 @@ function normalizeArchiveAfterDeserialization(archive) {
     };
   }
   return archive;
-}
-
-/**
- * Build a did:key identifier from raw Ed25519 public key bytes.
- * @param {Uint8Array} publicKeyBytes
- * @returns {string}
- */
-export function createEd25519DidFromPublicKey(publicKeyBytes) {
-  if (!(publicKeyBytes instanceof Uint8Array) || publicKeyBytes.length !== 32) {
-    throw new Error(
-      `Invalid Ed25519 public key length: ${publicKeyBytes?.length || 0}`
-    );
-  }
-
-  const ED25519_MULTICODEC = 0xed;
-  const codecLength = varint.encodingLength(ED25519_MULTICODEC);
-  const codecBytes = new Uint8Array(codecLength);
-  varint.encodeTo(ED25519_MULTICODEC, codecBytes, 0);
-
-  const multikey = new Uint8Array(codecBytes.length + publicKeyBytes.length);
-  multikey.set(codecBytes, 0);
-  multikey.set(publicKeyBytes, codecBytes.length);
-
-  return `did:key:${base58btc.encode(multikey)}`;
 }
 
 /**

@@ -35,6 +35,7 @@ export default defineConfig({
     'prf-keys.test.js',
     'vault.test.js',
     'webauthn-authenticator-type.test.js',
+    'secret-signer.test.js',
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,

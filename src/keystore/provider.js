@@ -46,7 +46,9 @@ function normalizeByteArray(value) {
 export class OrbitDBWebAuthnIdentityProvider {
   /**
    * @param {Object} options - Provider configuration.
-   * @param {Object} options.webauthnCredential - WebAuthn credential info.
+   * @param {Object} [options.webauthnCredential] - WebAuthn credential info.
+   *   Required unless `signer` is given: a signer is the whole identity, and
+   *   no passkey stands behind it (`createSecretSigner`).
    * @param {boolean} [options.useKeystoreDID=false] - Use keystore DID instead of WebAuthn DID.
    * @param {Object|null} [options.keystore=null] - OrbitDB keystore instance.
    * @param {string} [options.keystoreKeyType='secp256k1'] - Keystore key type.
@@ -82,6 +84,11 @@ export class OrbitDBWebAuthnIdentityProvider {
     prfOutput = null,
   }) {
     if (signer) assertSigner(signer);
+    if (!signer && !webauthnCredential) {
+      throw new TypeError(
+        'the provider needs a webauthnCredential, or a signer that is the identity'
+      );
+    }
     if (
       prfOutput != null &&
       !(prfOutput instanceof Uint8Array && prfOutput.length >= 32)
@@ -104,7 +111,9 @@ export class OrbitDBWebAuthnIdentityProvider {
     this.deriveSigningKeyFromPrf = deriveSigningKeyFromPrf;
     // Held only until the signing key is in the keystore; see getId().
     this.prfOutput = prfOutput;
-    this.webauthnProvider = new WebAuthnDIDProvider(webauthnCredential);
+    this.webauthnProvider = webauthnCredential
+      ? new WebAuthnDIDProvider(webauthnCredential)
+      : null;
     this.type = IDENTITY_TYPES.WEBAUTHN; // Set instance property
     this.useKeystoreDID = useKeystoreDID; // Flag to use Ed25519 DID from keystore
     this.keystore = keystore; // OrbitDB keystore instance
