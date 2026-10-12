@@ -255,6 +255,93 @@ export function getSignedBatchedCallTypedData({
   };
 };
 /**
+ * EIP-712's `encodeType`: the primary type, then every struct it refers to,
+ * sorted by name.
+ * @param {{ types: TypedDataParameters['types'], primaryType: string }} parameters
+ * @returns {string}
+ */
+export function encodeTypedDataType({
+  types,
+  primaryType,
+}: {
+  types: TypedDataParameters['types'];
+  primaryType: string;
+}): string;
+/**
+ * The account's own EIP-712 domain separator, with the salt Calibur uses.
+ * @param {AccountDomain} accountDomain
+ * @returns {Hex}
+ */
+export function getAccountDomainSeparator(accountDomain: AccountDomain): Hex;
+/**
+ * ERC-7739 `TypedDataSign` for typed data an app asks the account to sign,
+ * as Calibur v1.0.0 rebuilds it in `isValidSignature`:
+ *
+ * - `digest` is what the app passes to `isValidSignature`: the typed data's
+ *   own EIP-712 hash, `keccak256(0x1901 ‖ appSeparator ‖ contentsHash)`;
+ * - `nestedDigest` is what the key signs:
+ *   `keccak256(0x1901 ‖ appSeparator ‖ hashStruct(TypedDataSign))`, where
+ *   `hashStruct(TypedDataSign) = keccak256(typeHash ‖ contentsHash ‖
+ *   abi.encode(keccak256(name), keccak256(version), chainId,
+ *   verifyingContract, salt))` with the account's domain, and `typeHash` the
+ *   hash of `TypedDataSign(<Contents> contents,string name,string version,
+ *   uint256 chainId,address verifyingContract,bytes32 salt)<contents type>`;
+ * - `contentsDescription` is the contents type in ERC-7739's implicit mode:
+ *   it starts with the contents name, followed by `(`.
+ *
+ * The account's chain is the one `isValidSignature` runs on; the app's domain
+ * may name another (Zama's gateway chain does).
+ * @param {{ typedData: TypedDataParameters, accountDomain: AccountDomain }} parameters
+ * @returns {{ digest: Hex, nestedDigest: Hex, appDomainSeparator: Hex, contentsHash: Hex, contentsDescription: string }}
+ */
+export function getTypedDataSignDigests({
+  typedData,
+  accountDomain,
+}: {
+  typedData: TypedDataParameters;
+  accountDomain: AccountDomain;
+}): {
+  digest: Hex;
+  nestedDigest: Hex;
+  appDomainSeparator: Hex;
+  contentsHash: Hex;
+  contentsDescription: string;
+};
+/**
+ * ERC-7739 `PersonalSign` for a message hash an app passes to
+ * `isValidSignature` (for a personal message, viem's `hashMessage`): what the
+ * key signs, `keccak256(0x1901 ‖ accountSeparator ‖
+ * keccak256(abi.encode(typeHash("PersonalSign(bytes prefixed)"), hash)))`.
+ * @param {{ hash: Hex, accountDomain: AccountDomain }} parameters
+ * @returns {Hex}
+ */
+export function getPersonalSignNestedDigest({
+  hash,
+  accountDomain,
+}: {
+  hash: Hex;
+  accountDomain: AccountDomain;
+}): Hex;
+/**
+ * The signature Calibur's `decodeAsTypedDataSig` reads:
+ * `abi.encode(bytes signature, bytes32 appSeparator, bytes32 contentsHash,
+ * string contentsDescr)`. Wrap the result with
+ * `encodeUserOperationSignature` for `isValidSignature`.
+ * @param {{ signature: Hex, appDomainSeparator: Hex, contentsHash: Hex, contentsDescription: string }} parameters
+ * @returns {Hex}
+ */
+export function encodeTypedDataSignSignature({
+  signature,
+  appDomainSeparator,
+  contentsHash,
+  contentsDescription,
+}: {
+  signature: Hex;
+  appDomainSeparator: Hex;
+  contentsHash: Hex;
+  contentsDescription: string;
+}): Hex;
+/**
  * Calldata for `execute(SignedBatchedCall, bytes wrappedSignature)`.
  * @param {{ signedBatchedCall: SignedBatchedCall, signature: Hex, hookData?: Hex | undefined }} parameters
  * @returns {Hex}
@@ -366,4 +453,31 @@ export type SignedBatchedCall = {
   keyHash: Hex;
   executor: Address;
   deadline: bigint;
+};
+/**
+ * The domain `isValidSignature` nests a signature in: what `eip712Domain()`
+ * returns for the account, read from the chain it runs on.
+ */
+export type AccountDomain = {
+  name: string;
+  version: string;
+  chainId: bigint | number;
+  verifyingContract: Address;
+  salt: Hex;
+};
+/**
+ * EIP-712 typed data as viem's `signTypedData` takes it. `types` may carry
+ * `EIP712Domain`; it is not part of the contents.
+ */
+export type TypedDataParameters = {
+  domain: import('viem').TypedDataDomain;
+  types: Record<
+    string,
+    ReadonlyArray<{
+      name: string;
+      type: string;
+    }>
+  >;
+  primaryType: string;
+  message: Record<string, unknown>;
 };

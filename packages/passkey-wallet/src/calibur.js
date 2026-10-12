@@ -14,17 +14,30 @@
  *   a hook address in the low 160 bits (SettingsLib);
  * - `execute(SignedBatchedCall, bytes)` verifies EIP-712 typed data in the
  *   domain (name "Calibur", version "1.0.0", chainId, the account, salt =
- *   saltPrefix << 160 | implementation) (EIP712.sol, SignedBatchedCallLib).
+ *   saltPrefix << 160 | implementation) (EIP712.sol, SignedBatchedCallLib);
+ * - `isValidSignature` (ERC-1271) takes a registered key's signature only in
+ *   ERC-7739 form (Calibur.sol, ERC7739.sol, ERC7739Utils.sol,
+ *   TypedDataSignLib.sol, PersonalSignLib.sol): typed data as
+ *   `abi.encode(bytes signature, bytes32 appSeparator, bytes32 contentsHash,
+ *   string contentsDescr)` — ABI-encoded, not the packed layout of the ERC —
+ *   over the nested `TypedDataSign` hash; a personal message as the bare
+ *   signature over the nested `PersonalSign(bytes prefixed)` hash. Either is
+ *   wrapped like a user operation signature, `abi.encode(keyHash, signature,
+ *   hookData)`.
  *
- * test/calibur compares every one of them with Calibur's own libraries.
+ * test/calibur compares every one of them with Calibur's own libraries; the
+ * ERC-7739 encodings are checked against Calibur v1.0.0 itself on a Sepolia
+ * fork (packages/passkey-wallet/test/fork/erc7739.test.js).
  */
 import {
   bytesToHex,
   concat,
   decodeAbiParameters,
+  domainSeparator,
   encodeAbiParameters,
   encodeFunctionData,
   getAddress,
+  hashStruct,
   isAddress,
   isHex,
   keccak256,
@@ -654,6 +667,240 @@ export function getSignedBatchedCallTypedData({
       deadline: signedBatchedCall.deadline,
     },
   });
+}
+
+/**
+ * The domain `isValidSignature` nests a signature in: what `eip712Domain()`
+ * returns for the account, read from the chain it runs on.
+ * @typedef {{
+ *   name: string,
+ *   version: string,
+ *   chainId: bigint | number,
+ *   verifyingContract: Address,
+ *   salt: Hex,
+ * }} AccountDomain
+ */
+
+/**
+ * EIP-712 typed data as viem's `signTypedData` takes it. `types` may carry
+ * `EIP712Domain`; it is not part of the contents.
+ * @typedef {{
+ *   domain: import('viem').TypedDataDomain,
+ *   types: Record<string, ReadonlyArray<{ name: string, type: string }>>,
+ *   primaryType: string,
+ *   message: Record<string, unknown>,
+ * }} TypedDataParameters
+ */
+
+const TYPED_DATA_SIGN_FIELDS =
+  ' contents,string name,string version,uint256 chainId,address verifyingContract,bytes32 salt)';
+const PERSONAL_SIGN_TYPEHASH = keccak256(
+  stringToBytes('PersonalSign(bytes prefixed)')
+);
+/** ERC-7739 refuses a contents name holding any of these. */
+const FORBIDDEN_IN_CONTENTS_NAME = /[\0 ,()]/;
+
+/**
+ * EIP-712's `encodeType`: the primary type, then every struct it refers to,
+ * sorted by name.
+ * @param {{ types: TypedDataParameters['types'], primaryType: string }} parameters
+ * @returns {string}
+ */
+export function encodeTypedDataType({ types, primaryType }) {
+  /** @type {Set<string>} */
+  const found = new Set();
+  /** @param {string} type */
+  const visit = (type) => {
+    const name = /^\w*/.exec(type)?.[0] ?? '';
+    if (found.has(name) || !types[name]) return;
+    found.add(name);
+    for (const field of types[name]) visit(field.type);
+  };
+  visit(primaryType);
+  if (!found.has(primaryType)) {
+    throw new TypeError(`types has no ${primaryType}`);
+  }
+  found.delete(primaryType);
+  return [primaryType, ...[...found].sort()]
+    .map(
+      (name) =>
+        `${name}(${types[name].map(({ name: field, type }) => `${type} ${field}`).join(',')})`
+    )
+    .join('');
+}
+
+/**
+ * @param {AccountDomain} accountDomain
+ */
+function readAccountDomain(accountDomain) {
+  if (!accountDomain || typeof accountDomain !== 'object') {
+    throw new TypeError('The account domain from eip712Domain() is needed');
+  }
+  const chainId = BigInt(accountDomain.chainId);
+  if (
+    typeof accountDomain.name !== 'string' ||
+    typeof accountDomain.version !== 'string'
+  ) {
+    throw new TypeError('The account domain needs a name and a version');
+  }
+  return {
+    name: accountDomain.name,
+    version: accountDomain.version,
+    chainId,
+    verifyingContract: readAddress(
+      accountDomain.verifyingContract,
+      'verifyingContract'
+    ),
+    salt: readBytes32(accountDomain.salt, 'salt'),
+  };
+}
+
+/**
+ * The account's own EIP-712 domain separator, with the salt Calibur uses.
+ * @param {AccountDomain} accountDomain
+ * @returns {Hex}
+ */
+export function getAccountDomainSeparator(accountDomain) {
+  const domain = readAccountDomain(accountDomain);
+  return domainSeparator({ domain });
+}
+
+/**
+ * ERC-7739 `TypedDataSign` for typed data an app asks the account to sign,
+ * as Calibur v1.0.0 rebuilds it in `isValidSignature`:
+ *
+ * - `digest` is what the app passes to `isValidSignature`: the typed data's
+ *   own EIP-712 hash, `keccak256(0x1901 ‖ appSeparator ‖ contentsHash)`;
+ * - `nestedDigest` is what the key signs:
+ *   `keccak256(0x1901 ‖ appSeparator ‖ hashStruct(TypedDataSign))`, where
+ *   `hashStruct(TypedDataSign) = keccak256(typeHash ‖ contentsHash ‖
+ *   abi.encode(keccak256(name), keccak256(version), chainId,
+ *   verifyingContract, salt))` with the account's domain, and `typeHash` the
+ *   hash of `TypedDataSign(<Contents> contents,string name,string version,
+ *   uint256 chainId,address verifyingContract,bytes32 salt)<contents type>`;
+ * - `contentsDescription` is the contents type in ERC-7739's implicit mode:
+ *   it starts with the contents name, followed by `(`.
+ *
+ * The account's chain is the one `isValidSignature` runs on; the app's domain
+ * may name another (Zama's gateway chain does).
+ * @param {{ typedData: TypedDataParameters, accountDomain: AccountDomain }} parameters
+ * @returns {{ digest: Hex, nestedDigest: Hex, appDomainSeparator: Hex, contentsHash: Hex, contentsDescription: string }}
+ */
+export function getTypedDataSignDigests({ typedData, accountDomain }) {
+  if (!typedData || typeof typedData !== 'object') {
+    throw new TypeError('typed data is needed');
+  }
+  const { domain = {}, types, primaryType, message } = typedData;
+  if (typeof primaryType !== 'string' || primaryType === 'EIP712Domain') {
+    throw new TypeError(
+      'typed data needs a primaryType other than EIP712Domain'
+    );
+  }
+  if (FORBIDDEN_IN_CONTENTS_NAME.test(primaryType) || !primaryType) {
+    throw new RangeError('ERC-7739 refuses this contents name');
+  }
+  const { EIP712Domain: _domainType, ...contentsTypes } = types ?? {};
+  const account = readAccountDomain(accountDomain);
+  const contentsDescription = encodeTypedDataType({
+    types: contentsTypes,
+    primaryType,
+  });
+  const contentsHash = hashStruct({
+    data: message,
+    primaryType,
+    types: contentsTypes,
+  });
+  const appDomainSeparator = domainSeparator({ domain });
+  const typeHash = keccak256(
+    stringToBytes(
+      `TypedDataSign(${primaryType}${TYPED_DATA_SIGN_FIELDS}${contentsDescription}`
+    )
+  );
+  const domainBytes = encodeAbiParameters(
+    [
+      { type: 'bytes32' },
+      { type: 'bytes32' },
+      { type: 'uint256' },
+      { type: 'address' },
+      { type: 'bytes32' },
+    ],
+    [
+      keccak256(stringToBytes(account.name)),
+      keccak256(stringToBytes(account.version)),
+      account.chainId,
+      account.verifyingContract,
+      account.salt,
+    ]
+  );
+  const typedDataSignHash = keccak256(
+    concat([typeHash, contentsHash, domainBytes])
+  );
+  return {
+    digest: keccak256(concat(['0x1901', appDomainSeparator, contentsHash])),
+    nestedDigest: keccak256(
+      concat(['0x1901', appDomainSeparator, typedDataSignHash])
+    ),
+    appDomainSeparator,
+    contentsHash,
+    contentsDescription,
+  };
+}
+
+/**
+ * ERC-7739 `PersonalSign` for a message hash an app passes to
+ * `isValidSignature` (for a personal message, viem's `hashMessage`): what the
+ * key signs, `keccak256(0x1901 ‖ accountSeparator ‖
+ * keccak256(abi.encode(typeHash("PersonalSign(bytes prefixed)"), hash)))`.
+ * @param {{ hash: Hex, accountDomain: AccountDomain }} parameters
+ * @returns {Hex}
+ */
+export function getPersonalSignNestedDigest({ hash, accountDomain }) {
+  const personalSignHash = keccak256(
+    encodeAbiParameters(
+      [{ type: 'bytes32' }, { type: 'bytes32' }],
+      [PERSONAL_SIGN_TYPEHASH, readBytes32(hash, 'hash')]
+    )
+  );
+  return keccak256(
+    concat([
+      '0x1901',
+      getAccountDomainSeparator(accountDomain),
+      personalSignHash,
+    ])
+  );
+}
+
+/**
+ * The signature Calibur's `decodeAsTypedDataSig` reads:
+ * `abi.encode(bytes signature, bytes32 appSeparator, bytes32 contentsHash,
+ * string contentsDescr)`. Wrap the result with
+ * `encodeUserOperationSignature` for `isValidSignature`.
+ * @param {{ signature: Hex, appDomainSeparator: Hex, contentsHash: Hex, contentsDescription: string }} parameters
+ * @returns {Hex}
+ */
+export function encodeTypedDataSignSignature({
+  signature,
+  appDomainSeparator,
+  contentsHash,
+  contentsDescription,
+}) {
+  if (typeof contentsDescription !== 'string' || !contentsDescription) {
+    throw new TypeError('contentsDescription must be the contents type');
+  }
+  return encodeAbiParameters(
+    [
+      { type: 'bytes' },
+      { type: 'bytes32' },
+      { type: 'bytes32' },
+      { type: 'string' },
+    ],
+    [
+      readBytesHex(signature, 'signature'),
+      readBytes32(appDomainSeparator, 'appDomainSeparator'),
+      readBytes32(contentsHash, 'contentsHash'),
+      contentsDescription,
+    ]
+  );
 }
 
 /**

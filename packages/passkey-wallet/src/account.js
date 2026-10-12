@@ -2,22 +2,25 @@
  * The passkey as a viem smart account on Calibur and EntryPoint v0.8.
  */
 import { signP256Challenge } from '@le-space/orbitdb-identity-provider-webauthn-did/standalone';
-import { getAddress, hexToBytes, isAddress } from 'viem';
+import { getAddress, hashMessage, hexToBytes, isAddress } from 'viem';
 import {
   entryPoint08Abi,
   getUserOperationHash,
   toSmartAccount,
 } from 'viem/account-abstraction';
-import { getChainId } from 'viem/actions';
+import { getChainId, readContract } from 'viem/actions';
 
 import { caliburAbi } from './abi.js';
 import {
   decodeExecuteUserOpCallData,
   encodeExecuteUserOpCallData,
+  encodeTypedDataSignSignature,
   encodeUserOperationSignature,
   encodeWebAuthnAuth,
   getCaliburStubSignature,
   getKeyHash,
+  getPersonalSignNestedDigest,
+  getTypedDataSignDigests,
   toWebAuthnP256Key,
 } from './calibur.js';
 import { ENTRY_POINT_ADDRESS } from './constants.js';
@@ -102,13 +105,12 @@ function readDescriptor(descriptor) {
 }
 
 /**
- * @param {string} method
+ * What signs a 32-byte challenge for the account: by default the passkey,
+ * through `signP256Challenge` (one WebAuthn prompt, user verification
+ * required). Anything that returns the same parts of a WebAuthn assertion for
+ * the registered key will do.
+ * @typedef {(challenge: Uint8Array) => Promise<import('./calibur.js').WebAuthnAuth>} ChallengeSigner
  */
-function unsupported(method) {
-  return new Error(
-    `${method} is not supported by the Calibur passkey account yet: Calibur verifies ERC-1271 signatures through ERC-7739 wrapping, which this package does not build`
-  );
-}
 
 /**
  * A viem smart account for a Calibur account whose passkey is registered.
@@ -121,8 +123,12 @@ function unsupported(method) {
  *   one `BatchedCall`, and one failure reverts them all.
  * - The account is already an EIP-7702 delegate, so there are no factory
  *   arguments; set it up first with `createCaliburPasskeySetup`.
- * - `signMessage` and `signTypedData` throw: ERC-1271 on Calibur goes through
- *   ERC-7739, which this package does not implement.
+ * - `signTypedData` and `signMessage` sign for ERC-1271 (`isValidSignature`)
+ *   in the ERC-7739 form Calibur takes from a registered key: the nested
+ *   `TypedDataSign` or `PersonalSign` hash, in the account's domain as
+ *   `eip712Domain()` reads it from `client`'s chain (one read per signature).
+ *   An app checks the result with the plain hash of what it asked to have
+ *   signed — `hashTypedData` or `hashMessage` — as it would for any account.
  *
  * Bundler and paymaster are the app's: pass this account to a bundler client
  * the app creates (`createCaliburBundlerClient` takes URLs and headers).
@@ -133,10 +139,13 @@ function unsupported(method) {
  *   descriptor: P256CredentialDescriptor,
  *   verificationGasLimit?: bigint | undefined,
  *   nonceKeyManager?: import('viem').NonceManager | undefined,
+ *   sign?: ChallengeSigner | undefined,
  * }} parameters
- *   `client` reads chain state (nonce, chain id, code); `address` is the
- *   Calibur account, the EOA the setup created; `verificationGasLimit` is the
- *   floor for user operations (default `DEFAULT_VERIFICATION_GAS_LIMIT`).
+ *   `client` reads chain state (nonce, chain id, code, the account's EIP-712
+ *   domain); `address` is the Calibur account, the EOA the setup created;
+ *   `verificationGasLimit` is the floor for user operations (default
+ *   `DEFAULT_VERIFICATION_GAS_LIMIT`); `sign` replaces the passkey prompt,
+ *   for a test or another signer of the same key.
  * @returns {Promise<CaliburPasskeyAccount>}
  */
 export async function toCaliburPasskeyAccount(parameters) {
@@ -146,6 +155,7 @@ export async function toCaliburPasskeyAccount(parameters) {
     descriptor: descriptorParameter,
     verificationGasLimit = DEFAULT_VERIFICATION_GAS_LIMIT,
     nonceKeyManager,
+    sign: signParameter,
   } = parameters ?? /** @type {any} */ ({});
   if (!client) {
     throw new TypeError('toCaliburPasskeyAccount needs a viem client');
@@ -156,7 +166,13 @@ export async function toCaliburPasskeyAccount(parameters) {
   if (typeof verificationGasLimit !== 'bigint' || verificationGasLimit < 0n) {
     throw new TypeError('verificationGasLimit must be a non-negative bigint');
   }
+  if (signParameter !== undefined && typeof signParameter !== 'function') {
+    throw new TypeError('sign must be a function');
+  }
   const descriptor = readDescriptor(descriptorParameter);
+  /** @type {ChallengeSigner} */
+  const sign =
+    signParameter ?? ((challenge) => signP256Challenge(descriptor, challenge));
   const account = getAddress(address);
   const key = toWebAuthnP256Key(descriptor);
   const keyHash = getKeyHash(key);
@@ -165,6 +181,25 @@ export async function toCaliburPasskeyAccount(parameters) {
     address: ENTRY_POINT_ADDRESS,
     version: '0.8',
   });
+
+  /**
+   * The account's EIP-712 domain as Calibur reports it on `client`'s chain.
+   * @returns {Promise<import('./calibur.js').AccountDomain>}
+   */
+  async function readAccountDomain() {
+    const [, name, version, chainId, verifyingContract, salt] =
+      await readContract(client, {
+        address: account,
+        abi: caliburAbi,
+        functionName: 'eip712Domain',
+      });
+    return { name, version, chainId, verifyingContract, salt };
+  }
+
+  /** @param {import('viem').Hex} digest */
+  async function signWithKey(digest) {
+    return encodeWebAuthnAuth(await sign(hexToBytes(digest)));
+  }
 
   return /** @type {Promise<CaliburPasskeyAccount>} */ (
     toSmartAccount({
@@ -193,12 +228,38 @@ export async function toCaliburPasskeyAccount(parameters) {
         return getCaliburStubSignature({ keyHash, rpId: descriptor.rpId });
       },
 
-      async signMessage() {
-        throw unsupported('signMessage');
+      async signMessage({ message }) {
+        const nestedDigest = getPersonalSignNestedDigest({
+          hash: hashMessage(message),
+          accountDomain: await readAccountDomain(),
+        });
+        return encodeUserOperationSignature({
+          keyHash,
+          signature: await signWithKey(nestedDigest),
+        });
       },
 
-      async signTypedData() {
-        throw unsupported('signTypedData');
+      async signTypedData(typedData) {
+        const {
+          nestedDigest,
+          appDomainSeparator,
+          contentsHash,
+          contentsDescription,
+        } = getTypedDataSignDigests({
+          typedData: /** @type {import('./calibur.js').TypedDataParameters} */ (
+            /** @type {unknown} */ (typedData)
+          ),
+          accountDomain: await readAccountDomain(),
+        });
+        return encodeUserOperationSignature({
+          keyHash,
+          signature: encodeTypedDataSignSignature({
+            signature: await signWithKey(nestedDigest),
+            appDomainSeparator,
+            contentsHash,
+            contentsDescription,
+          }),
+        });
       },
 
       async signUserOperation(userOperationParameters) {
@@ -212,10 +273,9 @@ export async function toCaliburPasskeyAccount(parameters) {
           entryPointVersion: entryPoint.version,
           userOperation: { ...userOperation, sender: account },
         });
-        const assertion = await signP256Challenge(descriptor, hexToBytes(hash));
         return encodeUserOperationSignature({
           keyHash,
-          signature: encodeWebAuthnAuth(assertion),
+          signature: await signWithKey(hash),
         });
       },
 

@@ -32,6 +32,7 @@ export default defineConfig({
     'webauthn-recovery.test.js',
     'p256-wallet-primitives.test.js',
     'passkey-wallet-session-key.test.js',
+    'passkey-wallet-erc7739.test.js',
     'prf-keys.test.js',
     'vault.test.js',
     'webauthn-authenticator-type.test.js',
