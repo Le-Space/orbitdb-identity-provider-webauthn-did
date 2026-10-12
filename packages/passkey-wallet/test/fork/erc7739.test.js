@@ -10,9 +10,9 @@
  * transaction that registers a WebAuthn P-256 key, and asks
  * `isValidSignature` with the plain hash an app would pass.
  *
- * The typed data is shaped like Zama's unified decryption permit
- * (`UserDecryptRequestVerification`, @fhevm/sdk 0.14), because that is what
- * escrow01's passkey account is meant to sign
+ * The typed data is Zama's unified decryption permit
+ * (`UserDecryptRequestVerification`) as @fhevm/sdk 0.14.3 builds it, because
+ * that is what escrow01's passkey account is meant to sign
  * (Le-Space/simple-todo#54, step 4). The call is made the way @fhevm/sdk
  * 0.14.3 makes it before forwarding a permit: an eth_call with
  * `gas: 250_000` (ERC1271_GAS_LIMIT, the relayer/KMS default too).
@@ -48,6 +48,7 @@ register('../support/resolve-package-self.mjs', import.meta.url);
 const wallet = await import('../../src/index.js');
 const { createSoftwarePasskey, p256PrecompileInput } =
   await import('../support/software-passkey.mjs');
+const { zamaPermit } = await import('../support/zama-permit.mjs');
 
 const FORK_URL = process.env.PASSKEY_WALLET_FORK_URL;
 const SDK_GAS_LIMIT = 250_000n;
@@ -143,40 +144,6 @@ async function caliburAccountWithPasskey(fork, given) {
     sign: passkey.sign,
   });
   return { address: eoa.address, account };
-}
-
-/** Shaped like Zama's unified decryption permit, @fhevm/sdk 0.14 (V2). @param {`0x${string}`} userAddress */
-function zamaPermit(userAddress) {
-  return /** @type {const} */ ({
-    domain: {
-      name: 'Decryption',
-      version: '1',
-      chainId: 10901,
-      verifyingContract: '0x0f6024a97684f7d90ddb0fAAD79cB15F2C888D24',
-    },
-    types: {
-      UserDecryptRequestVerification: [
-        { name: 'userAddress', type: 'address' },
-        { name: 'publicKey', type: 'bytes' },
-        { name: 'allowedContracts', type: 'address[]' },
-        { name: 'startTimestamp', type: 'uint256' },
-        { name: 'durationSeconds', type: 'uint256' },
-        { name: 'extraData', type: 'bytes' },
-      ],
-    },
-    primaryType: 'UserDecryptRequestVerification',
-    message: {
-      userAddress,
-      publicKey: `0x${'ab'.repeat(800)}`,
-      allowedContracts: [
-        '0x6Ee3Fa9d3aEdaAD189F5DeA9d859605c9D743429',
-        '0x4E7B06D78965594eB5EF5414c357ca21E1554491',
-      ],
-      startTimestamp: 1_791_800_000n,
-      durationSeconds: 86_400n,
-      extraData: '0x00',
-    },
-  });
 }
 
 /**
