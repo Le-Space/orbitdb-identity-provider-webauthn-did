@@ -289,8 +289,8 @@ export function getAccountDomainSeparator(accountDomain: AccountDomain): Hex;
  * - `contentsDescription` is the contents type in ERC-7739's implicit mode:
  *   it starts with the contents name, followed by `(`.
  *
- * The account's chain is the one `isValidSignature` runs on; the app's domain
- * may name another (Zama's gateway chain does).
+ * The account's chain is the one `isValidSignature` runs on, and the nesting
+ * names it; the app's domain may name another chain without changing that.
  * @param {{ typedData: TypedDataParameters, accountDomain: AccountDomain }} parameters
  * @returns {{ digest: Hex, nestedDigest: Hex, appDomainSeparator: Hex, contentsHash: Hex, contentsDescription: string }}
  */

@@ -112,6 +112,16 @@ client (`createWalletClient({ account: session.account, … })`) for
 you provide (derived from the passkey's PRF output, say), and
 `openZamaSessionKey(sealed, key)` later.
 
+To have the passkey account sign Zama's unified decryption permit itself
+(`@fhevm/sdk` 0.14), give the SDK the account as the signer, not a wallet
+client holding it: the SDK calls `signer.signTypedData({ account, … })` with
+the account's address, and a viem wallet client given an address asks its RPC
+node to sign. On a Sepolia fork on 2026-10-12, a permit built by
+`@fhevm/sdk` 0.14.3's own `createKmsUserDecryptEip712V2` and signed that way
+passed the SDK's ERC-1271 precheck (`verifyErc1271UserDecrypt`); whether
+Zama's KMS takes it too waits for the unified route on Sepolia
+([Le-Space/simple-todo#54](https://github.com/Le-Space/simple-todo/issues/54)).
+
 ## API
 
 - `createCaliburPasskeySetup({ descriptor, calls?, keySettings?, implementation? })`
@@ -173,8 +183,8 @@ unused verification gas, but the limit counts towards the prefund a paymaster
 or deposit must cover; pass a lower `verificationGasLimit` on chains known to
 have the precompile.
 
-`isValidSignature` for a `signTypedData` signature (a Zama-shaped decryption
-permit), as the least gas an `eth_call` needs, intrinsic gas included —
+`isValidSignature` for a `signTypedData` signature (a Zama decryption permit
+as @fhevm/sdk 0.14.3 builds it), as the least gas an `eth_call` needs, intrinsic gas included —
 measured on a Sepolia fork on 2026-10-12 (`test/fork/erc7739.test.js`):
 
 | Chain                                  | Least `eth_call` gas |
@@ -212,8 +222,9 @@ Calibur itself checks the ERC-7739 signatures in `test/fork/erc7739.test.js`
 (`pnpm run test:wallet-fork` at the root; needs Foundry's anvil and a Sepolia
 RPC, `PASSKEY_WALLET_FORK_URL`, a public one by default, so CI does not run
 it): on a fork, a fresh EOA is delegated to Calibur v1.0.0 with a P-256 key
-registered, and `isValidSignature` takes a Zama-shaped permit and a personal
-message signed through `signTypedData` and `signMessage`, refuses another hash,
+registered, and `isValidSignature` takes a Zama permit built as @fhevm/sdk
+0.14.3 builds it (`test/support/zama-permit.mjs`) and a personal message
+signed through `signTypedData` and `signMessage`, refuses another hash,
 an altered contents hash, another account holding the same key, and an
 account without the key — and the gas above is measured there. The key is a
 P-256 key in memory that answers like an authenticator

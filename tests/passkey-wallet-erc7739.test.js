@@ -27,6 +27,8 @@ register(
 const wallet = await import('../packages/passkey-wallet/src/index.js');
 const { createSoftwarePasskey, verifiesWithPasskey } =
   await import('../packages/passkey-wallet/test/support/software-passkey.mjs');
+const { zamaPermit } =
+  await import('../packages/passkey-wallet/test/support/zama-permit.mjs');
 
 const ACCOUNT = '0x00000000000000000000000000000000000ca11b';
 const ACCOUNT_DOMAIN = Object.freeze({
@@ -37,33 +39,7 @@ const ACCOUNT_DOMAIN = Object.freeze({
   salt: '0x000000000000000000000000000000009b1d0af20d8c6d0a44e162d11f9b8f00',
 });
 
-const PERMIT = Object.freeze({
-  domain: {
-    name: 'Decryption',
-    version: '1',
-    chainId: 10901,
-    verifyingContract: '0x0f6024a97684f7d90ddb0fAAD79cB15F2C888D24',
-  },
-  types: {
-    UserDecryptRequestVerification: [
-      { name: 'userAddress', type: 'address' },
-      { name: 'publicKey', type: 'bytes' },
-      { name: 'allowedContracts', type: 'address[]' },
-      { name: 'startTimestamp', type: 'uint256' },
-      { name: 'durationSeconds', type: 'uint256' },
-      { name: 'extraData', type: 'bytes' },
-    ],
-  },
-  primaryType: 'UserDecryptRequestVerification',
-  message: {
-    userAddress: ACCOUNT,
-    publicKey: `0x${'ab'.repeat(64)}`,
-    allowedContracts: ['0x6Ee3Fa9d3aEdaAD189F5DeA9d859605c9D743429'],
-    startTimestamp: 1_791_800_000n,
-    durationSeconds: 86_400n,
-    extraData: '0x00',
-  },
-});
+const PERMIT = zamaPermit(ACCOUNT);
 
 /**
  * A client that answers what signing asks the chain: the account's code (an
