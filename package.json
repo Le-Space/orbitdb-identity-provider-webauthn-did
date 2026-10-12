@@ -52,7 +52,8 @@
     "version": "git add -A",
     "postversion": "git push && git push --tags",
     "test:two-peer": "playwright test tests/webauthn-two-peer-replication.test.js --project=chromium --reporter=line",
-    "test:node": "playwright test --config=playwright.node.config.js"
+    "test:node": "playwright test --config=playwright.node.config.js",
+    "test:wallet-fork": "PASSKEY_WALLET_FORK_URL=${PASSKEY_WALLET_FORK_URL:-https://sepolia.drpc.org} playwright test --config=playwright.fork.config.js"
   },
   "keywords": [
     "orbitdb",

@@ -120,10 +120,14 @@ you provide (derived from the passkey's PRF output, say), and
   `sendTransaction(walletClient, { executor?, deadline? })` (path b, through
   `execute(SignedBatchedCall, bytes)`), `signAuthorization`, `toSmartAccount`
   (path a's viem account), `isActive(client)`, `discard()`.
-- `toCaliburPasskeyAccount({ client, address, descriptor, verificationGasLimit?, nonceKeyManager? })`
-  — the viem smart account for EntryPoint v0.8. `signMessage` and
-  `signTypedData` throw: ERC-1271 on Calibur needs ERC-7739 wrapping, which is
-  not built.
+- `toCaliburPasskeyAccount({ client, address, descriptor, verificationGasLimit?, nonceKeyManager?, sign? })`
+  — the viem smart account for EntryPoint v0.8. `signTypedData` and
+  `signMessage` sign for ERC-1271 in the ERC-7739 form Calibur takes from a
+  registered key (nested `TypedDataSign` / `PersonalSign`, in the account's
+  domain as `eip712Domain()` reports it); an app checks them with
+  `isValidSignature(hashTypedData(…) | hashMessage(…), signature)` as for any
+  account. `sign` replaces the passkey prompt with another signer of the same
+  key.
 - `createCaliburBundlerClient({ client, bundler: { url, headers? }, paymaster?, paymasterContext? })`
   — viem bundler and paymaster clients from your endpoints.
 - `getCaliburKeyState({ client, address, keyHash })` — delegation target,
@@ -138,7 +142,10 @@ you provide (derived from the passkey's PRF output, say), and
   `encodeExecuteUserOpCallData` (each with a `decode…`),
   `getRegisterKeyCalls`, `getRevokeKeyCall`, `getSignedBatchedCallTypedData`,
   `encodeExecuteSignedBatchedCall`, `encodeWrappedSignature`,
-  `getCaliburStubSignature`.
+  `getCaliburStubSignature`; for ERC-7739, `getTypedDataSignDigests`,
+  `encodeTypedDataSignSignature` (Calibur's ABI layout, not the ERC's packed
+  one), `getPersonalSignNestedDigest`, `getAccountDomainSeparator`,
+  `encodeTypedDataType`.
 - `CALIBUR_ADDRESS`, `ENTRY_POINT_ADDRESS`, `KeyType`, `ROOT_KEY_HASH`,
   `ZAMA_ACL_ADDRESSES`, `ZAMA_WILDCARD_CONTRACT_ADDRESS`,
   `DEFAULT_VERIFICATION_GAS_LIMIT`, `caliburAbi` (Calibur's full ABI),
@@ -166,6 +173,20 @@ unused verification gas, but the limit counts towards the prefund a paymaster
 or deposit must cover; pass a lower `verificationGasLimit` on chains known to
 have the precompile.
 
+`isValidSignature` for a `signTypedData` signature (a Zama-shaped decryption
+permit), as the least gas an `eth_call` needs, intrinsic gas included —
+measured on a Sepolia fork on 2026-10-12 (`test/fork/erc7739.test.js`):
+
+| Chain                                  | Least `eth_call` gas |
+| -------------------------------------- | -------------------- |
+| with the P-256 precompile (Osaka)      | 89.6k                |
+| without it (prague; Solidity fallback) | 372k–383k            |
+
+@fhevm/sdk 0.14.3 checks such a signature with an `eth_call` capped at 250k
+(`ERC1271_GAS_LIMIT`, which its comments give as the relayer and KMS default
+too), so a passkey permit passes there only where the precompile exists, as on
+Sepolia.
+
 ## Tests
 
 This code was restored from the only copy left of it, a packed tarball
@@ -173,13 +194,30 @@ This code was restored from the only copy left of it, a packed tarball
 Its tests were not in that tarball, and neither were the suites they made up:
 the encodings checked against Calibur's own libraries, and setup, user
 operations and Zama delegation on a Sepolia fork, which is where the gas figures
-below and the ACL version above come from. Nothing re-checks those today.
+below and the ACL version above come from. Of those, only ERC-7739 signing is
+checked against Calibur again (below); setup, user operations and Zama
+delegation are not.
 
-What runs is `tests/passkey-wallet-session-key.test.js` in the repository's node
-suite (`pnpm run test:node` at the root): a Zama session key sealed and opened,
-the format pinned by an envelope the vendored build sealed, and refusals of
-another sealing key, an altered ciphertext, an envelope naming another address
-and anything that is not an envelope.
+What runs in the repository's node suite (`pnpm run test:node` at the root):
+
+- `tests/passkey-wallet-session-key.test.js`: a Zama session key sealed and
+  opened, the format pinned by an envelope the vendored build sealed, and
+  refusals of another sealing key, an altered ciphertext, an envelope naming
+  another address and anything that is not an envelope.
+- `tests/passkey-wallet-erc7739.test.js`: the ERC-7739 digests recomputed
+  through viem's own EIP-712 code with the nesting struct written out, and the
+  account having its key sign exactly that digest as the WebAuthn challenge.
+
+Calibur itself checks the ERC-7739 signatures in `test/fork/erc7739.test.js`
+(`pnpm run test:wallet-fork` at the root; needs Foundry's anvil and a Sepolia
+RPC, `PASSKEY_WALLET_FORK_URL`, a public one by default, so CI does not run
+it): on a fork, a fresh EOA is delegated to Calibur v1.0.0 with a P-256 key
+registered, and `isValidSignature` takes a Zama-shaped permit and a personal
+message signed through `signTypedData` and `signMessage`, refuses another hash,
+an altered contents hash, another account holding the same key, and an
+account without the key — and the gas above is measured there. The key is a
+P-256 key in memory that answers like an authenticator
+(`test/support/software-passkey.mjs`).
 
 ## Releasing
 

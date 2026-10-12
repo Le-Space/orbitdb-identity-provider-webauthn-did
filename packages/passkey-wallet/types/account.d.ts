@@ -1,4 +1,11 @@
 /**
+ * What signs a 32-byte challenge for the account: by default the passkey,
+ * through `signP256Challenge` (one WebAuthn prompt, user verification
+ * required). Anything that returns the same parts of a WebAuthn assertion for
+ * the registered key will do.
+ * @typedef {(challenge: Uint8Array) => Promise<import('./calibur.js').WebAuthnAuth>} ChallengeSigner
+ */
+/**
  * A viem smart account for a Calibur account whose passkey is registered.
  *
  * - `signUserOperation` computes the EntryPoint v0.8 user operation hash, has
@@ -9,8 +16,12 @@
  *   one `BatchedCall`, and one failure reverts them all.
  * - The account is already an EIP-7702 delegate, so there are no factory
  *   arguments; set it up first with `createCaliburPasskeySetup`.
- * - `signMessage` and `signTypedData` throw: ERC-1271 on Calibur goes through
- *   ERC-7739, which this package does not implement.
+ * - `signTypedData` and `signMessage` sign for ERC-1271 (`isValidSignature`)
+ *   in the ERC-7739 form Calibur takes from a registered key: the nested
+ *   `TypedDataSign` or `PersonalSign` hash, in the account's domain as
+ *   `eip712Domain()` reads it from `client`'s chain (one read per signature).
+ *   An app checks the result with the plain hash of what it asked to have
+ *   signed — `hashTypedData` or `hashMessage` — as it would for any account.
  *
  * Bundler and paymaster are the app's: pass this account to a bundler client
  * the app creates (`createCaliburBundlerClient` takes URLs and headers).
@@ -21,10 +32,13 @@
  *   descriptor: P256CredentialDescriptor,
  *   verificationGasLimit?: bigint | undefined,
  *   nonceKeyManager?: import('viem').NonceManager | undefined,
+ *   sign?: ChallengeSigner | undefined,
  * }} parameters
- *   `client` reads chain state (nonce, chain id, code); `address` is the
- *   Calibur account, the EOA the setup created; `verificationGasLimit` is the
- *   floor for user operations (default `DEFAULT_VERIFICATION_GAS_LIMIT`).
+ *   `client` reads chain state (nonce, chain id, code, the account's EIP-712
+ *   domain); `address` is the Calibur account, the EOA the setup created;
+ *   `verificationGasLimit` is the floor for user operations (default
+ *   `DEFAULT_VERIFICATION_GAS_LIMIT`); `sign` replaces the passkey prompt,
+ *   for a test or another signer of the same key.
  * @returns {Promise<CaliburPasskeyAccount>}
  */
 export function toCaliburPasskeyAccount(parameters: {
@@ -33,6 +47,7 @@ export function toCaliburPasskeyAccount(parameters: {
   descriptor: P256CredentialDescriptor;
   verificationGasLimit?: bigint | undefined;
   nonceKeyManager?: import('viem').NonceManager | undefined;
+  sign?: ChallengeSigner | undefined;
 }): Promise<CaliburPasskeyAccount>;
 /**
  * @typedef {import('viem').Address} Address
@@ -85,6 +100,15 @@ export function toCaliburPasskeyAccount(parameters: {
  * prefund; pass less for a chain known to have the precompile.
  */
 export const DEFAULT_VERIFICATION_GAS_LIMIT: 800000n;
+/**
+ * What signs a 32-byte challenge for the account: by default the passkey,
+ * through `signP256Challenge` (one WebAuthn prompt, user verification
+ * required). Anything that returns the same parts of a WebAuthn assertion for
+ * the registered key will do.
+ */
+export type ChallengeSigner = (
+  challenge: Uint8Array
+) => Promise<import('./calibur.js').WebAuthnAuth>;
 export type Address = import('viem').Address;
 export type Hex = import('viem').Hex;
 export type Key = import('./calibur.js').Key;
