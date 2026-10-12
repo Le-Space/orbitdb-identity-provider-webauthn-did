@@ -9,8 +9,6 @@
  */
 import { test, expect } from '@playwright/test';
 import { register } from 'node:module';
-import { p256 } from '@noble/curves/p256';
-import { sha256 } from '@noble/hashes/sha256';
 import {
   createPublicClient,
   custom,
@@ -27,7 +25,7 @@ register(
   import.meta.url
 );
 const wallet = await import('../packages/passkey-wallet/src/index.js');
-const { createSoftwarePasskey } =
+const { createSoftwarePasskey, verifiesWithPasskey } =
   await import('../packages/passkey-wallet/test/support/software-passkey.mjs');
 
 const ACCOUNT = '0x00000000000000000000000000000000000ca11b';
@@ -104,23 +102,13 @@ function domainClient() {
  * What the software passkey signed: the challenge from clientDataJSON, and
  * whether the signature verifies against the key.
  */
-function readAssertion(/** @type {`0x${string}`} */ webAuthn, passkey) {
+async function readAssertion(/** @type {`0x${string}`} */ webAuthn, passkey) {
   const auth = wallet.decodeWebAuthnAuth(webAuthn);
   const { challenge } = JSON.parse(auth.clientDataJSON);
-  const message = new Uint8Array([
-    ...hexToBytes(auth.authenticatorData),
-    ...sha256(new TextEncoder().encode(auth.clientDataJSON)),
-  ]);
-  const point = new Uint8Array([
-    4,
-    ...passkey.descriptor.x,
-    ...passkey.descriptor.y,
-  ]);
-  const verifies = p256.verify(
-    new p256.Signature(auth.r, auth.s),
-    sha256(message),
-    point
-  );
+  const verifies = await verifiesWithPasskey(passkey.publicKey, {
+    ...auth,
+    authenticatorData: hexToBytes(auth.authenticatorData),
+  });
   return {
     challenge: `0x${Buffer.from(challenge, 'base64url').toString('hex')}`,
     verifies,
@@ -227,7 +215,7 @@ test('ERC-7739 refuses what Calibur would refuse to rebuild', () => {
 });
 
 test('signTypedData has the key sign the nested digest, in Calibur’s ABI layout', async () => {
-  const passkey = createSoftwarePasskey();
+  const passkey = await createSoftwarePasskey();
   const account = await wallet.toCaliburPasskeyAccount({
     client: domainClient(),
     address: ACCOUNT,
@@ -262,14 +250,14 @@ test('signTypedData has the key sign the nested digest, in Calibur’s ABI layou
   expect(appSeparator).toBe(digests.appDomainSeparator);
   expect(contentsHash).toBe(digests.contentsHash);
   expect(contentsDescription).toBe(digests.contentsDescription);
-  expect(readAssertion(webAuthn, passkey)).toEqual({
+  expect(await readAssertion(webAuthn, passkey)).toEqual({
     challenge: digests.nestedDigest,
     verifies: true,
   });
 });
 
 test('signMessage has the key sign the nested PersonalSign digest, bare inside the key wrapping', async () => {
-  const passkey = createSoftwarePasskey();
+  const passkey = await createSoftwarePasskey();
   const account = await wallet.toCaliburPasskeyAccount({
     client: domainClient(),
     address: ACCOUNT,
@@ -280,7 +268,7 @@ test('signMessage has the key sign the nested PersonalSign digest, bare inside t
   const { signature: webAuthn } = wallet.decodeUserOperationSignature(
     await account.signMessage({ message })
   );
-  expect(readAssertion(webAuthn, passkey)).toEqual({
+  expect(await readAssertion(webAuthn, passkey)).toEqual({
     challenge: wallet.getPersonalSignNestedDigest({
       hash: hashMessage(message),
       accountDomain: ACCOUNT_DOMAIN,
@@ -290,7 +278,7 @@ test('signMessage has the key sign the nested PersonalSign digest, bare inside t
 });
 
 test('a signer that is not a function is refused before an account is built', async () => {
-  const passkey = createSoftwarePasskey();
+  const passkey = await createSoftwarePasskey();
   await expect(
     wallet.toCaliburPasskeyAccount({
       client: domainClient(),

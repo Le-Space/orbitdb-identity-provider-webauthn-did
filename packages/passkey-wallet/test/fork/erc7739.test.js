@@ -46,7 +46,7 @@ import { sepolia } from 'viem/chains';
 
 register('../support/resolve-package-self.mjs', import.meta.url);
 const wallet = await import('../../src/index.js');
-const { createSoftwarePasskey } =
+const { createSoftwarePasskey, p256PrecompileInput } =
   await import('../support/software-passkey.mjs');
 
 const FORK_URL = process.env.PASSKEY_WALLET_FORK_URL;
@@ -97,12 +97,10 @@ async function startFork({ hardfork } = {}) {
  * A fresh EOA delegated to Calibur v1.0.0, with the passkey's key registered
  * — both in one type-4 transaction from the EOA to itself.
  * @param {Awaited<ReturnType<typeof startFork>>} fork
- * @param {ReturnType<typeof createSoftwarePasskey>} [passkey] a new one unless given
+ * @param {Awaited<ReturnType<typeof createSoftwarePasskey>>} [given] a new one unless given
  */
-async function caliburAccountWithPasskey(
-  fork,
-  passkey = createSoftwarePasskey()
-) {
+async function caliburAccountWithPasskey(fork, given) {
+  const passkey = given ?? (await createSoftwarePasskey());
   const eoa = privateKeyToAccount(generatePrivateKey());
   await fork.client.request({
     method: /** @type {any} */ ('anvil_setBalance'),
@@ -240,16 +238,9 @@ async function leastGas(/** @type {any} */ client, address, digest, signature) {
 
 /** Whether the P-256 precompile (EIP-7951 / RIP-7212, 0x100) answers. */
 async function hasP256Precompile(/** @type {any} */ client) {
-  const { p256 } = await import('@noble/curves/p256');
-  const hash = new Uint8Array(32).fill(1);
-  const privateKey = p256.utils.randomPrivateKey();
-  const { r, s } = p256.sign(hash, privateKey, { lowS: true });
-  const point = p256.getPublicKey(privateKey, false);
-  const hex = (/** @type {Uint8Array} */ b) => Buffer.from(b).toString('hex');
-  const word = (/** @type {bigint} */ n) => n.toString(16).padStart(64, '0');
   const { data } = await client.call({
     to: '0x0000000000000000000000000000000000000100',
-    data: `0x${hex(hash)}${word(r)}${word(s)}${hex(point.slice(1, 33))}${hex(point.slice(33))}`,
+    data: await p256PrecompileInput(),
   });
   return data === `0x${'0'.repeat(63)}1`;
 }
@@ -337,7 +328,7 @@ test.describe('ERC-7739 on Calibur v1.0.0, Sepolia fork', () => {
   test('another account cannot reuse the signature: the nested hash names the account', async () => {
     // The same passkey registered in two accounts: only the account in the
     // nested hash's domain takes the signature.
-    const passkey = createSoftwarePasskey();
+    const passkey = await createSoftwarePasskey();
     const first = await caliburAccountWithPasskey(fork, passkey);
     const second = await caliburAccountWithPasskey(fork, passkey);
     expect(
