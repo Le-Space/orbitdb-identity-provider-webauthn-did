@@ -659,3 +659,26 @@ declare const defaultExport: {
 };
 
 export default defaultExport;
+
+/**
+ * OrbitDB's verified-identity cache is keyed by `signatures.id`, which this
+ * provider keeps the same in every session of a passkey while the WebAuthn
+ * proof changes; another session of the same passkey is then refused
+ * (orbitdb/orbitdb#1258). Wraps an `Identities` instance so that such an
+ * identity is checked again the way an uncached one would be.
+ */
+export function withoutStaleIdentityCache<
+  T extends {
+    verifyIdentity: (identity: unknown) => Promise<boolean>;
+    verify: (
+      signature: string,
+      publicKey: string,
+      data: string
+    ) => Promise<boolean>;
+  },
+>(identities: T): T;
+
+/** `Identities(options)` from `@orbitdb/core`, already wrapped by `withoutStaleIdentityCache`. */
+export function createIdentities(
+  options?: Record<string, unknown>
+): Promise<unknown>;

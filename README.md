@@ -98,6 +98,30 @@ const identity = await identities.createIdentity({
 });
 ```
 
+### Identities for a passkey: `createIdentities`
+
+OrbitDB keeps a cache of verified identities keyed by `signatures.id`. This provider keeps that
+signature the same in every session of a passkey (the signing key is derived from the PRF output),
+while the WebAuthn proof in `signatures.publicKey` is a fresh assertion per session. So whichever
+session's entries a peer verifies first owns its cache, and every other session of the same passkey
+is refused: _"Key … is not allowed to write to the log"_ — a phone restoring a laptop's backup, a
+browser that gets its own earlier entries back from a relay ([orbitdb/orbitdb#1258](https://github.com/orbitdb/orbitdb/issues/1258),
+[#90](https://github.com/Le-Space/orbitdb-identity-provider-webauthn-did/issues/90)).
+
+Until OrbitDB keys its cache by identity hash, build the identities with the provider's wrapper:
+
+```javascript
+import { createIdentities } from '@le-space/orbitdb-identity-provider-webauthn-did';
+
+const identities = await createIdentities({ ipfs, keystore }); // Identities(options), wrapped
+const orbitdb = await createOrbitDB({ ipfs, identities, identity });
+```
+
+or wrap an instance you already have with `withoutStaleIdentityCache(identities)`. Where OrbitDB
+says no, a webauthn identity is checked again the way an uncached one would be — the shape, the id
+signature over the public key, and this provider's binding of the key to the DID. Other providers'
+identities, and anything that fails those checks, stay refused.
+
 ### Discoverable Recovery Notes
 
 For the DID-based flow:

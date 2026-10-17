@@ -1,5 +1,24 @@
 # Changes
 
+## 0.11.0
+
+Another session of the same passkey may still write: OrbitDB's verified-identity cache, worked
+around in the provider so that no application carries a copy.
+
+### Added
+
+- **`withoutStaleIdentityCache(identities)`** and **`createIdentities(options)`** (main entry and
+  `./keystore`): `@orbitdb/core` 4 caches a verified identity under `signatures.id` and, on a hit,
+  compares the whole identity. This provider keeps the id signature the same in every session of a
+  passkey (the PRF-derived signing key) while the WebAuthn proof in `signatures.publicKey` is new per
+  session — so whichever session's entries are verified first owns the cache, and every other
+  session of the same passkey is refused: _"Key … is not allowed to write to the log"_. Seen in
+  belege's restore (belege#259) and in simple-todo's archived01, a phone restoring a laptop's
+  archive (simple-todo#79). The wrapper re-checks a refused webauthn identity the way an uncached
+  one would be: `isIdentity`, the id signature over the public key, this provider's binding. Other
+  providers' identities and anything failing those checks stay refused. Upstream
+  orbitdb/orbitdb#1258; to be removed once OrbitDB keys its cache by identity hash (#90).
+
 ## 0.10.0
 
 An identity that is nobody's passkey, so that every security key of an owner can write as the same

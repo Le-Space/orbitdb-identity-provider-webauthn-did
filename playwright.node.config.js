@@ -37,6 +37,7 @@ export default defineConfig({
     'vault.test.js',
     'webauthn-authenticator-type.test.js',
     'secret-signer.test.js',
+    'stale-identity-cache.test.js',
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
