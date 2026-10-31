@@ -5,7 +5,7 @@
  * roaming authenticator, as a YubiKey is. What the library asks for decides
  * whether the browser offers it: the default names no attachment and does,
  * `'cross-platform'` asks for it, `'platform'` asks for the device's own and
- * leaves it out. The varsig registration behaves the same since 0.9.1; before,
+ * leaves it out. The varsig registration behaves the same since 0.10.0; before,
  * it offered every authenticator whatever it was given. Two more cases are its
  * own: `'cross-platform'` leaves the device's authenticator out, and a key that
  * cannot verify its user is refused at registration, because none of its
@@ -139,7 +139,7 @@ test.describe('a security key, through the varsig registration', () => {
   });
 
   test("is left out with authenticatorType 'platform'", async ({ page }) => {
-    // Until 0.9.1 this registered on the key regardless.
+    // Until 0.10.0 this registered on the key regardless.
     expect(
       await registerVarsig(page, { authenticatorType: 'platform' }, 10000)
     ).toEqual({ registered: false, unanswered: true });
@@ -156,7 +156,7 @@ test.describe("the device's own authenticator, through the varsig registration",
   test("is left out with authenticatorType 'cross-platform'", async ({
     page,
   }) => {
-    // Until 0.9.1 this registered on the device's authenticator regardless.
+    // Until 0.10.0 this registered on the device's authenticator regardless.
     expect(
       await registerVarsig(page, { authenticatorType: 'cross-platform' }, 10000)
     ).toEqual({ registered: false, unanswered: true });

@@ -549,8 +549,8 @@ const identity = await createWebAuthnVarsigIdentity({ credential });
 `WebAuthnVarsigProvider.createCredential(options)` takes `userId`,
 `displayName`, `domain`, `discoverableCredentials`, `forceP256` (offer only
 P-256), and `authenticatorType` / `authenticatorAttachment` as
-`WebAuthnDIDProvider.createCredential` does. Before 0.9.1 it dropped the choice
-of authenticator the same way and offered every kind.
+`WebAuthnDIDProvider.createCredential` does. Before 0.10.0 it dropped the
+choice of authenticator the same way and offered every kind.
 
 It always requires user verification, whatever the options say. A varsig
 signature without the UV flag is refused, when it is made and when it is
@@ -582,7 +582,9 @@ import {
 
 The `create…Signer` functions register as
 `WebAuthnVarsigProvider.createCredential` does and take its options;
-`createWebAuthnEd25519Credential` passes on `options.authenticatorType` alone.
+`createWebAuthnEd25519Credential` passes on `options.authenticatorType` alone,
+and rejects when the registration fails — it never resolved to `null`, though
+its JSDoc and types said so.
 
 ```js
 const signer = await createWebAuthnSigner({
