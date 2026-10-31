@@ -33,6 +33,19 @@ The vault's keeper, once for every application, and the vault on its own entry.
   GHSA-333x-w4r6-6crp low) affect `fast-uri` below 3.1.9 on `iso-web > iso-kv > conf > ajv`. The
   override `ajv>fast-uri` goes from `^3.1.8` to `^3.1.9`, still on the 3 line ajv 8 asks for. It
   steers this repository's own install; an application resolves `fast-uri` for itself.
+- **Declarations that said what the code does not.** Behaviour is unchanged.
+  - `WebAuthnVarsigProvider` had no `static createCredential`, though `docs/API.md` calls it, no
+    `isSupported` or `signPayload`, and no options for the constructor or `sign` (#95).
+  - `createWebAuthnEd25519Credential` was declared, and documented, to resolve to `null` when the
+    registration fails. It has always rejected, and now says so (#95).
+  - The varsig identity helpers: `encodeIdentityValue` resolves to `{ hash, bytes }` and was
+    declared to return bytes; `createWebAuthnVarsigIdentities` is synchronous and takes
+    `(identity, domainLabels?, storage?, fallbackIdentities?)`; `wrapWithVarsigVerification` takes
+    `(defaultIdentities, ipfs?, domainLabels?)`; `decodeVarsigIdentityFromBytes` and
+    `verifyVarsigIdentity` take `domainLabels`; `createIpfsIdentityStorage` takes the IPFS
+    instance, which the declared `Record<string, unknown>` refused for a typed Helia.
+- The README and `docs/API.md` dated the varsig registration's authenticator fix to 0.9.1. It
+  shipped in 0.10.0 (#95).
 
 ## 0.11.0
 
