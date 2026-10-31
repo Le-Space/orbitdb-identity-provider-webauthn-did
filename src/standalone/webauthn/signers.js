@@ -200,28 +200,30 @@ export async function createWebAuthnP256Signer(options = {}) {
 
 /**
  * Upload-wall compatibility helper. Returns Ed25519 signer or P-256 fallback signer.
+ *
+ * A failed registration rejects — a cancelled prompt with the browser's
+ * `NotAllowedError`, an unknown `authenticatorType` with a `TypeError`. This
+ * used to promise `null` instead, from a `try`/`catch` that could never catch:
+ * it returned the registration's promise without awaiting it.
+ *
  * @param {string} userId
  * @param {string} displayName
  * @param {{authenticatorType?: 'platform' | 'cross-platform' | 'any'}} [options]
- * @returns {Promise<StandaloneWebAuthnVarsigSigner|null>}
+ * @returns {Promise<StandaloneWebAuthnVarsigSigner>}
  */
 export async function createWebAuthnEd25519Credential(
   userId,
   displayName,
   options = {}
 ) {
-  try {
-    const forceP256Hardware =
-      typeof window !== 'undefined' && Boolean(window.__FORCE_P256_HARDWARE__);
-    return createWebAuthnSigner({
-      userId,
-      displayName,
-      authenticatorType: options.authenticatorType || 'any',
-      forceP256: forceP256Hardware,
-    });
-  } catch {
-    return null;
-  }
+  const forceP256Hardware =
+    typeof window !== 'undefined' && Boolean(window.__FORCE_P256_HARDWARE__);
+  return createWebAuthnSigner({
+    userId,
+    displayName,
+    authenticatorType: options.authenticatorType || 'any',
+    forceP256: forceP256Hardware,
+  });
 }
 
 /**

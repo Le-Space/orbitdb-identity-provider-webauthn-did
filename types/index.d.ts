@@ -386,9 +386,69 @@ export function clearEncryptedKeystore(credentialId: string): Promise<void>;
 
 export function checkExtensionSupport(): Promise<ExtensionSupport>;
 
+/** Options for `WebAuthnVarsigProvider.createCredential`. */
+export interface VarsigCredentialOptions {
+  /** Account label for the credential picker. Not an identifier. */
+  userId?: string;
+  displayName?: string;
+  /** Relying party id. Default: the page's hostname. */
+  domain?: string;
+  discoverableCredentials?: boolean;
+  /**
+   * Which authenticators the browser offers: the device's own, a security key
+   * or phone, or every kind. Default `'any'`: the request names none.
+   */
+  authenticatorType?: AuthenticatorType;
+  /** The WebAuthn name for `authenticatorType`; the two must not disagree. */
+  authenticatorAttachment?: AuthenticatorAttachment;
+  /**
+   * Not read: a registration always requires user verification, because a
+   * varsig signature without the UV flag is refused.
+   */
+  userVerification?: UserVerificationRequirement;
+  /** Offer only P-256 (ES256). */
+  forceP256?: boolean;
+  [key: string]: unknown;
+}
+
+/** What `WebAuthnVarsigProvider.createCredential` returns. */
+export interface VarsigCredential {
+  credentialId: Uint8Array;
+  publicKey: Uint8Array;
+  /** `did:key` of the public key. */
+  did: string;
+  algorithm: WebAuthnAlgorithm;
+  /** COSE key type, algorithm and curve from the attestation. */
+  cose: { kty: number; alg: number; crv: number };
+  /** Relying party id the credential is registered under. */
+  rpId: string;
+  [key: string]: unknown;
+}
+
+/** How a varsig signature asks the authenticator: at construction or per call. */
+export interface VarsigSignOptions {
+  /** Default `'preferred'`. */
+  userVerification?: UserVerificationRequirement;
+  mediation?: CredentialMediationRequirement;
+  discoverableCredentials?: boolean;
+}
+
 export class WebAuthnVarsigProvider {
-  constructor(credential: Record<string, unknown>);
-  sign(data: string | Uint8Array, domainLabel?: string): Promise<Uint8Array>;
+  constructor(credential: Record<string, unknown>, options?: VarsigSignOptions);
+  static isSupported(): boolean;
+  static createCredential(
+    options?: VarsigCredentialOptions
+  ): Promise<VarsigCredential>;
+  signPayload(
+    payloadBytes: Uint8Array,
+    domainLabel?: string,
+    options?: VarsigSignOptions
+  ): Promise<Uint8Array>;
+  sign(
+    data: string | Uint8Array,
+    domainLabel?: string,
+    options?: VarsigSignOptions
+  ): Promise<Uint8Array>;
   verify(
     signature: Uint8Array,
     publicKey: Uint8Array,

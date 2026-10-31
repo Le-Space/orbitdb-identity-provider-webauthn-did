@@ -98,11 +98,15 @@ export function createWebAuthnP256Signer(
   options?: WebAuthnSignerOptions
 ): Promise<StandaloneWebAuthnVarsigSigner>;
 
+/**
+ * Rejects when the registration fails — a cancelled prompt, an unknown
+ * `authenticatorType`. It never resolved to `null`, though this said it would.
+ */
 export function createWebAuthnEd25519Credential(
   userId: string,
   displayName: string,
   options?: { authenticatorType?: AuthenticatorType }
-): Promise<StandaloneWebAuthnVarsigSigner | null>;
+): Promise<StandaloneWebAuthnVarsigSigner>;
 
 export function checkEd25519Support(): Promise<boolean>;
 

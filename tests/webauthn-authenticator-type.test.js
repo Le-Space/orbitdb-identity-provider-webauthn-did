@@ -184,3 +184,31 @@ test.describe('createWebAuthnEd25519Credential: which authenticators it offers',
     });
   }
 });
+
+test.describe('createWebAuthnEd25519Credential: when registration fails', () => {
+  let createWebAuthnEd25519Credential;
+
+  test.beforeEach(async () => {
+    ({ createWebAuthnEd25519Credential } =
+      await import('../src/standalone/webauthn/signers.js'));
+  });
+
+  test('it rejects; it never resolves to null', async () => {
+    // Its JSDoc and types promised null, from a try/catch that returned the
+    // registration's promise unawaited and so caught nothing.
+    await expect(
+      createWebAuthnEd25519Credential('anna', 'Anna', {
+        authenticatorType: 'usb',
+      })
+    ).rejects.toThrow(TypeError);
+    expect(authenticator.state.creations).toBe(0);
+
+    authenticator.navigator.credentials.create = () =>
+      Promise.reject(
+        new DOMException('The prompt was cancelled.', 'NotAllowedError')
+      );
+    await expect(
+      createWebAuthnEd25519Credential('anna', 'Anna')
+    ).rejects.toMatchObject({ name: 'NotAllowedError' });
+  });
+});
