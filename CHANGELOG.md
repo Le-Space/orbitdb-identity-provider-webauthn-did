@@ -1,5 +1,39 @@
 # Changes
 
+## 0.12.0
+
+The vault's keeper, once for every application, and the vault on its own entry.
+
+### Added
+
+- **`createVaultKeeper({ storage, key, slotInfo })`** (main entry, `./standalone` and `./vault`):
+  where an application keeps its vaults — anything with `getItem` and `setItem` — and what every
+  unlock does with them. `open` opens the vault this authenticator has a slot in, else one `find`
+  returns from elsewhere (a backup, an index), else makes one holding `create()`; `addPasskey`,
+  `removePasskey` (by slot id, so a key not at hand can go), `renew` (new vault key and id, every key
+  that stays answers and is checked against its slot, so none is left out by mistake),
+  `replacePayload`, `status`, `records`. A key removed here is refused (`VAULT_SLOT_REMOVED`)
+  instead of being given new, empty books; one key opens one vault per store; an unreadable store
+  is refused (`VAULT_STORE_UNREADABLE`) and never overwritten. Le-Space/belege and Le-Space/invoice
+  each built this around the vault for themselves; the store's format is Belege's (#406 there), and
+  a record Belege's own code wrote opens unchanged.
+- **`rootPayload(root)`** and **`rootOf(payload)`**: one 32-byte root as vault payload,
+  `{"version":1,"root":"<hex>"}`, every other key derived from it with `deriveSubkey` — the bytes
+  Belege's vaults hold.
+- **The `./vault` entry**: `readPrfOutput`, `deriveSubkey`, `deriveAesKey`, the vault functions,
+  the keeper, `rootPayload`, `rootOf`, `PrfUnavailableError` and `VaultError`, with no package in
+  its import graph (`tests/vault-entry.test.js`). For applications without OrbitDB (#93, its first
+  step).
+- `VaultError` codes `VAULT_STORE_UNREADABLE`, `VAULT_SLOT_REMOVED` and `VAULT_SLOT_IN_USE`.
+
+### Fixed
+
+- **The production audit passes again.** Four `fast-uri` advisories published after 0.11.0
+  (GHSA-w74x-v6f9-j3xg and GHSA-wjr9-j795-jxcr moderate, GHSA-xhq7-xmqj-769h and
+  GHSA-333x-w4r6-6crp low) affect `fast-uri` below 3.1.9 on `iso-web > iso-kv > conf > ajv`. The
+  override `ajv>fast-uri` goes from `^3.1.8` to `^3.1.9`, still on the 3 line ajv 8 asks for. It
+  steers this repository's own install; an application resolves `fast-uri` for itself.
+
 ## 0.11.0
 
 Another session of the same passkey may still write: OrbitDB's verified-identity cache, worked

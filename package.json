@@ -1,6 +1,6 @@
 {
   "name": "@le-space/orbitdb-identity-provider-webauthn-did",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "WebAuthn-based DID identity provider for OrbitDB for hardware-secured wallets and biometric Passkey authentication",
   "main": "src/index.js",
   "types": "types/index.d.ts",
@@ -21,6 +21,10 @@
     "./keystore": {
       "types": "./types/keystore.d.ts",
       "import": "./src/keystore/index.js"
+    },
+    "./vault": {
+      "types": "./types/vault.d.ts",
+      "import": "./src/vault/index.js"
     }
   },
   "scripts": {
@@ -147,7 +151,7 @@
       "iso-web": "^3.1.2",
       "iso-webauthn-varsig": "npm:@le-space/iso-webauthn-varsig@^0.3.0",
       "conf>ajv": "^8.18.0",
-      "ajv>fast-uri": "^3.1.8"
+      "ajv>fast-uri": "^3.1.9"
     },
     "onlyBuiltDependencies": [
       "@ipshipyard/node-datachannel",

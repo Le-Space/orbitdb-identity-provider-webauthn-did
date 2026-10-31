@@ -6,6 +6,7 @@ public API surface:
 - root export: `@le-space/orbitdb-identity-provider-webauthn-did`
 - standalone export: `@le-space/orbitdb-identity-provider-webauthn-did/standalone`
 - keystore export: `@le-space/orbitdb-identity-provider-webauthn-did/keystore`
+- vault export: `@le-space/orbitdb-identity-provider-webauthn-did/vault`
 - verification export: `@le-space/orbitdb-identity-provider-webauthn-did/verification`
 
 ## Root Export
@@ -386,6 +387,83 @@ What a vault does not do:
 `tests/vault-two-authenticators.test.js` runs this in Chromium with two virtual
 authenticators, each with its own PRF secret as two YubiKeys have.
 
+#### Keeping vaults: `createVaultKeeper({ storage, key, slotInfo })`
+
+Since 0.12.0. Where an application keeps its vaults, and what every unlock
+does with them. Le-Space/belege and Le-Space/invoice each wrote this for
+themselves around the same vault; the keeper is that code once, with the
+rules each of them had to learn:
+
+```js
+const keeper = createVaultKeeper({
+  storage: localStorage, // anything with getItem and setItem
+  key: 'myapp.vaults.v1',
+  slotInfo: 'myapp/vault-slot/v1',
+});
+
+const prfOutput = await readPrfOutput(credential);
+const opened = await keeper.open({
+  prfOutput,
+  rawCredentialId: credential.rawCredentialId,
+  label: 'YubiKey 5C',
+  create: () => rootPayload(crypto.getRandomValues(new Uint8Array(32))),
+});
+const root = rootOf(opened.payload);
+const listKey = await deriveSubkey(root, 'myapp/list-key/v1');
+
+// With the vault open, touch the second key and give it a slot of its own.
+await keeper.addPasskey(opened, {
+  prfOutput: secondPrfOutput,
+  rawCredentialId,
+  label,
+});
+```
+
+- `open({ prfOutput, rawCredentialId, label?, create?, find? })` opens the
+  vault this authenticator has a slot in. Without one it asks `find(kid)` for
+  a record kept elsewhere — a backup, an index — and keeps it here once it has
+  opened; without that it makes a new vault holding `create()`, with this
+  authenticator's slot. It returns `{ record, payload, vaultKey, kid, created,
+found }`; keep that in memory while the vault is open, it holds the vault key.
+- Pass `find` on every unlock where the vault may be kept elsewhere, not only
+  on a restore path. A synced passkey on a new device otherwise makes a vault
+  of its own, and from then on `open` finds that one here and never asks
+  `find` again (Le-Space/belege#524).
+- An authenticator removed here is refused (`VAULT_SLOT_REMOVED`), never given
+  a new vault: for an application whose books existed before the vault, that
+  would be a stale copy that looks like the real books.
+- `addPasskey(opened, { prfOutput, rawCredentialId, label? })` gives one more
+  authenticator a slot. One key opens one vault per store: a key that already
+  opens another vault here is refused (`VAULT_SLOT_EXISTS`).
+- `removePasskey(opened, kid)` takes a slot out by its id, so a key that is not
+  at hand can go too. It revokes nothing already opened.
+- `renew(opened, { answers, removed?, payload? })` makes a new vault key and
+  vault id, with a slot for every authenticator that stays. Every one of them
+  answers with its PRF output, checked against its slot, so none is left out
+  by mistake; the ones in `removed` are taken out. A new `payload` replaces
+  keys a removed authenticator must not know.
+- `replacePayload(opened, payload)`, `status(rawCredentialId)` (is there a
+  vault here for this key, without asking it?) and `records()`.
+
+The store holds a JSON array under `key`, one record per vault:
+`{ vault, slots: [{ kid, label, credentialId, addedAt }], removed: [kid] }`.
+`slots` names in public which authenticator each slot belongs to; `removed`
+remembers the keys taken out here; fields the keeper does not know are kept.
+It is the format Belege has kept since Le-Space/belege#406, and
+`tests/vault-keeper.test.js` opens a record Belege's own code wrote. An
+unreadable store is refused (`VAULT_STORE_UNREADABLE`) and never overwritten:
+it may hold the only copy of a vault. The keeper holds no secret, and two pages
+writing one store at once means the last write wins.
+
+`rootPayload(root)` and `rootOf(payload)` write and read the simplest payload,
+`{"version":1,"root":"<hex>"}`: one 32-byte root, every other key derived from
+it with `deriveSubkey(root, info)`, so the vault never changes when the
+application needs one more key. Belege's vaults hold exactly that.
+
+More refusals from the keeper, as `VaultError` codes: `VAULT_STORE_UNREADABLE`,
+`VAULT_SLOT_REMOVED`, and `VAULT_SLOT_IN_USE` — the authenticator that opened
+the vault cannot remove itself, or be left out of a renewal.
+
 #### An identity that is nobody's passkey: `createSecretSigner(secret, { info })`
 
 Since 0.10.0. A database whose access controller is rooted at one passkey's
@@ -623,9 +701,9 @@ const ucanSigner = signer.toUcantoSigner({
 
 The same functions as the root export, without OrbitDB: `readPrfOutput`,
 `deriveSubkey`, `deriveAesKey`, `createVault`, `openVault`, `addSlot`,
-`removeSlot`, `replacePayload`, `slotIdFor`, `createSecretSigner`,
-`PrfUnavailableError` and `VaultError`. See
-[PRF Keys and Vaults](#prf-keys-and-vaults).
+`removeSlot`, `replacePayload`, `slotIdFor`, `createVaultKeeper`,
+`rootPayload`, `rootOf`, `createSecretSigner`, `PrfUnavailableError` and
+`VaultError`. See [PRF Keys and Vaults](#prf-keys-and-vaults).
 
 ### P-256 Wallet Primitives
 
@@ -670,6 +748,25 @@ const { did, publicKey, archive } = await client.generateEd25519Identity();
 const signature = await client.sign(new TextEncoder().encode('entry'));
 ```
 
+## Vault Export
+
+Since 0.12.0. The passkey vault on its own, for an application that keeps its
+data outside OrbitDB: `readPrfOutput`, `deriveSubkey`, `deriveAesKey`,
+`createVault`, `openVault`, `addSlot`, `removeSlot`, `replacePayload`,
+`slotIdFor`, `createVaultKeeper`, `rootPayload`, `rootOf`,
+`PrfUnavailableError` and `VaultError`. Its import graph holds no package at
+all — WebCrypto and `navigator.credentials` are all it needs, and
+`tests/vault-entry.test.js` keeps it that way. `createSecretSigner` is not in
+it: it needs `@libp2p/crypto`.
+
+```js
+import {
+  createVaultKeeper,
+  readPrfOutput,
+  rootPayload,
+} from '@le-space/orbitdb-identity-provider-webauthn-did/vault';
+```
+
 ## Verification Export
 
 ```js
@@ -701,6 +798,7 @@ The package publishes declaration files:
 - `types/index.d.ts`
 - `types/keystore.d.ts`
 - `types/standalone.d.ts`
+- `types/vault.d.ts`
 - `types/verification.d.ts`
 
 They are connected through `package.json` `exports.types`, so TypeScript
