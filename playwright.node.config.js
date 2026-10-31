@@ -35,6 +35,8 @@ export default defineConfig({
     'passkey-wallet-erc7739.test.js',
     'prf-keys.test.js',
     'vault.test.js',
+    'vault-keeper.test.js',
+    'vault-entry.test.js',
     'webauthn-authenticator-type.test.js',
     'secret-signer.test.js',
     'stale-identity-cache.test.js',

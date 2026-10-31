@@ -252,6 +252,27 @@ const withSecondKey = await addSlot(vault, vaultKey, secondKeysSlot);
 
 How it works, and what a vault does not do: [docs/API.md](docs/API.md#prf-keys-and-vaults).
 
+Since **0.12.0**, `createVaultKeeper({ storage, key, slotInfo })` keeps an application's vaults and does what every unlock needs: open this key's vault or make one, give a second key a slot, take one out, renew the vault key. A key taken out is refused rather than given new, empty books, and an unreadable store is never overwritten. `rootPayload(root)` holds one random root, every other key derived from it with `deriveSubkey`. The `./vault` entry offers all of this with no package in its import graph, for applications without OrbitDB. See [docs/API.md](docs/API.md#keeping-vaults-createvaultkeeper-storage-key-slotinfo-).
+
+```javascript
+import {
+  createVaultKeeper,
+  readPrfOutput,
+  rootPayload,
+} from '@le-space/orbitdb-identity-provider-webauthn-did/vault';
+
+const keeper = createVaultKeeper({
+  storage: localStorage,
+  key: 'myapp.vaults.v1',
+  slotInfo: 'myapp/vault-slot/v1',
+});
+const opened = await keeper.open({
+  prfOutput: await readPrfOutput(credential),
+  rawCredentialId: credential.rawCredentialId,
+  create: () => rootPayload(crypto.getRandomValues(new Uint8Array(32))),
+});
+```
+
 Since **0.10.0**, a secret kept in that vault can be an identity of its own: `createSecretSigner(secret, { info })` turns it into an Ed25519 signer for the provider's `signer` option, so every key that opens the vault writes as the same identity — the root of a database's access controller, which a single passkey's identity would hold for good. See [docs/API.md](docs/API.md#an-identity-that-is-nobodys-passkey-createsecretsignersecret--info-).
 
 ### Keystore-based DID (WebAuthn + OrbitDB keystore)

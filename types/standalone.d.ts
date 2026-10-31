@@ -389,6 +389,110 @@ export function replacePayload(
 /** The slot id an authenticator is filed under. */
 export function slotIdFor(rawCredentialId: Uint8Array): Promise<string>;
 
+/** What a store says in public about one authenticator's slot. */
+export interface VaultSlotInfo {
+  /** `slotIdFor(rawCredentialId)`. */
+  kid: string;
+  /** The authenticator's name, as the application gave it. */
+  label: string;
+  /** The raw credential id, base64url, as WebAuthn writes it. */
+  credentialId: string;
+  /** ISO 8601. */
+  addedAt: string;
+  [field: string]: unknown;
+}
+
+/** One vault as a keeper stores it. Fields it does not know are kept. */
+export interface VaultRecord {
+  vault: Vault;
+  slots: VaultSlotInfo[];
+  /** Slot ids taken out here: refused, never given a new vault. */
+  removed: string[];
+  [field: string]: unknown;
+}
+
+/** An open vault. Holds the vault key: keep it in memory only. */
+export interface OpenedVault {
+  record: VaultRecord;
+  payload: Uint8Array;
+  vaultKey: Uint8Array;
+  /** The slot id of the authenticator that opened it. */
+  kid: string;
+  /** Made by this `open`. */
+  created: boolean;
+  /** Came from `find`, and is kept here now. */
+  found: boolean;
+}
+
+/** An authenticator's answer: its PRF output, for its credential. */
+export interface VaultPasskey {
+  prfOutput: Uint8Array;
+  rawCredentialId: Uint8Array;
+  label?: string;
+}
+
+export interface VaultKeeper {
+  /** Every record kept, read anew. Throws `VAULT_STORE_UNREADABLE`. */
+  records(): VaultRecord[];
+  /** Whether a vault here has this authenticator's slot, without asking it. */
+  status(
+    rawCredentialId: Uint8Array
+  ): Promise<{ kid: string; here: boolean; removed: boolean }>;
+  /**
+   * Open the vault this authenticator has a slot in; else one `find` returns;
+   * else a new one holding `create()`. Throws `VAULT_SLOT_REMOVED` for an
+   * authenticator removed here, `VAULT_NO_SLOT` without `create`.
+   */
+  open(
+    unlock: VaultPasskey & {
+      create?: () => Uint8Array | Promise<Uint8Array>;
+      find?: (kid: string) => Promise<VaultRecord | null | undefined>;
+    }
+  ): Promise<OpenedVault>;
+  /** A slot for one more authenticator. Throws `VAULT_SLOT_EXISTS`. */
+  addPasskey(opened: OpenedVault, passkey: VaultPasskey): Promise<OpenedVault>;
+  /**
+   * Take a slot out by its id; refused here from then on. Revokes nothing
+   * already opened. Throws `VAULT_SLOT_IN_USE` for the opener's own.
+   */
+  removePasskey(opened: OpenedVault, kid: string): Promise<OpenedVault>;
+  /**
+   * A new vault key and id, a slot for every authenticator that stays — each
+   * answers — and the same or a new payload.
+   */
+  renew(
+    opened: OpenedVault,
+    change: {
+      answers: Array<Omit<VaultPasskey, 'label'>>;
+      removed?: string[];
+      payload?: Uint8Array;
+    }
+  ): Promise<OpenedVault>;
+  /** A new payload, same vault key, same slots. */
+  replacePayload(
+    opened: OpenedVault,
+    payload: Uint8Array
+  ): Promise<OpenedVault>;
+}
+
+/**
+ * Where an application keeps its vaults — anything with `getItem` and
+ * `setItem` — and what every unlock does with them. `slotInfo` is part of the
+ * data format, e.g. `myapp/vault-slot/v1`.
+ */
+export function createVaultKeeper(options: {
+  storage: Pick<Storage, 'getItem' | 'setItem'>;
+  key: string;
+  slotInfo: string;
+  now?: () => Date;
+}): VaultKeeper;
+
+/** A 32-byte root as vault payload: `{"version":1,"root":"<hex>"}`. */
+export function rootPayload(root: Uint8Array): Uint8Array;
+
+/** The root a `rootPayload` holds. Throws `VAULT_MALFORMED` for anything else. */
+export function rootOf(payload: Uint8Array): Uint8Array;
+
 /**
  * An Ed25519 signer derived from a secret — an identity that is nobody's
  * passkey, e.g. the books every key of their owner writes as. Same secret and
@@ -410,7 +514,10 @@ export type VaultErrorCode =
   | 'VAULT_NO_SLOT'
   | 'VAULT_LOCKED'
   | 'VAULT_SLOT_EXISTS'
-  | 'VAULT_LAST_SLOT';
+  | 'VAULT_LAST_SLOT'
+  | 'VAULT_STORE_UNREADABLE'
+  | 'VAULT_SLOT_REMOVED'
+  | 'VAULT_SLOT_IN_USE';
 
 /** The authenticator answered without a PRF output; nothing stands in for it. */
 export class PrfUnavailableError extends Error {
