@@ -40,6 +40,7 @@ export default defineConfig({
     'webauthn-authenticator-type.test.js',
     'secret-signer.test.js',
     'stale-identity-cache.test.js',
+    'ipfs-identity-storage.test.js',
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,

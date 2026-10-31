@@ -487,8 +487,11 @@ export function verifyVarsigIdentity(
 ): Promise<boolean>;
 /** `get` and `put` on the instance's blockstore; `null` without one. */
 export function createIpfsIdentityStorage(ipfs?: unknown): {
-  /** Whatever the blockstore's `get` resolves to, `undefined` on failure. */
-  get(hash: string): Promise<unknown>;
+  /**
+   * The block's bytes, from Helia 7's blockstore or an older one; `undefined`
+   * when it is not found within 30 seconds.
+   */
+  get(hash: string): Promise<Uint8Array | undefined>;
   put(hash: string, bytes: Uint8Array): Promise<void>;
 } | null;
 /** OrbitDB's identities, made to verify varsig entries as well. */
