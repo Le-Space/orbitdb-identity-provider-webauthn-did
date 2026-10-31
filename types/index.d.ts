@@ -461,17 +461,42 @@ export function createWebAuthnVarsigIdentity(
   options?: Record<string, unknown>
 ): Promise<unknown>;
 
+/**
+ * An `Identities`-compatible object for OrbitDB, built synchronously around
+ * one varsig identity. `fallbackIdentities` verifies entries this cannot, as
+ * from a worker signer.
+ */
 export function createWebAuthnVarsigIdentities(
-  options?: Record<string, unknown>
-): Promise<unknown>;
-
-export function encodeIdentityValue(identity: unknown): Uint8Array;
-export function decodeVarsigIdentityFromBytes(bytes: Uint8Array): unknown;
-export function verifyVarsigIdentity(identity: unknown): Promise<boolean>;
-export function createIpfsIdentityStorage(
-  options?: Record<string, unknown>
+  identity: unknown,
+  domainLabels?: Record<string, string>,
+  storage?: unknown,
+  fallbackIdentities?: unknown
 ): unknown;
-export function wrapWithVarsigVerification(value: unknown): unknown;
+
+/** The identity's block: its hash (a CID string) and its bytes. */
+export function encodeIdentityValue(
+  value: unknown
+): Promise<{ hash: string; bytes: Uint8Array }>;
+export function decodeVarsigIdentityFromBytes(
+  bytes: Uint8Array,
+  domainLabels?: Record<string, string>
+): Promise<unknown>;
+export function verifyVarsigIdentity(
+  identity: unknown,
+  domainLabels?: Record<string, string>
+): Promise<boolean>;
+/** `get` and `put` on the instance's blockstore; `null` without one. */
+export function createIpfsIdentityStorage(ipfs?: unknown): {
+  /** Whatever the blockstore's `get` resolves to, `undefined` on failure. */
+  get(hash: string): Promise<unknown>;
+  put(hash: string, bytes: Uint8Array): Promise<void>;
+} | null;
+/** OrbitDB's identities, made to verify varsig entries as well. */
+export function wrapWithVarsigVerification(
+  defaultIdentities: unknown,
+  ipfs?: unknown,
+  domainLabels?: Record<string, string>
+): unknown;
 
 export const DEFAULT_DOMAIN_LABELS: Record<string, string>;
 

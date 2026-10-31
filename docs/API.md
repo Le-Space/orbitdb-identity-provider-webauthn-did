@@ -601,12 +601,13 @@ Key exports:
 
 - `WebAuthnVarsigProvider`
 - `createWebAuthnVarsigIdentity(options)`
-- `createWebAuthnVarsigIdentities(options)`
-- `encodeIdentityValue(identity)`
-- `decodeVarsigIdentityFromBytes(bytes)`
-- `verifyVarsigIdentity(identity)`
-- `createIpfsIdentityStorage(options)`
-- `wrapWithVarsigVerification(value)`
+- `createWebAuthnVarsigIdentities(identity, domainLabels?, storage?, fallbackIdentities?)`
+  — synchronous
+- `encodeIdentityValue(value)` — resolves to `{ hash, bytes }`
+- `decodeVarsigIdentityFromBytes(bytes, domainLabels?)`
+- `verifyVarsigIdentity(identity, domainLabels?)`
+- `createIpfsIdentityStorage(ipfs)`
+- `wrapWithVarsigVerification(defaultIdentities, ipfs?, domainLabels?)`
 - `DEFAULT_DOMAIN_LABELS`
 - `storeWebAuthnVarsigCredential(credential, key?)`
 - `loadWebAuthnVarsigCredential(key?)`
