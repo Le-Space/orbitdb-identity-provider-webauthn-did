@@ -26,6 +26,14 @@ The vault's keeper, once for every application, and the vault on its own entry.
   step).
 - `VaultError` codes `VAULT_STORE_UNREADABLE`, `VAULT_SLOT_REMOVED` and `VAULT_SLOT_IN_USE`.
 
+### Fixed
+
+- **The production audit passes again.** Four `fast-uri` advisories published after 0.11.0
+  (GHSA-w74x-v6f9-j3xg and GHSA-wjr9-j795-jxcr moderate, GHSA-xhq7-xmqj-769h and
+  GHSA-333x-w4r6-6crp low) affect `fast-uri` below 3.1.9 on `iso-web > iso-kv > conf > ajv`. The
+  override `ajv>fast-uri` goes from `^3.1.8` to `^3.1.9`, still on the 3 line ajv 8 asks for. It
+  steers this repository's own install; an application resolves `fast-uri` for itself.
+
 ## 0.11.0
 
 Another session of the same passkey may still write: OrbitDB's verified-identity cache, worked
