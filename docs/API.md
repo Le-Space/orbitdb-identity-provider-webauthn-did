@@ -425,6 +425,10 @@ await keeper.addPasskey(opened, {
   opened; without that it makes a new vault holding `create()`, with this
   authenticator's slot. It returns `{ record, payload, vaultKey, kid, created,
 found }`; keep that in memory while the vault is open, it holds the vault key.
+- Pass `find` on every unlock where the vault may be kept elsewhere, not only
+  on a restore path. A synced passkey on a new device otherwise makes a vault
+  of its own, and from then on `open` finds that one here and never asks
+  `find` again (Le-Space/belege#524).
 - An authenticator removed here is refused (`VAULT_SLOT_REMOVED`), never given
   a new vault: for an application whose books existed before the vault, that
   would be a stale copy that looks like the real books.

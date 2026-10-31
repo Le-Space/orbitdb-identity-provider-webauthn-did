@@ -275,6 +275,11 @@ export function createVaultKeeper({
    * - None at all: a new vault holding `create()`, this authenticator's slot
    *   on it. Without `create`, refused: `VAULT_NO_SLOT`.
    *
+   * Pass `find` on every unlock where the vault may be kept elsewhere, not
+   * only on a restore path. A synced passkey on a new device otherwise makes
+   * a vault of its own, and from then on its slot is found here and `find` is
+   * never asked again (Le-Space/belege#524).
+   *
    * @param {Object} unlock
    * @param {Uint8Array} unlock.prfOutput - From `readPrfOutput`.
    * @param {Uint8Array} unlock.rawCredentialId
