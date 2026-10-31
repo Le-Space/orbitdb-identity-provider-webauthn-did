@@ -619,6 +619,18 @@ export function replacePayload(
 /** The slot id an authenticator is filed under. */
 export function slotIdFor(rawCredentialId: Uint8Array): Promise<string>;
 
+/** Where the vaults are kept, and what every unlock does with them. */
+export {
+  createVaultKeeper,
+  rootPayload,
+  rootOf,
+  VaultKeeper,
+  VaultRecord,
+  VaultSlotInfo,
+  OpenedVault,
+  VaultPasskey,
+} from './standalone';
+
 /**
  * An Ed25519 signer derived from a secret — an identity that is nobody's
  * passkey, e.g. the books every key of their owner writes as. Same secret and
@@ -640,7 +652,10 @@ export type VaultErrorCode =
   | 'VAULT_NO_SLOT'
   | 'VAULT_LOCKED'
   | 'VAULT_SLOT_EXISTS'
-  | 'VAULT_LAST_SLOT';
+  | 'VAULT_LAST_SLOT'
+  | 'VAULT_STORE_UNREADABLE'
+  | 'VAULT_SLOT_REMOVED'
+  | 'VAULT_SLOT_IN_USE';
 
 declare const defaultExport: {
   WebAuthnDIDProvider: typeof WebAuthnDIDProvider;

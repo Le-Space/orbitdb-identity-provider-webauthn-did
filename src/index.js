@@ -335,6 +335,12 @@ export {
   replacePayload,
   slotIdFor,
 } from './keystore/vault.js';
+// Where the vaults are kept, and what every unlock does with them.
+export {
+  createVaultKeeper,
+  rootPayload,
+  rootOf,
+} from './keystore/vault-keeper.js';
 // An identity that is nobody's passkey — the books every key of their owner
 // writes as, its secret kept in a vault.
 export { createSecretSigner } from './keystore/secret-signer.js';

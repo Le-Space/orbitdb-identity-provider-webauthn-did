@@ -354,7 +354,21 @@ export async function addSlot(
  */
 export async function removeSlot(vault, rawCredentialId) {
   assertVault(vault);
-  const kid = await slotIdFor(rawCredentialId);
+  return removeSlotById(vault, await slotIdFor(rawCredentialId));
+}
+
+/**
+ * `removeSlot` by the slot id itself, for an authenticator only known by the
+ * id its slot is filed under — one that is not at hand. Used by the vault
+ * keeper; not part of the package's entries.
+ *
+ * @param {object} vault
+ * @param {string} kid - From `slotIdFor`.
+ * @returns {object} A new record; the one passed in is unchanged.
+ * @throws {VaultError} `VAULT_NO_SLOT` or `VAULT_LAST_SLOT`.
+ */
+export function removeSlotById(vault, kid) {
+  assertVault(vault);
   if (!vault.slots.some((slot) => slot.kid === kid)) {
     throw new VaultError('This authenticator has no slot in the vault', {
       code: ERROR_CODES.VAULT_NO_SLOT,

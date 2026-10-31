@@ -46,6 +46,11 @@ export {
   replacePayload,
   slotIdFor,
 } from '../keystore/vault.js';
+export {
+  createVaultKeeper,
+  rootPayload,
+  rootOf,
+} from '../keystore/vault-keeper.js';
 export { PrfUnavailableError, VaultError } from '../errors.js';
 export { createSecretSigner } from '../keystore/secret-signer.js';
 
