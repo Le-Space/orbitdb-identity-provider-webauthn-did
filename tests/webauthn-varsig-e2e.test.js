@@ -90,6 +90,10 @@ test.describe('WebAuthn Varsig Demo E2E', () => {
     await expect(page.locator(`text=${todoText}`)).toBeVisible({
       timeout: 30000,
     });
+    // This login signed a new identity document. The todo still names the
+    // first one, which only the blockstore holds, so the verifier reads it
+    // back from there.
+    expect(await expectTodosVerified(page)).toBe(did);
   });
 });
 
