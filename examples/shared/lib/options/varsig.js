@@ -7,12 +7,13 @@
  * No signing key exists in JavaScript, and every signature is bound to the
  * origin.
  *
- * Identities are stored as blocks in Helia so peers can fetch them.
+ * Identities are stored as blocks in Helia, so a later login and other peers
+ * can read them back.
  *
  * Suite: tests/webauthn-varsig-e2e.test.js
  */
-import { CID } from 'multiformats/cid';
 import {
+  createIpfsIdentityStorage,
   createWebAuthnVarsigIdentity,
   createWebAuthnVarsigIdentities,
 } from '@le-space/orbitdb-identity-provider-webauthn-did';
@@ -25,18 +26,13 @@ import {
  */
 export async function createVarsigIdentity({ ipfs, credential }) {
   const identity = await createWebAuthnVarsigIdentity({ credential });
-  const storage = {
-    get: async (hash) => {
-      try {
-        return await ipfs.blockstore.get(CID.parse(hash));
-      } catch {
-        return undefined;
-      }
-    },
-    put: async (hash, bytes) => {
-      await ipfs.blockstore.put(CID.parse(hash), bytes);
-    },
-  };
-  const identities = createWebAuthnVarsigIdentities(identity, {}, storage);
+  // The package's storage, not a copy of it. Helia 7's blockstore gives a
+  // block as a generator of chunks, and the copy this demo had handed that on
+  // as the block: every todo from an earlier login showed as rejected.
+  const identities = createWebAuthnVarsigIdentities(
+    identity,
+    {},
+    createIpfsIdentityStorage(ipfs)
+  );
   return { identities, identity };
 }
