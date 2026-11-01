@@ -1,5 +1,23 @@
 # Changes
 
+## 0.12.1
+
+A peer loads another peer's varsig identity from IPFS again, with Helia 7.
+
+### Fixed
+
+- **`createIpfsIdentityStorage(ipfs).get` returns the block's bytes.** It returned whatever
+  `blockstore.get` gave, and Helia 7's blockstore (interface-blockstore 7) gives a generator of
+  chunks. Both callers decoded that as bytes, `getIdentity` in `createWebAuthnVarsigIdentities` and
+  the IPFS fallback in `wrapWithVarsigVerification`. The decode threw, their catch swallowed it, and
+  a peer that had not cached a varsig identity never loaded it from IPFS. `get` now joins the
+  chunks, still takes a blockstore that resolves to bytes, and waits at most 30 seconds for a block
+  the node does not have, as OrbitDB's own block storage does. The declaration says
+  `Promise<Uint8Array | undefined>` again.
+
+Tested with two Helia 7 peers over libp2p and bitswap: the one without the identity loads it from
+the other and verifies it, through either caller.
+
 ## 0.12.0
 
 The vault's keeper, once for every application, and the vault on its own entry.

@@ -356,6 +356,32 @@ export async function verifyVarsigIdentity(identity, domainLabels = {}) {
   );
 }
 
+// How long a lookup waits for an identity block this node does not hold:
+// as long as OrbitDB's own block storage waits for any block.
+const IDENTITY_BLOCK_TIMEOUT = 30000;
+
+/**
+ * The bytes of a block, from whatever a blockstore's `get` gives. Helia 7's
+ * blockstore (interface-blockstore 7) yields them in chunks from a generator,
+ * and only iterating it fetches a block the node does not have; earlier ones
+ * resolve to the bytes.
+ * @param {*} result - What `blockstore.get` returned.
+ * @returns {Promise<Uint8Array|undefined>}
+ */
+async function readBlockBytes(result) {
+  const value = await result;
+  if (value instanceof Uint8Array) return value;
+  if (
+    typeof value?.[Symbol.asyncIterator] === 'function' ||
+    typeof value?.[Symbol.iterator] === 'function'
+  ) {
+    const chunks = [];
+    for await (const chunk of value) chunks.push(chunk);
+    if (chunks.length > 0) return concat(chunks);
+  }
+  return undefined;
+}
+
 /**
  * Create an IPFS blockstore adapter for identity storage.
  * @param {Object} ipfs - Helia/IPFS instance with a blockstore.
@@ -364,10 +390,18 @@ export async function verifyVarsigIdentity(identity, domainLabels = {}) {
 export function createIpfsIdentityStorage(ipfs) {
   if (!ipfs || !ipfs.blockstore) return null;
   return {
+    // Until 0.12.1 this returned what `blockstore.get` gave. With Helia 7
+    // that is a generator, which both callers then decoded as bytes: the
+    // decode threw, their catch swallowed it, and no varsig identity of
+    // another peer was ever loaded from IPFS.
     get: async (hash) => {
       try {
         const cid = CID.parse(hash);
-        return await ipfs.blockstore.get(cid);
+        return await readBlockBytes(
+          ipfs.blockstore.get(cid, {
+            signal: AbortSignal.timeout(IDENTITY_BLOCK_TIMEOUT),
+          })
+        );
       } catch {
         return undefined;
       }
