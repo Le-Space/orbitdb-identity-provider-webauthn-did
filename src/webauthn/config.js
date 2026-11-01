@@ -138,7 +138,14 @@ export function buildCredentialRequestOptions(options = {}) {
     ...(rpId ? { rpId } : {}),
     userVerification,
     ...(extensions ? { extensions } : {}),
-    ...(!discoverableCredentials && credentialId
+    // A request that names a credential asks that credential. Discoverable
+    // credentials decide only what a request without one does: the browser
+    // offers the passkeys it has. Left to the browser, a request that named
+    // one was answered by whichever passkey the person picked or the
+    // authenticator chose — with that passkey's PRF output, which nothing can
+    // tell from the right one: a vault slot sealed under another key, a
+    // signing key derived from another passkey.
+    ...(credentialId
       ? {
           allowCredentials: [
             {

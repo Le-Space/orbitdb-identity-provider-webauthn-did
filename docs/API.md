@@ -283,9 +283,14 @@ bytes that never come back.
 - `prfInput` — overrides the credential's. Leave it out when the output also
   goes to the identity provider, which asks with the credential's.
 
+It asks this credential only (`allowCredentials`), and checks that this
+credential answered: another passkey of the same site would answer with its own
+PRF output, and every key derived from it would quietly be the wrong one.
+
 Throws `PrfUnavailableError` when the authenticator answers without a PRF
-output. A refused prompt stays the browser's `NotAllowedError`, so "the user
-said no" and "this authenticator has no PRF" can be told apart.
+output, and `WebAuthnAuthenticationError` when another credential answers. A
+refused prompt stays the browser's `NotAllowedError`, so "the user said no" and
+"this authenticator has no PRF" can be told apart.
 
 #### `deriveSubkey(prfOutput, info, { length = 32 })`
 

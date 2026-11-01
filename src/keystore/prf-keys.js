@@ -20,7 +20,7 @@
  * the identity asks the passkey once.
  */
 import { CRYPTO_ALGORITHMS } from '../constants.js';
-import { PrfUnavailableError } from '../errors.js';
+import { PrfUnavailableError, WebAuthnAuthenticationError } from '../errors.js';
 import { buildCredentialRequestOptions } from '../webauthn/config.js';
 import { prfInputForRelyingParty } from '../webauthn/prf-input.js';
 
@@ -37,6 +37,11 @@ function toBytes(value) {
   }
   if (Array.isArray(value)) return Uint8Array.from(value);
   return undefined;
+}
+
+/** @param {Uint8Array} a @param {Uint8Array} b */
+export function sameBytes(a, b) {
+  return a.length === b.length && a.every((byte, i) => byte === b[i]);
 }
 
 /**
@@ -113,8 +118,13 @@ function assertInfo(info, caller) {
  * @param {string} [options.rpId] - Relying party id; defaults to this page's
  *   hostname.
  * @param {Uint8Array} [options.prfInput] - Overrides the credential's input.
+ * The request names the credential, and the answer is checked against it:
+ * another passkey of the same relying party would answer with its own PRF
+ * output, and every key derived from that would belong to the wrong one.
+ *
  * @returns {Promise<Uint8Array>} The PRF output, 32 bytes.
  * @throws {PrfUnavailableError} When the authenticator answers without one.
+ * @throws {WebAuthnAuthenticationError} When another credential answers.
  */
 export async function readPrfOutput(credential, { rpId, prfInput } = {}) {
   if (!credential || typeof credential !== 'object') {
@@ -140,6 +150,12 @@ export async function readPrfOutput(credential, { rpId, prfInput } = {}) {
     })
   );
 
+  const answered = toBytes(assertion?.rawId);
+  if (answered && !sameBytes(answered, rawCredentialId)) {
+    throw new WebAuthnAuthenticationError(
+      'Another passkey answered than the one asked for its PRF output'
+    );
+  }
   const first = assertion?.getClientExtensionResults?.()?.prf?.results?.first;
   if (!first) {
     throw new PrfUnavailableError(

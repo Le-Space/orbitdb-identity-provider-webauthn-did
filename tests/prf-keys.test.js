@@ -28,7 +28,11 @@ import {
   PrfUnavailableError,
   OrbitDBWebAuthnIdentityProvider,
 } from '../src/index.js';
-import { ensureDerivedSigningKey } from '../src/keystore/derived-signing-key.js';
+import {
+  ensureDerivedSigningKey,
+  getPrfOutput,
+} from '../src/keystore/derived-signing-key.js';
+import { getWebAuthnConfig } from '../src/webauthn/config.js';
 import {
   createMockAuthenticator,
   installMockAuthenticator,
@@ -255,6 +259,49 @@ test.describe('readPrfOutput', () => {
         readPrfOutput(credentialOf(authenticator), { rpId: 'localhost' })
       ).rejects.toBe(refusal);
     });
+  });
+
+  test('names the credential it asks, and refuses another one’s answer', async () => {
+    // Two passkeys of one relying party on one authenticator, or two security
+    // keys plugged in: a request that leaves the choice open is answered by
+    // either. The other one's PRF output is as random-looking as the right
+    // one's, so every key derived from it would quietly be the wrong key.
+    const authenticator = await createMockAuthenticator();
+    const get = authenticator.navigator.credentials.get;
+    /** @type {any[]} */
+    const asked = [];
+    authenticator.navigator.credentials.get = (options) => {
+      asked.push(options);
+      return get(options);
+    };
+    const other = new Uint8Array(16).fill(9);
+    await withAuthenticator(authenticator, async () => {
+      await readPrfOutput(credentialOf(authenticator), { rpId: 'localhost' });
+      // This authenticator holds no such credential and answers with its own.
+      await expect(
+        readPrfOutput(credentialOf(authenticator, { rawCredentialId: other }), {
+          rpId: 'localhost',
+        })
+      ).rejects.toMatchObject({ name: 'WebAuthnAuthenticationError' });
+      expect(
+        await getPrfOutput(
+          credentialOf(authenticator, { rawCredentialId: other }),
+          { rpId: 'localhost' }
+        )
+      ).toBeNull();
+    });
+    // With discoverable credentials on, which is the default.
+    expect(getWebAuthnConfig().discoverableCredentials).toBe(true);
+    for (const [options, id] of [
+      [asked[0], authenticator.credentialId],
+      [asked[1], other],
+      [asked[2], other],
+    ]) {
+      expect(options.publicKey.allowCredentials).toHaveLength(1);
+      expect(new Uint8Array(options.publicKey.allowCredentials[0].id)).toEqual(
+        id
+      );
+    }
   });
 
   test('needs the credential’s raw id', async () => {
