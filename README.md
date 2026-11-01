@@ -79,7 +79,7 @@ Behavior:
 - `discoverableCredentials: false`
   - every assertion names its credential
 - Either way, an assertion that names a credential asks that one, in
-  `allowCredentials` (since 0.12.1). Before, discoverable mode dropped the
+  `allowCredentials` (since 0.12.2). Before, discoverable mode dropped the
   name, and another passkey of the site could answer — with its own PRF
   output, which looks as random as the right one.
 
