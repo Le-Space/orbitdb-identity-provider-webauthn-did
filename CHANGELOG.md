@@ -2,7 +2,8 @@
 
 ## 0.12.1
 
-A peer loads another peer's varsig identity from IPFS again, with Helia 7.
+A peer loads another peer's varsig identity from IPFS again, with Helia 7, and a request that names
+a passkey asks that passkey.
 
 ### Fixed
 
@@ -14,9 +15,20 @@ A peer loads another peer's varsig identity from IPFS again, with Helia 7.
   chunks, still takes a blockstore that resolves to bytes, and waits at most 30 seconds for a block
   the node does not have, as OrbitDB's own block storage does. The declaration says
   `Promise<Uint8Array | undefined>` again.
+- **A PRF output came from whichever passkey answered.** With discoverable credentials on (the
+  default), `buildCredentialRequestOptions` dropped the credential id it was given, so the browser
+  let any passkey of the relying party answer: two passkeys of one site in one keychain, or two
+  security keys plugged in. Every request that names a credential now carries it in
+  `allowCredentials`; discoverable credentials decide only what a request without one does.
+  `readPrfOutput` also checks which credential answered and refuses another one
+  (`WebAuthnAuthenticationError`), and the provider's own read for the signing key derives nothing
+  from it. Found in simple-todo's invoice01: a second passkey's vault slot was sealed under the
+  first one's PRF output, and the second passkey could not open it. Le-Space/belege has asked with
+  `discoverableCredentials: false` since its #429 for this reason; Le-Space/invoice and
+  simple-todo's archived01 ask without it, and are fixed by updating.
 
-Tested with two Helia 7 peers over libp2p and bitswap: the one without the identity loads it from
-the other and verifies it, through either caller.
+The IPFS fix is tested with two Helia 7 peers over libp2p and bitswap: the one without the identity
+loads it from the other and verifies it, through either caller.
 
 ## 0.12.0
 

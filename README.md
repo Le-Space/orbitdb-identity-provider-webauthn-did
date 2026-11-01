@@ -74,9 +74,14 @@ Behavior:
 
 - `discoverableCredentials: true`
   - registration requests resident/discoverable credentials
-  - assertion requests omit `allowCredentials`
+  - an assertion that names no credential omits `allowCredentials`, and the
+    browser offers the passkeys it has
 - `discoverableCredentials: false`
-  - assertion requests target a specific credential ID via `allowCredentials`
+  - every assertion names its credential
+- Either way, an assertion that names a credential asks that one, in
+  `allowCredentials` (since 0.12.1). Before, discoverable mode dropped the
+  name, and another passkey of the site could answer — with its own PRF
+  output, which looks as random as the right one.
 
 ## Memory Keystore Quick Start
 

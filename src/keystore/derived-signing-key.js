@@ -36,7 +36,7 @@ import {
 import { CRYPTO_ALGORITHMS, KEY_TYPES } from '../constants.js';
 import { buildCredentialRequestOptions } from '../webauthn/config.js';
 import { prfInputForRelyingParty } from '../webauthn/prf-input.js';
-import { hkdfSha256 } from './prf-keys.js';
+import { hkdfSha256, sameBytes } from './prf-keys.js';
 
 const log = logger('orbitdb-identity-provider-webauthn-did:derived-key');
 
@@ -145,6 +145,13 @@ export async function getPrfOutput(credential, { rpId } = {}) {
       })
     );
 
+    // Another passkey's PRF output would derive another passkey's key, under
+    // this DID: refused like an answer without PRF.
+    const answered = assertion?.rawId ? new Uint8Array(assertion.rawId) : null;
+    if (answered && !sameBytes(answered, rawCredentialId)) {
+      log('another credential answered; no key derived from it');
+      return null;
+    }
     const results = assertion?.getClientExtensionResults?.()?.prf?.results;
     if (!results?.first) {
       log('authenticator returned no PRF output');
