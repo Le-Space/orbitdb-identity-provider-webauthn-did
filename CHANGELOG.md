@@ -16,8 +16,15 @@ A request that names a passkey asks that passkey. Until now this entry stood und
   (`WebAuthnAuthenticationError`), and the provider's own read for the signing key derives nothing
   from it. Found in simple-todo's invoice01: a second passkey's vault slot was sealed under the
   first one's PRF output, and the second passkey could not open it. Le-Space/belege has asked with
-  `discoverableCredentials: false` since its #429 for this reason; Le-Space/invoice and
-  simple-todo's archived01 ask without it, and are fixed by updating to 0.12.2.
+  `discoverableCredentials: false` since its #429 for this reason. simple-todo's archived01 asked
+  through `readPrfOutput` without it, and is fixed by updating to 0.12.2.
+- **`extractPrfSeedFromCredential` named the credential all along, by accident.** From 0.2.8 on it
+  passes `discoverableCredentials` on from its own options, and a key that is there but `undefined`
+  counted as off; only a caller passing `true` was affected. It still does not check which
+  credential answered: `readPrfOutput` does. Le-Space/invoice reads through it, so its requests
+  named the passkey; it took any answer, and now reads through `readPrfOutput`
+  (Le-Space/invoice#64). This entry first counted Le-Space/invoice among the applications that
+  asked without a credential.
 
 Tested in `tests/prf-keys.test.js` with discoverable credentials on: a request names the credential
 it asks, and another credential's answer is refused.
