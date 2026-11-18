@@ -151,7 +151,8 @@
       "iso-web": "^3.1.2",
       "iso-webauthn-varsig": "npm:@le-space/iso-webauthn-varsig@^0.3.0",
       "conf>ajv": "^8.18.0",
-      "ajv>fast-uri": "^3.1.9"
+      "ajv>fast-uri": "^3.1.9",
+      "@libp2p/crypto@<5.1.22": "5.1.22"
     },
     "onlyBuiltDependencies": [
       "@ipshipyard/node-datachannel",
