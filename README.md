@@ -140,6 +140,38 @@ Two ways past that, and the first keeps nothing:
 1. `restoreIdentityFromAuthenticator()` — two discoverable assertions, from which `recoverPublicKey()` returns the credential's public key and with it the DID (0.6.0)
 2. metadata written at registration — `largeBlob` where it comes back, otherwise browser storage — which the demos still do, because a stored copy spares both touches
 
+### Saying what each passkey prompt is for
+
+Creating a passkey-backed identity asks the authenticator three times in a row, and restoring one does too. Without a word in between, that looks like a loop. Every WebAuthn call in this package first awaits a step hook, so an application can show what the next prompt is for and start it from a click:
+
+```js
+import {
+  WebAuthnDIDProvider,
+  OrbitDBWebAuthnIdentityProviderFunction,
+  withPasskeySteps,
+} from '@le-space/orbitdb-identity-provider-webauthn-did';
+import { connectPasskeyStepDialog } from '@le-space/orbitdb-identity-provider-webauthn-did/elements';
+
+// <passkey-step-dialog></passkey-step-dialog> somewhere in the page
+connectPasskeyStepDialog(document.querySelector('passkey-step-dialog'));
+
+const identity = await withPasskeySteps(3, async () => {
+  // 1 of 3: the passkey, from the click that started this
+  const credential = await WebAuthnDIDProvider.createCredential({
+    userId,
+    displayName,
+  });
+  // 2 and 3 of 3, each announced: the signing key's PRF output, the identity signature
+  return identities.createIdentity({
+    provider: OrbitDBWebAuthnIdentityProviderFunction({
+      webauthnCredential: credential,
+    }),
+  });
+});
+```
+
+Between two prompts, `<passkey-step-dialog>` shows "Passkey prompt 2 of 3", what the prompt is for and why, then **Continue**, which starts it, or **Cancel**, which rejects with `PasskeyStepCancelled` before the authenticator is asked. It has no framework, its wording is built in for English and German and can be replaced per language, and it takes its colours from custom properties. Without a handler, or outside `withPasskeySteps`, nothing changes. See [Passkey Steps](docs/API.md#passkey-steps).
+
 ### Hardware-Secured Varsig Quick Start
 
 ```javascript

@@ -23,6 +23,7 @@ import { CRYPTO_ALGORITHMS } from '../constants.js';
 import { PrfUnavailableError, WebAuthnAuthenticationError } from '../errors.js';
 import { buildCredentialRequestOptions } from '../webauthn/config.js';
 import { prfInputForRelyingParty } from '../webauthn/prf-input.js';
+import { beforePasskeyCeremony } from '../passkey-steps.js';
 
 const MIN_PRF_BYTES = 32;
 const HKDF_MAX_BYTES = 255 * 32;
@@ -140,6 +141,7 @@ export async function readPrfOutput(credential, { rpId, prfInput } = {}) {
     toBytes(credential.prfInput) ??
     (await prfInputForRelyingParty(relyingParty));
 
+  await beforePasskeyCeremony('prf');
   const assertion = await navigator.credentials.get(
     buildCredentialRequestOptions({
       challenge: crypto.getRandomValues(new Uint8Array(32)),

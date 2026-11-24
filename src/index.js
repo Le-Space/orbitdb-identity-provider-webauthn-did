@@ -308,6 +308,16 @@ export {
   recoverPublicKeyCandidates,
 } from './webauthn/recovery.js';
 export { restoreIdentityFromAuthenticator } from './webauthn/restore.js';
+// Before each passkey prompt, a word on what it is for — when an application
+// registers a handler (src/passkey-steps.js; `<passkey-step-dialog>` in
+// ./elements is one).
+export {
+  setPasskeyStepHandler,
+  withPasskeySteps,
+  beforePasskeyCeremony,
+  PasskeyStepCancelled,
+  PASSKEY_PURPOSES,
+} from './passkey-steps.js';
 // OrbitDB's identity cache refuses another session of the same passkey
 // (orbitdb/orbitdb#1258); this is the provider's answer until it is fixed there.
 export {

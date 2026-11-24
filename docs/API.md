@@ -263,6 +263,51 @@ used in [the recovery example](https://github.com/NiKrause/orbitdb-storage-bridg
 the database half of the same problem is in
 [orbitdb-storage-bridge](https://github.com/NiKrause/orbitdb-storage-bridge/blob/main/docs/RECOVERY-ON-A-SECOND-DEVICE.md).
 
+### Passkey Steps
+
+Before each passkey prompt, a word on what it is for, when an application asks for one. Every WebAuthn call in this package first awaits `beforePasskeyCeremony(purpose)`. Inside a plan, every prompt after the first goes to the registered handler. The first prompt comes from the click that started the action, so it is not announced. The handler resolves to let the prompt start (from its click, which Safari wants for each WebAuthn call) or throws to stop it.
+
+```js
+import {
+  setPasskeyStepHandler,
+  withPasskeySteps,
+  PasskeyStepCancelled,
+} from '@le-space/orbitdb-identity-provider-webauthn-did';
+
+const stop = setPasskeyStepHandler(async ({ purpose, n, of, kind }) => {
+  // show "prompt n of of", what `purpose` is for; resolve on Continue,
+  // throw new PasskeyStepCancelled() on Cancel
+});
+await withPasskeySteps(3, () => createPasskeyAndIdentity());
+```
+
+#### `setPasskeyStepHandler(handler | null)`
+
+Registers what runs before each announced prompt and returns a function that unregisters it, if it is still the one. A handler sees `{ purpose, n, of, kind }`: `of` is `null` when the plan gave no count, and `kind` is `'create'` or `'get'`.
+
+#### `withPasskeySteps(of | { of, askFirst }, run)`
+
+Runs `run` with its prompts numbered. `of` is how many the action takes, as the application counts them: a number that is too small makes the dialog say "4 of 3" and does nothing worse. `askFirst` announces the first prompt too, for an action that does not start from a click of its own. Plans do not nest: an inner plan numbers its own prompts and the outer one resumes afterwards.
+
+#### `beforePasskeyCeremony(purpose, kind = 'get')`
+
+What the package calls before each WebAuthn call. An application calls it around its own calls, so they are counted in the same plan. Call it outside any `try` that turns a failed ceremony into a fallback: a cancel has to reach the action, not be read as "this authenticator cannot".
+
+#### `PASSKEY_PURPOSES`, `PasskeyStepCancelled`
+
+The purposes are `create`, `signing-key` (the PRF output the signing key comes from), `identity` (the identity signature), `restore` and `restore-confirm` (the two touches of `restoreIdentityFromAuthenticator`), `keystore` (sealing or opening the keystore's key), `prf` (`readPrfOutput`, `extractPrfSeedFromCredential`), `metadata` (largeBlob metadata), `wallet` (the P-256 wallet's signatures) and `sign-entry` (varsig). `PasskeyStepCancelled` is what a cancel throws. It reaches the caller as it is, also through `sign()`, which wraps WebAuthn errors in its own.
+
+#### `./elements`: `<passkey-step-dialog>`
+
+```js
+import { connectPasskeyStepDialog } from '@le-space/orbitdb-identity-provider-webauthn-did/elements';
+const dialog = document.querySelector('passkey-step-dialog');
+connectPasskeyStepDialog(dialog); // returns a function that disconnects it
+dialog.strings = { de: { purposes: { prf: { title: '…', why: '…' } } } }; // optional
+```
+
+A framework-free handler: "Passkey prompt n of m", a title and a reason per purpose, a line that this is not a loop, **Continue** (focused) and **Cancel**. Escape counts as Cancel. The language is the element's `lang`, then the document's. English and German are built in (`PASSKEY_STEP_STRINGS`), and `strings` replaces any of them per language or adds a language. Its colours come from `--passkey-step-background`, `-color`, `-muted`, `-border`, `-accent`, `-on-accent`, `-radius` and `-backdrop`; the defaults follow `prefers-color-scheme`. `element.ask(step)` is the handler itself, for an application that wants to call it directly.
+
 ### PRF Keys and Vaults
 
 Since 0.9.0. Applications that keep data under keys from the passkey used to

@@ -53,6 +53,10 @@ jobs:
 
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
+      # The custom elements need a browser and no demo; their own config
+      # serves the source to a blank page (playwright.elements.config.js).
+      - name: Run custom element tests
+        run: pnpm exec playwright test --config=playwright.elements.config.js
 
       # The demos are one pnpm workspace (examples/pnpm-workspace.yaml): one
       # install, one lockfile, and `-r` builds all three.

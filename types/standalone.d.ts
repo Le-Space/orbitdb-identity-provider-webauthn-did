@@ -532,3 +532,5 @@ export class PrfUnavailableError extends Error {
 export class VaultError extends Error {
   code: VaultErrorCode;
 }
+
+export * from './passkey-steps';

@@ -33,6 +33,7 @@ import {
   p256PublicKeyBytes,
   verifyWebAuthnProof,
 } from './proof-verification.js';
+import { beforePasskeyCeremony } from '../passkey-steps.js';
 
 const webauthnLog = logger('orbitdb-identity-provider-webauthn-did:webauthn');
 
@@ -254,6 +255,7 @@ export class WebAuthnDIDProvider {
       prfInput = prfConfig.prfInput;
     }
 
+    await beforePasskeyCeremony('create', 'create');
     try {
       const credential = await navigator.credentials.create(credentialOptions);
 
@@ -654,6 +656,7 @@ export class WebAuthnDIDProvider {
       throw new WebAuthnNotSupportedError();
     }
 
+    await beforePasskeyCeremony('identity');
     try {
       webauthnLog('Signer context: %o', {
         signer: 'webauthn',

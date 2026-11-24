@@ -24,6 +24,7 @@ import {
   WebAuthnAuthenticationError,
 } from '../errors.js';
 import { logWebAuthnResponse } from '../webauthn/debug-log.js';
+import { beforePasskeyCeremony } from '../passkey-steps.js';
 
 /**
  * Run a WebAuthn assertion for a payload.
@@ -50,6 +51,7 @@ async function runWebAuthnAssertionForPayload(
   const signedBytes = bindContext(domainLabel, payloadBytes);
   const challengeBytes = await buildChallengeBytes(signedBytes);
 
+  await beforePasskeyCeremony('sign-entry');
   const assertion = await navigator.credentials.get(
     buildCredentialRequestOptions({
       rpId,

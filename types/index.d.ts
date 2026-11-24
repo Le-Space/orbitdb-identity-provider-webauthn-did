@@ -785,3 +785,5 @@ export function withoutStaleIdentityCache<
 export function createIdentities(
   options?: Record<string, unknown>
 ): Promise<unknown>;
+
+export * from './passkey-steps';
