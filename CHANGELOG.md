@@ -1,6 +1,9 @@
 # Changes
 
-## Unreleased
+## 0.13.0
+
+An application can now say, before each passkey prompt, what it is for — and `./elements` brings a
+dialog that does it.
 
 ### Added
 
@@ -25,6 +28,14 @@ Tested in `tests/passkey-steps.test.js` (Node, through `createCredential`, the s
 read, `sign()` and the restore against the mock authenticator) and
 `tests/passkey-step-dialog.test.js` (Chromium, with its own `playwright.elements.config.js`, run in
 CI once the browsers are installed).
+
+### Repository
+
+- **No `@libp2p/crypto` below 5.1.22 in this repository's own install** (#102). Up to 5.1.21 it is
+  affected by GHSA-rvfr-cqwq-rc4j: its ASN.1 DER decoder can be driven into a long synchronous
+  loop by a remote peer before authentication. The override applies to this repository's lockfile
+  only. The package's own range, `^5.1.20`, already admits 5.1.22, so an application resolving it
+  fresh gets the fixed version; one with an older lockfile should update it.
 
 ## 0.12.2
 
