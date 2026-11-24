@@ -71,3 +71,13 @@ export {
   encryptArchive,
   decryptArchive,
 } from './worker/client.js';
+
+// The standalone wallet asks the passkey too; an application that uses only
+// this entry announces those prompts with the same handler.
+export {
+  setPasskeyStepHandler,
+  withPasskeySteps,
+  beforePasskeyCeremony,
+  PasskeyStepCancelled,
+  PASSKEY_PURPOSES,
+} from '../passkey-steps.js';

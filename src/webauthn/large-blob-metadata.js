@@ -1,4 +1,5 @@
 import { buildCredentialRequestOptions } from './config.js';
+import { beforePasskeyCeremony } from '../passkey-steps.js';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -110,6 +111,7 @@ export async function writeLargeBlobMetadata({
   discoverableCredentials = false,
   userVerification = 'required',
 }) {
+  await beforePasskeyCeremony('metadata');
   const assertion = await navigator.credentials.get(
     buildCredentialRequestOptions({
       challenge: crypto.getRandomValues(new Uint8Array(32)),
@@ -137,6 +139,7 @@ export async function readLargeBlobMetadata({
   discoverableCredentials = true,
   userVerification = 'required',
 }) {
+  await beforePasskeyCeremony('metadata');
   const assertion = await navigator.credentials.get(
     buildCredentialRequestOptions({
       challenge: crypto.getRandomValues(new Uint8Array(32)),

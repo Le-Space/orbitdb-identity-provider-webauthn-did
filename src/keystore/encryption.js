@@ -12,6 +12,7 @@ import {
   KEYSTORE_ENCRYPTION_METHODS,
 } from '../constants.js';
 import { KeystoreEncryptionError, PrfUnavailableError } from '../errors.js';
+import { beforePasskeyCeremony } from '../passkey-steps.js';
 
 const log = logger(
   'orbitdb-identity-provider-webauthn-did:keystore-encryption'
@@ -257,6 +258,7 @@ export async function writeSKToLargeBlob(credentialId, sk, rpId) {
   log('Writing secret key to largeBlob');
 
   let assertion;
+  await beforePasskeyCeremony('keystore');
   try {
     assertion = await navigator.credentials.get(
       buildCredentialRequestOptions({
@@ -306,6 +308,7 @@ export async function writeSKToLargeBlob(credentialId, sk, rpId) {
 export async function retrieveSKFromLargeBlob(credentialId, rpId) {
   log('Retrieving secret key from largeBlob');
 
+  await beforePasskeyCeremony('keystore');
   try {
     const assertion = await navigator.credentials.get(
       buildCredentialRequestOptions({
@@ -374,6 +377,7 @@ export async function wrapSKWithHmacSecret(credentialId, sk, rpId) {
 
   const salt = crypto.getRandomValues(new Uint8Array(32));
 
+  await beforePasskeyCeremony('keystore');
   try {
     const assertion = await navigator.credentials.get(
       buildCredentialRequestOptions({
@@ -431,6 +435,7 @@ export async function wrapSKWithPRF(credentialId, sk, rpId, prfInput) {
 
   const prfEval = prfInput || crypto.getRandomValues(new Uint8Array(32));
 
+  await beforePasskeyCeremony('keystore');
   try {
     const assertion = await navigator.credentials.get(
       buildCredentialRequestOptions({
@@ -486,6 +491,7 @@ export async function unwrapSKWithHmacSecret(
 ) {
   log('Unwrapping secret key with hmac-secret');
 
+  await beforePasskeyCeremony('keystore');
   try {
     const assertion = await navigator.credentials.get(
       buildCredentialRequestOptions({
@@ -553,6 +559,7 @@ export async function unwrapSKWithPRF(
 
   const prfEval = salt || crypto.getRandomValues(new Uint8Array(32));
 
+  await beforePasskeyCeremony('keystore');
   try {
     const assertion = await navigator.credentials.get(
       buildCredentialRequestOptions({

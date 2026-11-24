@@ -25,6 +25,10 @@
     "./vault": {
       "types": "./types/vault.d.ts",
       "import": "./src/vault/index.js"
+    },
+    "./elements": {
+      "types": "./types/elements.d.ts",
+      "import": "./src/elements/index.js"
     }
   },
   "scripts": {

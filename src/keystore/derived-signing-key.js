@@ -37,6 +37,7 @@ import { CRYPTO_ALGORITHMS, KEY_TYPES } from '../constants.js';
 import { buildCredentialRequestOptions } from '../webauthn/config.js';
 import { prfInputForRelyingParty } from '../webauthn/prf-input.js';
 import { hkdfSha256, sameBytes } from './prf-keys.js';
+import { beforePasskeyCeremony } from '../passkey-steps.js';
 
 const log = logger('orbitdb-identity-provider-webauthn-did:derived-key');
 
@@ -131,6 +132,7 @@ export async function getPrfOutput(credential, { rpId } = {}) {
       ? credential.rawCredentialId
       : new Uint8Array(credential.rawCredentialId ?? []);
 
+  await beforePasskeyCeremony('signing-key');
   try {
     const assertion = await navigator.credentials.get(
       buildCredentialRequestOptions({

@@ -9,6 +9,7 @@ import {
   resolveAuthenticatorAttachment,
 } from '../webauthn/config.js';
 import { logWebAuthnResponse } from '../webauthn/debug-log.js';
+import { beforePasskeyCeremony } from '../passkey-steps.js';
 
 /**
  * Extract public key info from a WebAuthn attestation object.
@@ -127,6 +128,7 @@ async function createWebAuthnVarsigCredential(options = {}) {
     extensions: { largeBlob: { support: 'preferred' } },
   };
 
+  await beforePasskeyCeremony('create', 'create');
   const credential = await navigator.credentials.create({ publicKey });
   if (!credential) {
     throw new Error('Passkey registration failed.');

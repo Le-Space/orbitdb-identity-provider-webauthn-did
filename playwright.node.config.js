@@ -41,6 +41,7 @@ export default defineConfig({
     'secret-signer.test.js',
     'stale-identity-cache.test.js',
     'ipfs-identity-storage.test.js',
+    'passkey-steps.test.js',
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,

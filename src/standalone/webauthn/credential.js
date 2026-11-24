@@ -1,5 +1,6 @@
 import { buildCredentialRequestOptions } from '../../webauthn/config.js';
 import { STORAGE_KEYS } from '../../constants.js';
+import { beforePasskeyCeremony } from '../../passkey-steps.js';
 
 function ensureUint8Array(value, fieldName) {
   if (value instanceof Uint8Array) return value;
@@ -123,6 +124,7 @@ export async function extractPrfSeedFromCredential(credential, options = {}) {
     prfInput = crypto.getRandomValues(new Uint8Array(32));
   }
 
+  await beforePasskeyCeremony('prf');
   const assertion = await navigator.credentials.get(
     buildCredentialRequestOptions({
       challenge: crypto.getRandomValues(new Uint8Array(32)),

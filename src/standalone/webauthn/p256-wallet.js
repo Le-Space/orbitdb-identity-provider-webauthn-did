@@ -21,6 +21,7 @@ import {
 } from '../../errors.js';
 import { buildCredentialRequestOptions } from '../../webauthn/config.js';
 import { MULTICODEC, decodeDidKey } from '../../webauthn/proof-verification.js';
+import { beforePasskeyCeremony } from '../../passkey-steps.js';
 
 // secp256r1 (NIST P-256), SEC 2 §2.4.2: y² = x³ − 3x + b over GF(p), order n.
 const P256_P =
@@ -468,6 +469,7 @@ export async function signP256Challenge(descriptor, challenge) {
   }
 
   let assertion;
+  await beforePasskeyCeremony('wallet');
   try {
     assertion = await navigator.credentials.get(
       buildCredentialRequestOptions({

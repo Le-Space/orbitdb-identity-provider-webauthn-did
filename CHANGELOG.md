@@ -1,5 +1,31 @@
 # Changes
 
+## Unreleased
+
+### Added
+
+- **Before each passkey prompt, a word on what it is for.** Creating a passkey-backed identity asks
+  the authenticator three times in a row, and restoring one does too. Without a word in between
+  that looks like a loop, and people cancel it. Le-Space/belege put a dialog between its prompts
+  (#429), but only this package knows when it is about to ask and why. Every WebAuthn call here now
+  first awaits `beforePasskeyCeremony(purpose)`. An application registers a handler with
+  `setPasskeyStepHandler` and numbers an action's prompts with `withPasskeySteps(of, run)`. Every
+  prompt after the first is then announced, with its purpose, and starts from the click that
+  answers it. A cancel (`PasskeyStepCancelled`) stops before the authenticator is asked and reaches
+  the caller unchanged, also through `sign()` and the signing key's PRF read, which turn other
+  failures into errors or fallbacks of their own. Without a handler, or outside a plan, nothing
+  changes. Exported from the root and from `./standalone`.
+- **`./elements` with `<passkey-step-dialog>`:** that handler without a framework, after belege's
+  `PasskeyStepDialog.svelte`. It shows "Passkey prompt n of m", a title and a reason per purpose,
+  and **Continue** / **Cancel**. Its wording is in English and German and can be replaced per
+  language; its colours come from custom properties. `connectPasskeyStepDialog(element)` makes it
+  the handler. Le-Space/simple-todo's escrow01 is the first application to use it.
+
+Tested in `tests/passkey-steps.test.js` (Node, through `createCredential`, the signing key's PRF
+read, `sign()` and the restore against the mock authenticator) and
+`tests/passkey-step-dialog.test.js` (Chromium, with its own `playwright.elements.config.js`, run in
+CI once the browsers are installed).
+
 ## 0.12.2
 
 A request that names a passkey asks that passkey. Until now this entry stood under 0.12.1, but

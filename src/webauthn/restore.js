@@ -31,6 +31,7 @@ import { buildCredentialRequestOptions } from './config.js';
 import { prfInputForRelyingParty } from './prf-input.js';
 import { WebAuthnDIDProvider } from './provider.js';
 import { recoverPublicKey } from './recovery.js';
+import { beforePasskeyCeremony } from '../passkey-steps.js';
 
 const log = logger('orbitdb-identity-provider-webauthn-did:restore');
 
@@ -69,6 +70,7 @@ export async function restoreIdentityFromAuthenticator({
   // Touch one: discoverable, so the device does not have to know which
   // credential to ask for — it has nothing stored, that is the premise.
   onTouch?.({ touch: 1, of: 2 });
+  await beforePasskeyCeremony('restore');
   const first = await navigator.credentials.get(
     buildCredentialRequestOptions({
       rpId: party,
@@ -95,6 +97,7 @@ export async function restoreIdentityFromAuthenticator({
   // Touch two: the same credential, another challenge. Only the signature
   // matters, so this asks for no more verification than the key insists on.
   onTouch?.({ touch: 2, of: 2 });
+  await beforePasskeyCeremony('restore-confirm');
   const second = await navigator.credentials.get(
     buildCredentialRequestOptions({
       rpId: party,
