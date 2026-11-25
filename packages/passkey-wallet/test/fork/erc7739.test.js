@@ -213,7 +213,11 @@ test.describe('ERC-7739 on Calibur v1.0.0, Sepolia fork', () => {
   /** @type {Awaited<ReturnType<typeof startFork>>} */
   let fork;
   test.beforeAll(async () => {
-    fork = await startFork();
+    // Named, not anvil's default: "latest" moves with each Foundry release
+    // and has gone past Sepolia's own hardfork (Foundry 1.10.0's latest
+    // reverts the setup transaction). Osaka is Sepolia's, with the P-256
+    // precompile this block is about.
+    fork = await startFork({ hardfork: 'osaka' });
   });
   test.afterAll(() => fork?.stop());
 
