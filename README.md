@@ -312,6 +312,64 @@ const opened = await keeper.open({
 
 Since **0.10.0**, a secret kept in that vault can be an identity of its own: `createSecretSigner(secret, { info })` turns it into an Ed25519 signer for the provider's `signer` option, so every key that opens the vault writes as the same identity — the root of a database's access controller, which a single passkey's identity would hold for good. See [docs/API.md](docs/API.md#an-identity-that-is-nobodys-passkey-createsecretsignersecret--info-).
 
+### Default path (passkey DID + derived signing key)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant User
+  participant App
+  participant WebAuthn
+  participant Auth as Authenticator
+  participant Prov as WebAuthn provider
+  participant KS as OrbitDB keystore
+  participant DB as OrbitDB
+
+  User->>App: Create credential
+  App->>WebAuthn: create() with PRF and largeBlob requested
+  WebAuthn->>Auth: Create passkey
+  Auth-->>WebAuthn: Attestation
+  WebAuthn-->>App: Credential
+
+  App->>Prov: createIdentity({ webauthnCredential })
+  Prov->>Prov: DID = did:key of the passkey's P-256 key
+  alt the keystore already holds a key for the DID
+    Note right of Prov: Nothing asked. That key stays.
+  else prfOutput handed over (one touch)
+    Prov->>KS: addKey(DID, key derived from prfOutput)
+  else the provider asks
+    Prov->>WebAuthn: get() with PRF
+    WebAuthn->>Auth: User verification
+    alt PRF output
+      Auth-->>Prov: PRF output
+      Prov->>KS: addKey(DID, HKDF(PRF output, DID) gives secp256k1 or Ed25519)
+    else no PRF
+      Auth-->>Prov: no PRF result
+      Note right of Prov: OrbitDB generates a random key. Stable on this device only.
+    end
+  end
+  alt identity signature stored (localStorage)
+    Prov->>Prov: reuse it
+  else first time on this device
+    Prov->>WebAuthn: get() over publicKey + idSignature
+    WebAuthn->>Auth: User verification
+    Auth-->>Prov: Assertion, becomes signatures.publicKey
+  end
+  Prov-->>App: Identity
+
+  User->>App: Add entry
+  App->>DB: db.put()
+  DB->>KS: sign entry with the derived key
+  KS-->>DB: Entry signature
+
+  Note over App,KS: No prompt per write. The derived key sits in OrbitDB's keystore unencrypted.
+```
+
+An application that reads the PRF output for keys of its own hands it over as
+`prfOutput` and saves the second touch. That path, a vault a second security
+key opens, and an identity derived from a secret in the vault are drawn in
+[docs/EXAMPLE-SEQUENCES.md](docs/EXAMPLE-SEQUENCES.md).
+
 ### Keystore-based DID (WebAuthn + OrbitDB keystore)
 
 ```mermaid
@@ -488,8 +546,8 @@ forgeries.
 
 The identity for each option is built by one module under
 `examples/shared/lib/options/`, which is also the shortest way to read the
-API; `docs/EXAMPLE-SEQUENCES.md` walks through the three sequences and their
-prompt counts.
+API; `docs/EXAMPLE-SEQUENCES.md` walks through the three sequences, three
+more an application builds around them, and their prompt counts.
 
 ### In other repositories
 
@@ -511,15 +569,27 @@ Three consumers that show the package doing a whole job rather than one call:
 
 ## Documentation
 
-- `docs/API.md`
-- `docs/ED25519-KEYSTORE-DID.md`
-- `docs/WEBAUTHN-ENCRYPTED-KEYSTORE-INTEGRATION.md`
-- `docs/WEBAUTHN-DID-AND-ORBITDB-IDENTITY.md`
-- `docs/STANDALONE-API-PLAN.md`
-- `docs/EXAMPLE-SEQUENCES.md`
-- `docs/E2E-TEST-SUMMARY.md`
-- `SECURITY.md`
-- `CODE_OF_CONDUCT.md`
+- [`docs/API.md`](docs/API.md) — the reference: every export, its options
+  and defaults, and what it throws.
+- [`docs/EXAMPLE-SEQUENCES.md`](docs/EXAMPLE-SEQUENCES.md) — one sequence
+  diagram per way of using the package, what a peer verifies for each, and
+  how many passkey prompts each costs.
+- [`docs/WEBAUTHN-DID-AND-ORBITDB-IDENTITY.md`](docs/WEBAUTHN-DID-AND-ORBITDB-IDENTITY.md)
+  — which DID an identity has, which key signs its entries, how the DID
+  relates to the identity hash, and how peers check the binding.
+- [`docs/ED25519-KEYSTORE-DID.md`](docs/ED25519-KEYSTORE-DID.md) — the
+  keystore DID (`useKeystoreDID`) in detail.
+- [`docs/WEBAUTHN-ENCRYPTED-KEYSTORE-INTEGRATION.md`](docs/WEBAUTHN-ENCRYPTED-KEYSTORE-INTEGRATION.md)
+  — sealing the keystore DID's key with the passkey (`encryptKeystore`).
+- [`docs/E2E-TEST-SUMMARY.md`](docs/E2E-TEST-SUMMARY.md) — the test
+  configurations, what CI runs, and what a new suite needs to run there.
+- [`docs/STANDALONE-API-PLAN.md`](docs/STANDALONE-API-PLAN.md) — historical:
+  the plan the `./standalone` export started from (#13). Its export list is
+  out of date; the reference is
+  [docs/API.md](docs/API.md#standalone-export).
+- [`SECURITY.md`](SECURITY.md) — supported versions and how to report a
+  vulnerability.
+- [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)
 
 ## Cross-Project Verification
 

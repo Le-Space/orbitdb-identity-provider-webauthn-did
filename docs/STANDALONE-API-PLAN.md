@@ -1,6 +1,13 @@
 # Standalone WebAuthn Toolkit API Status
 
-Status: Implemented (initial public surface)
+> **Historical.** This is the plan the `./standalone` export started from
+> (#13), kept for its record. Its export list lacks `createWorkerSigner`
+> (0.5.4), the P-256 wallet primitives (0.8.0), the PRF keys and vaults
+> (0.9.0), `createSecretSigner` (0.10.0), the vault keeper (0.12.0) and the
+> passkey steps (0.13.0). For what the export holds now, see
+> [docs/API.md](API.md#standalone-export), or `src/standalone/index.js`.
+
+Status: Implemented (initial public surface), superseded as a reference
 Issue: #13
 
 ## Objective

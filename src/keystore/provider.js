@@ -868,14 +868,19 @@ export class OrbitDBWebAuthnIdentityProvider {
  * This follows the same pattern as OrbitDBIdentityProviderDID
  * Returns a function that returns a promise resolving to the provider instance
  *
+ * The options are those of the {@link OrbitDBWebAuthnIdentityProvider}
+ * constructor, documented there and in docs/API.md.
+ *
  * @param {Object} options - Configuration options
- * @param {Object} options.webauthnCredential - WebAuthn credential for authentication
- * @param {boolean} options.useKeystoreDID - If true, creates DID from keystore instead of P-256 DID from WebAuthn
- * @param {Object} options.keystore - OrbitDB keystore instance (required if useKeystoreDID is true)
- * @param {string} options.keystoreKeyType - Key type for keystore: 'secp256k1' (default) or 'Ed25519'
- * @param {boolean} options.encryptKeystore - If true, encrypts the keystore with WebAuthn-protected secret
- * @param {string} options.keystoreEncryptionMethod - Encryption method: 'largeBlob' or 'hmac-secret'
- * @param {string} [options.signingKeyType] - PRF-derived signing key type: 'secp256k1' (default) or 'Ed25519'
+ * @param {Object} [options.webauthnCredential] - WebAuthn credential; required unless `signer` is given
+ * @param {boolean} [options.useKeystoreDID=false] - The DID is the keystore key's instead of the passkey's P-256 DID; needs `keystore`
+ * @param {Object} [options.keystore] - OrbitDB keystore instance
+ * @param {string} [options.keystoreKeyType='secp256k1'] - Key type for the keystore DID: 'secp256k1' or 'Ed25519'
+ * @param {boolean} [options.encryptKeystore=false] - Seal the keystore DID's key with a secret from the passkey
+ * @param {string} [options.keystoreEncryptionMethod='prf'] - 'prf', 'largeBlob' or 'hmac-secret'
+ * @param {boolean} [options.deriveSigningKeyFromPrf=true] - Derive the signing key from the passkey's PRF output
+ * @param {string} [options.signingKeyType='secp256k1'] - PRF-derived signing key type: 'secp256k1' or 'Ed25519'
+ * @param {Object} [options.signer] - A key that signs elsewhere (`createWorkerSigner`, `createSecretSigner`); the identity is its DID
  * @param {Uint8Array} [options.prfOutput] - A PRF output already read with `readPrfOutput`; the signing key is derived from it without asking the passkey again
  * @returns {Function} Provider factory for OrbitDB.
  */

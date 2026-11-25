@@ -194,11 +194,29 @@ const fill = (template, values) =>
     key in values ? String(values[key]) : whole
   );
 
-export class PasskeyStepDialogElement extends HTMLElement {
+/**
+ * Where there is no DOM — a server-side render importing ./elements — the
+ * class is still defined, on a stand-in, so that the import does not throw.
+ * It is only registered where there is a customElements registry.
+ */
+const Base = /** @type {typeof HTMLElement} */ (
+  globalThis.HTMLElement ?? class {}
+);
+
+/**
+ * How long "Continue" ignores clicks and key presses after a step appears,
+ * in milliseconds: the second click of a double click, or a held Enter,
+ * meant for the step before, must not approve this one unread.
+ */
+export const CONTINUE_DELAY_MS = 400;
+
+export class PasskeyStepDialogElement extends Base {
   /** @type {Partial<Record<string, Partial<PasskeyStepStrings>>>} */
   #overrides = {};
   /** @type {{ resolve: () => void, reject: (error: Error) => void } | null} */
   #pending = null;
+  /** When the step on screen appeared (`performance.now()`). */
+  #shownAt = 0;
 
   constructor() {
     super();
@@ -217,9 +235,10 @@ export class PasskeyStepDialogElement extends HTMLElement {
     this.dialog = /** @type {HTMLDialogElement} */ (
       root.querySelector('dialog')
     );
-    root
-      .querySelector('[part=continue]')
-      .addEventListener('click', () => this.#settle(null));
+    root.querySelector('[part=continue]').addEventListener('click', () => {
+      if (performance.now() - this.#shownAt < CONTINUE_DELAY_MS) return;
+      this.#settle(null);
+    });
     root
       .querySelector('[part=cancel]')
       .addEventListener('click', () =>
@@ -229,6 +248,12 @@ export class PasskeyStepDialogElement extends HTMLElement {
     this.dialog.addEventListener('cancel', (event) => {
       event.preventDefault();
       this.#settle(new PasskeyStepCancelled());
+    });
+    // Closed some other way — `dialog.close()` from the page, say — the step
+    // is not answered "Continue". A close that a new step has already
+    // reopened (`#settle` closes, `ask` opens again) is not one.
+    this.dialog.addEventListener('close', () => {
+      if (!this.dialog.open) this.#settle(new PasskeyStepCancelled());
     });
   }
 
@@ -301,8 +326,17 @@ export class PasskeyStepDialogElement extends HTMLElement {
     this.setAttribute('data-purpose', step.purpose);
 
     return new Promise((resolve, reject) => {
+      try {
+        if (!this.dialog.open) this.dialog.showModal();
+      } catch (error) {
+        // Not on the page, for one: nothing is waiting, and nothing is left
+        // marked as if it were.
+        this.removeAttribute('data-purpose');
+        reject(error);
+        return;
+      }
       this.#pending = { resolve, reject };
-      if (!this.dialog.open) this.dialog.showModal();
+      this.#shownAt = performance.now();
       /** @type {HTMLElement} */ (
         root.querySelector('[part=continue]')
       ).focus();

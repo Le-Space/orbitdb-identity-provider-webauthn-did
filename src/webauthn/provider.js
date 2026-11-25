@@ -104,8 +104,10 @@ export class WebAuthnDIDProvider {
   }
 
   /**
-   * Create a WebAuthn credential for OrbitDB identity
-   * This triggers biometric authentication (Face ID, Touch ID, Windows Hello, etc.)
+   * Create a WebAuthn credential for OrbitDB identity.
+   * By default the browser offers every kind of authenticator: the device's
+   * own (Face ID, Touch ID, Windows Hello), a security key, or a phone.
+   * `authenticatorType` narrows that. User verification is always required.
    * @param {Object} options - Credential options
    * @param {string} options.userId - Account label shown in the credential
    *   picker (`user.name`). A label only: it does not identify the credential,

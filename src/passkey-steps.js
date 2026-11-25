@@ -86,8 +86,14 @@ export class PasskeyStepCancelled extends Error {
 /** @type {((step: PasskeyStep) => unknown) | null} */
 let handler = null;
 
-/** @type {{ of: number | null, n: number, askFirst: boolean } | null} */
-let plan = null;
+/**
+ * The plans of the actions running now, latest last. Usually one: WebAuthn
+ * allows one ceremony at a time. But two actions can overlap while neither is
+ * in a ceremony — both waiting on the network, say — and then each has to
+ * leave without disturbing the other's plan.
+ * @type {Array<{ of: number | null, n: number, askFirst: boolean }>}
+ */
+const plans = [];
 
 /**
  * Register what runs before each announced prompt, or `null` to stop.
@@ -120,8 +126,11 @@ export function setPasskeyStepHandler(next) {
  * from a click of its own.
  *
  * Plans do not nest: the inner one numbers its own prompts and the outer one
- * resumes afterwards. WebAuthn allows one ceremony at a time, so there is
- * never more than one plan running.
+ * resumes afterwards. Two actions that overlap each leave their own plan
+ * when they end, whichever ends first. A prompt counts towards the plan that
+ * started last; nothing tells which action a prompt belongs to, so a prompt
+ * made outside the action (a background signature, say) while it runs is
+ * counted as one of its own.
  *
  * @template T
  * @param {number | null | { of?: number | null, askFirst?: boolean }} options
@@ -133,12 +142,18 @@ export async function withPasskeySteps(options, run) {
     typeof options === 'number' || options === null
       ? { of: options }
       : (options ?? {});
-  const outer = plan;
-  plan = { of: typeof of === 'number' && of > 0 ? of : null, n: 0, askFirst };
+  const mine = {
+    of: typeof of === 'number' && of > 0 ? of : null,
+    n: 0,
+    askFirst,
+  };
+  plans.push(mine);
   try {
     return await run();
   } finally {
-    plan = outer;
+    // Its own plan, wherever it is now: an action that started later and is
+    // still running keeps its plan.
+    plans.splice(plans.lastIndexOf(mine), 1);
   }
 }
 
@@ -159,6 +174,7 @@ export async function withPasskeySteps(options, run) {
  * @returns {Promise<void>}
  */
 export async function beforePasskeyCeremony(purpose, kind = 'get') {
+  const plan = plans[plans.length - 1];
   if (!plan) return;
   plan.n += 1;
   if (!handler) return;

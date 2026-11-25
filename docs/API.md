@@ -172,16 +172,46 @@ const identity = await identities.createIdentity({
 });
 ```
 
-Common options:
+Options, as `src/keystore/provider.js` reads them:
 
-- `webauthnCredential`
-- `encryptKeystore`
-- `keystoreEncryptionMethod`
-- `keyType`
-- `usePersistentKey`
+- `webauthnCredential` — the credential from `createCredential`, a stored
+  copy, or `restoreIdentityFromAuthenticator().credential`. Required unless
+  `signer` is given; without either the provider throws a `TypeError`.
+- `signingKeyType` — `'secp256k1'` (default) or `'Ed25519'`: the type of the
+  signing key derived from the PRF output. Any other value throws. A key
+  already in the keystore for the DID is kept, whatever its type.
+- `deriveSigningKeyFromPrf` — `true` by default: derive the signing key from
+  the passkey's PRF output, at the cost of one assertion the first time an
+  identity is created on a device. `false` leaves it to the keystore, which
+  generates a random secp256k1 key that stays on that device.
 - `prfOutput` — a PRF output already read with `readPrfOutput`, so the signing
   key costs no second touch; see
-  [One touch for the data and the identity](#one-touch-for-the-data-and-the-identity)
+  [One touch for the data and the identity](#one-touch-for-the-data-and-the-identity).
+  A `Uint8Array` of at least 32 bytes, or the provider throws a `TypeError`.
+  Unused with `signer`, `useKeystoreDID` or `deriveSigningKeyFromPrf: false`,
+  and once the keystore holds a key for the DID.
+- `useKeystoreDID` — `false` by default. `true` makes the DID the `did:key` of
+  a key in the keystore, which also signs the entries (the keystore DID). It
+  needs `keystore`: without one the provider returns the passkey DID.
+- `keystore` — `null` by default. The OrbitDB keystore, the same one given to
+  `Identities()`. `useKeystoreDID` needs it; the default path uses the
+  keystore OrbitDB passes to `getId()` and falls back to this one.
+- `keystoreKeyType` — `'secp256k1'` (default) or `'Ed25519'`: the type of the
+  keystore DID's key. Only with `useKeystoreDID`.
+- `encryptKeystore` — `false` by default. Seals the keystore DID's key with the
+  passkey, so it takes effect only with `useKeystoreDID` and `keystore`.
+  `provider.encryptionState` says whether it was sealed.
+- `keystoreEncryptionMethod` — `'prf'` (default), `'largeBlob'` or
+  `'hmac-secret'`.
+- `signer` — `null` by default. A key that signs elsewhere,
+  `{ did, type: 'Ed25519', publicKey, sign(data) }`, from `createWorkerSigner`
+  or `createSecretSigner`. The identity is its DID, and nothing asks a
+  passkey. Give `Identities()` the keystore from
+  `createSessionKeystore({ signer })`: `getId()` throws when the keystore
+  has no key under the signer's DID.
+
+`keyType` and `usePersistentKey`, listed here before, are not options: the
+provider never read either.
 
 ### WebAuthn Configuration
 
@@ -775,6 +805,10 @@ with webauthn-sol). See the README section "Passkeys for smart accounts".
 ### Worker Keystore Client
 
 - `createWorkerKeystoreClient(options?)`
+- `createWorkerSigner(client, { did, publicKey })` — the result of
+  `client.deriveSigner(prfSeed)` as a signer for
+  `createSessionKeystore({ signer })` and the provider's `signer` option;
+  `sign` runs in the worker
 - `isWorkerKeystoreAvailable()`
 - `createEd25519DidFromPublicKey(publicKeyBytes)`
 - `getDefaultWorkerKeystoreClient(options?)`
