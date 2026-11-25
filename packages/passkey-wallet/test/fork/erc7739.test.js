@@ -26,7 +26,6 @@
  * The passkey is a P-256 key in memory answering like an authenticator: no
  * WebAuthn in Node. Not run in CI — it needs anvil and a Sepolia RPC:
  *
- *   npm run test:wallet-fork
  *   PASSKEY_WALLET_FORK_URL=<sepolia rpc> npm run test:wallet-fork
  */
 import { test, expect } from '@playwright/test';
@@ -54,10 +53,7 @@ const FORK_URL = process.env.PASSKEY_WALLET_FORK_URL;
 const SDK_GAS_LIMIT = 250_000n;
 const MAGIC = '0x1626ba7e';
 
-test.skip(
-  !FORK_URL,
-  'needs PASSKEY_WALLET_FORK_URL (a Sepolia RPC); `npm run test:wallet-fork` sets a public one'
-);
+test.skip(!FORK_URL, 'needs PASSKEY_WALLET_FORK_URL, a Sepolia RPC URL');
 test.describe.configure({ timeout: 180_000 });
 
 function freePort() {
