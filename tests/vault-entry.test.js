@@ -61,6 +61,20 @@ test('the ./vault entry imports no package at all', () => {
   );
 });
 
+test('only the files that act on import are marked as having side effects', () => {
+  // A bundler may drop an imported module nobody uses unless it is listed.
+  // The elements entry registers <passkey-step-dialog>, the worker installs
+  // its message handler; every other module only defines things.
+  expect(pkg.sideEffects).toEqual([
+    './src/elements/index.js',
+    './src/standalone/worker/ed25519-keystore.worker.js',
+  ]);
+  const { files } = importGraph(pkg.exports['./vault'].import);
+  for (const marked of pkg.sideEffects) {
+    expect(files).not.toContain(marked.slice(2));
+  }
+});
+
 test('the walk sees a package import where there is one', () => {
   // The main entry imports OrbitDB's companions; the walk has to notice.
   expect(importGraph('src/index.js').packages.length).toBeGreaterThan(0);

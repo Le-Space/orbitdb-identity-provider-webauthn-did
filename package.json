@@ -5,6 +5,10 @@
   "main": "src/index.js",
   "types": "types/index.d.ts",
   "type": "module",
+  "sideEffects": [
+    "./src/elements/index.js",
+    "./src/standalone/worker/ed25519-keystore.worker.js"
+  ],
   "exports": {
     ".": {
       "types": "./types/index.d.ts",
