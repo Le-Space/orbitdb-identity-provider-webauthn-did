@@ -172,6 +172,45 @@ test.describe('passkey steps', () => {
     ]);
   });
 
+  test('overlapping actions each leave their own plan, whichever ends first', async () => {
+    // Two actions both waiting on something other than WebAuthn: A ends
+    // first. Its plan used to be restored by the later one, and stayed.
+    let finishA;
+    let finishB;
+    const a = withPasskeySteps(
+      { of: 3 },
+      () => new Promise((r) => (finishA = r))
+    );
+    const b = withPasskeySteps(
+      { of: 2 },
+      () => new Promise((r) => (finishB = r))
+    );
+    finishA();
+    await a;
+    // B is still running: its prompts are counted against its plan.
+    await beforePasskeyCeremony('prf');
+    await beforePasskeyCeremony('wallet');
+    finishB();
+    await b;
+    expect(asked.map((step) => [step.purpose, step.n, step.of])).toEqual([
+      ['wallet', 2, 2],
+    ]);
+
+    // Outside any plan again: nothing is announced.
+    asked = [];
+    await beforePasskeyCeremony('prf');
+    await beforePasskeyCeremony('wallet');
+    expect(asked).toEqual([]);
+  });
+
+  test('importing ./elements works without a DOM', async () => {
+    // A server-side render imports it too; the element is defined only where
+    // there is a customElements registry.
+    const elements = await import('../src/elements/index.js');
+    expect(typeof elements.connectPasskeyStepDialog).toBe('function');
+    expect(typeof elements.PasskeyStepDialogElement).toBe('function');
+  });
+
   test('a handler that was replaced does not unregister its successor', async () => {
     const first = setPasskeyStepHandler(() => {});
     const later = [];

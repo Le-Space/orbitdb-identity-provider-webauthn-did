@@ -7,6 +7,7 @@
  */
 import { setPasskeyStepHandler } from '../passkey-steps.js';
 import {
+  CONTINUE_DELAY_MS,
   PasskeyStepDialogElement,
   PASSKEY_STEP_STRINGS,
 } from './passkey-step-dialog.js';
@@ -31,7 +32,7 @@ export function connectPasskeyStepDialog(element) {
   return setPasskeyStepHandler((step) => element.ask(step));
 }
 
-export { PasskeyStepDialogElement, PASSKEY_STEP_STRINGS };
+export { CONTINUE_DELAY_MS, PasskeyStepDialogElement, PASSKEY_STEP_STRINGS };
 export {
   setPasskeyStepHandler,
   withPasskeySteps,

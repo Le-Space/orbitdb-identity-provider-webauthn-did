@@ -93,6 +93,10 @@ test.describe('<passkey-step-dialog>', () => {
       dialog(page).getByRole('button', { name: 'Continue' })
     ).toBeFocused();
 
+    // A person reads first; a click in the first moment is ignored.
+    await page.waitForTimeout(
+      await page.evaluate(() => window.elements.CONTINUE_DELAY_MS)
+    );
     await dialog(page).getByRole('button', { name: 'Continue' }).click();
     await expect.poll(() => outcome(page)).toBe('continued');
     expect(await page.evaluate(() => window.dialog.isOpen)).toBe(false);
@@ -122,6 +126,74 @@ test.describe('<passkey-step-dialog>', () => {
     await page.keyboard.press('Escape');
     await expect.poll(() => outcome(page)).toBe('PasskeyStepCancelled');
     expect(await page.evaluate(() => window.dialog.isOpen)).toBe(false);
+  });
+
+  test('a dialog closed by other means cancels the step instead of leaving it waiting', async ({
+    page,
+  }) => {
+    await open(page);
+    await secondPrompt(page);
+    await page.evaluate(() => window.dialog.dialog.close());
+    await expect.poll(() => outcome(page)).toBe('PasskeyStepCancelled');
+    expect(await page.evaluate(() => window.dialog.isOpen)).toBe(false);
+    await expect(dialog(page)).not.toHaveAttribute('data-purpose');
+  });
+
+  test('a step on an element off the page fails at once and leaves nothing behind', async ({
+    page,
+  }) => {
+    await open(page);
+    const result = await page.evaluate(async () => {
+      const loose = document.createElement('passkey-step-dialog');
+      const error = await loose
+        .ask({ purpose: 'prf', n: 2, of: 3, kind: 'get' })
+        .catch((e) => e);
+      return {
+        name: error?.name,
+        purpose: loose.getAttribute('data-purpose'),
+        open: loose.isOpen,
+      };
+    });
+    expect(result).toEqual({
+      name: 'InvalidStateError',
+      purpose: null,
+      open: false,
+    });
+  });
+
+  test('"Continue" ignores a click in the first moment, so a double click does not approve the next step', async ({
+    page,
+  }) => {
+    await open(page);
+    const answered = await page.evaluate(async () => {
+      const { dialog, elements } = window;
+      const results = [];
+      const step = (n) =>
+        dialog.ask({ purpose: 'prf', n, of: 3, kind: 'get' }).then(
+          () => results.push(`continued ${n}`),
+          (e) => results.push(`${e.name} ${n}`)
+        );
+      const button = dialog.shadowRoot.querySelector('[part=continue]');
+      // A click right away is ignored; one after the delay counts.
+      const first = step(2);
+      button.click();
+      await new Promise((r) => setTimeout(r, elements.CONTINUE_DELAY_MS + 50));
+      button.click();
+      await first;
+      // The next step comes straight after; the second click of a double
+      // click lands on it at once and must not approve it.
+      const second = step(3);
+      button.click();
+      await new Promise((r) => setTimeout(r, 50));
+      const stillOpen = dialog.isOpen;
+      dialog.shadowRoot.querySelector('[part=cancel]').click();
+      await second;
+      return { results, stillOpen };
+    });
+    expect(answered).toEqual({
+      results: ['continued 2', 'PasskeyStepCancelled 3'],
+      stillOpen: true,
+    });
   });
 
   test('speaks the document’s language', async ({ page }) => {
