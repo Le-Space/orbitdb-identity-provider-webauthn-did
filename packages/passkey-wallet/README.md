@@ -220,8 +220,9 @@ What runs in the repository's node suite (`pnpm run test:node` at the root):
 
 Calibur itself checks the ERC-7739 signatures in `test/fork/erc7739.test.js`
 (`pnpm run test:wallet-fork` at the root; needs Foundry's anvil and a Sepolia
-RPC, `PASSKEY_WALLET_FORK_URL`, a public one by default, so CI does not run
-it): on a fork, a fresh EOA is delegated to Calibur v1.0.0 with a P-256 key
+RPC from a provider in `PASSKEY_WALLET_FORK_URL` — the free public endpoints
+tried do not hold up for anvil's fork; CI runs it as the `wallet-fork` job
+when the repository has that secret): on a fork, a fresh EOA is delegated to Calibur v1.0.0 with a P-256 key
 registered, and `isValidSignature` takes a Zama permit built as @fhevm/sdk
 0.14.3 builds it (`test/support/zama-permit.mjs`) and a personal message
 signed through `signTypedData` and `signMessage`, refuses another hash,

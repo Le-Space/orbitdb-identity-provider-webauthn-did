@@ -24,9 +24,9 @@
  * as a definitive rejection too, so the tests below take either as refused.
  *
  * The passkey is a P-256 key in memory answering like an authenticator: no
- * WebAuthn in Node. Not run in CI — it needs anvil and a Sepolia RPC:
+ * WebAuthn in Node. It needs anvil and a Sepolia RPC; CI runs it as the
+ * `wallet-fork` job when the repository has the PASSKEY_WALLET_FORK_URL secret:
  *
- *   npm run test:wallet-fork
  *   PASSKEY_WALLET_FORK_URL=<sepolia rpc> npm run test:wallet-fork
  */
 import { test, expect } from '@playwright/test';
@@ -54,10 +54,7 @@ const FORK_URL = process.env.PASSKEY_WALLET_FORK_URL;
 const SDK_GAS_LIMIT = 250_000n;
 const MAGIC = '0x1626ba7e';
 
-test.skip(
-  !FORK_URL,
-  'needs PASSKEY_WALLET_FORK_URL (a Sepolia RPC); `npm run test:wallet-fork` sets a public one'
-);
+test.skip(!FORK_URL, 'needs PASSKEY_WALLET_FORK_URL, a Sepolia RPC URL');
 test.describe.configure({ timeout: 180_000 });
 
 function freePort() {
@@ -216,7 +213,11 @@ test.describe('ERC-7739 on Calibur v1.0.0, Sepolia fork', () => {
   /** @type {Awaited<ReturnType<typeof startFork>>} */
   let fork;
   test.beforeAll(async () => {
-    fork = await startFork();
+    // Named, not anvil's default: "latest" moves with each Foundry release
+    // and has gone past Sepolia's own hardfork (Foundry 1.10.0's latest
+    // reverts the setup transaction). Osaka is Sepolia's, with the P-256
+    // precompile this block is about.
+    fork = await startFork({ hardfork: 'osaka' });
   });
   test.afterAll(() => fork?.stop());
 

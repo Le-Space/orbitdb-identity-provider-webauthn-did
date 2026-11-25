@@ -145,6 +145,56 @@ jobs:
             playwright-report/
           retention-days: 7
 
+  # Calibur checking the wallet's ERC-7739 signatures, on an anvil fork of
+  # Sepolia (packages/passkey-wallet/test/fork). It needs a Sepolia RPC with a
+  # provider key in the PASSKEY_WALLET_FORK_URL secret; free public endpoints
+  # do not hold up for anvil's fork start. GitHub gives no secrets to pull
+  # requests from forks, and a release run gets none either, so there the
+  # steps are skipped with a notice. Runs for pull requests and for pushes to
+  # main only, to spare the RPC's quota.
+  wallet-fork:
+    name: Wallet fork tests (Sepolia)
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'push' || github.ref == 'refs/heads/main'
+    env:
+      PASSKEY_WALLET_FORK_URL: ${{ secrets.PASSKEY_WALLET_FORK_URL }}
+
+    steps:
+      - name: No RPC, no fork tests
+        if: env.PASSKEY_WALLET_FORK_URL == ''
+        run: echo "::notice::PASSKEY_WALLET_FORK_URL is not set for this run; wallet fork tests skipped"
+
+      - name: Checkout code
+        if: env.PASSKEY_WALLET_FORK_URL != ''
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        if: env.PASSKEY_WALLET_FORK_URL != ''
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - name: Setup Node.js 22.x
+        if: env.PASSKEY_WALLET_FORK_URL != ''
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22.x'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        if: env.PASSKEY_WALLET_FORK_URL != ''
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Foundry (anvil)
+        if: env.PASSKEY_WALLET_FORK_URL != ''
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Run wallet fork tests
+        if: env.PASSKEY_WALLET_FORK_URL != ''
+        run: pnpm run test:wallet-fork
+
   security-audit:
     name: Security Audit
     runs-on: ubuntu-24.04
