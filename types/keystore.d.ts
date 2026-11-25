@@ -42,12 +42,15 @@ export interface ExtensionSupport {
 export interface OrbitDBWebAuthnIdentityProviderOptions {
   /** Required unless `signer` is given. */
   webauthnCredential?: Record<string, unknown>;
+  /** The OrbitDB keystore (default null). `useKeystoreDID` needs it; the default path falls back to it when OrbitDB passes none. */
   keystore?: unknown;
-  usePersistentKey?: boolean;
+  /** The DID is a keystore key's `did:key` (default false). Needs `keystore`; without one the DID stays the passkey's. */
   useKeystoreDID?: boolean;
-  keyType?: string;
+  /** Type of the keystore DID's key (default 'secp256k1'). Only with `useKeystoreDID`. */
   keystoreKeyType?: string;
+  /** Seal the keystore DID's key with the passkey (default false). Only with `useKeystoreDID` and `keystore`. */
   encryptKeystore?: boolean;
+  /** Default 'prf'. */
   keystoreEncryptionMethod?: KeystoreEncryptionMethod;
   /** Derive the OrbitDB signing key from the passkey's PRF output (default true). */
   deriveSigningKeyFromPrf?: boolean;
