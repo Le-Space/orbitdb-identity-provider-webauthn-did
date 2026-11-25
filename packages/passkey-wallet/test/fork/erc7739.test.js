@@ -24,7 +24,8 @@
  * as a definitive rejection too, so the tests below take either as refused.
  *
  * The passkey is a P-256 key in memory answering like an authenticator: no
- * WebAuthn in Node. Not run in CI — it needs anvil and a Sepolia RPC:
+ * WebAuthn in Node. It needs anvil and a Sepolia RPC; CI runs it as the
+ * `wallet-fork` job when the repository has the PASSKEY_WALLET_FORK_URL secret:
  *
  *   PASSKEY_WALLET_FORK_URL=<sepolia rpc> npm run test:wallet-fork
  */

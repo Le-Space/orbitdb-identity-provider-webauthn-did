@@ -4,7 +4,8 @@ delete process.env.NO_COLOR;
 
 /**
  * Suites that run against a Sepolia fork in anvil: they need Foundry and a
- * Sepolia RPC in PASSKEY_WALLET_FORK_URL, so CI does not run them.
+ * Sepolia RPC in PASSKEY_WALLET_FORK_URL. CI runs them as the `wallet-fork`
+ * job, with that URL from a repository secret.
  *
  * There is no public default any more. sepolia.drpc.org, the one this used,
  * stopped serving Sepolia on its free plan, and the free endpoints tried
