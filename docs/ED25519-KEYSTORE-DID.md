@@ -336,39 +336,29 @@ The feature includes comprehensive tests. Run them with:
 npm test
 ```
 
-## Future Enhancements
+## Keys that change, and keys that do not
 
-### 1. WebAuthn-Encrypted Keystore
+This section used to promise an encrypted keystore and `identity.rotateKey({ preserveDID: true })`. The first exists: `encryptKeystore: true`, described in [WEBAUTHN-ENCRYPTED-KEYSTORE-INTEGRATION.md](./WEBAUTHN-ENCRYPTED-KEYSTORE-INTEGRATION.md). The second will not come in that form: a `did:key` _is_ its public key, so no change of key can keep the DID. What can change, and how:
 
-```javascript
-const identity = await orbitdb.identities.createIdentity({
-  provider: OrbitDBWebAuthnIdentityProviderFunction({
-    webauthnCredential: credential,
-    useKeystoreDID: true,
-    keystore: orbitdb.keystore,
-    encryptKeystore: true, // 🔮 Future feature
-  }),
-});
-```
+| Key                                                            | Can it change?                    | How                                                                                                                                   |
+| -------------------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| The passkey (P-256 DID, `did:key:zDna…`)                       | Only by becoming another identity | A new passkey is a new DID. Grant the new DID write access and revoke the old one (below).                                            |
+| The Ed25519 keystore key (`useKeystoreDID`, `did:key:z6Mk…`)   | Only by becoming another identity | The same: a new key is a new DID.                                                                                                     |
+| The signing key derived from the PRF output (the default path) | For all identities at once        | It is fixed per passkey. The derivation is versioned, and changing the version is a breaking change for every identity.               |
+| Keys an application derives (`deriveSubkey`, `deriveAesKey`)   | Yes                               | Put a version in `info` (`invoice/db-key/v1`) and raise it. Everything sealed under the old key has to be re-encrypted.               |
+| A vault's key                                                  | Yes                               | `renew` on the vault keeper makes a new vault key without the slots of removed authenticators.                                        |
+| A books identity from a vault secret (`createSecretSigner`)    | Only by moving the data           | It is the root of its databases and cannot be revoked; against a stolen secret, make a new vault with a new secret and move the data. |
 
-### 2. Key Rotation Support
+**Replacing a passkey.** Register a second passkey before one is lost: as a slot of the vault (`addPasskey`), and as a writer of the databases. When one is lost or stolen:
 
-```javascript
-// 🔮 Future feature
-await identity.rotateKey({
-  newKeyType: 'ed25519',
-  preserveDID: true,
-});
-```
+- **Access control.** Revoke its DID: `await db.access.revoke('write', oldDID)`. This works with the `OrbitDBAccessController` only. The `IPFSAccessController`'s write list is fixed when the database is created, so a database that has to outlive a passkey needs the former — or a books identity (`createSecretSigner`) as its root, which the passkeys open through the vault instead of writing as themselves.
+- **Vault.** `renew` with the stolen authenticator in `removed`. Removing a slot revokes nothing that was already opened: an authenticator that opened the vault has seen its contents, root included. Renew with a new `payload` where it may hold them, and replace what the old contents protected.
 
-### 3. Hardware-Backed Ed25519
+**What no step here can do.** An OrbitDB identity document does not expire, and peers accept a writer by its DID. A signing key that leaked stays usable for that DID wherever the DID may write, until the DID is revoked. The answer is the one above: revoke the DID and continue under a new identity.
 
-```javascript
-// 🔮 Future feature (if WebAuthn adds Ed25519 support)
-const credential = await WebAuthnDIDProvider.createCredential({
-  algorithm: 'Ed25519', // Currently only P-256 is widely supported
-});
-```
+### Hardware-backed Ed25519
+
+`createCredential` asks for ES256 (P-256), with RS256 as a fallback, and not for Ed25519. Some security keys can sign with Ed25519 (COSE `EdDSA`), but this package does not request it: an Ed25519 identity is the keystore DID above, not the passkey's own key.
 
 ## FAQ
 
