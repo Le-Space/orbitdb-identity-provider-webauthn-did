@@ -160,7 +160,7 @@ jobs:
       PASSKEY_WALLET_FORK_URL: ${{ secrets.PASSKEY_WALLET_FORK_URL }}
 
     steps:
-      - name: No RPC, no fork tests
+      - name: Notice if the PASSKEY_WALLET_FORK_URL secret is missing
         if: env.PASSKEY_WALLET_FORK_URL == ''
         run: echo "::notice::PASSKEY_WALLET_FORK_URL is not set for this run; wallet fork tests skipped"
 
