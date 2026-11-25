@@ -135,9 +135,8 @@ provider's `verifyIdentity` (`verifyWebAuthnIdentityBinding` in
   pass by construction.
 - Any other DID is refused.
 
-Each entry is then verified against the identity's `publicKey`. Varsig
-identities (`type: 'webauthn-varsig'`) are checked by `verifyVarsigIdentity`
-instead: both signatures are varsigs of the passkey, against the key the DID
+Varsig identities (`type: 'webauthn-varsig'`) are checked by
+`verifyVarsigIdentity` instead: both signatures are varsigs of the passkey, against the key the DID
 encodes.
 
 ## Checking an Identity Hash
