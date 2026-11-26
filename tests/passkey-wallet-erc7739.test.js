@@ -193,6 +193,7 @@ test('ERC-7739 refuses what Calibur would refuse to rebuild', () => {
 test('signTypedData has the key sign the nested digest, in Calibur’s ABI layout', async () => {
   const passkey = await createSoftwarePasskey();
   const account = await wallet.toCaliburPasskeyAccount({
+    maxUserOperationCost: 10n ** 16n,
     client: domainClient(),
     address: ACCOUNT,
     descriptor: passkey.descriptor,
@@ -235,6 +236,7 @@ test('signTypedData has the key sign the nested digest, in Calibur’s ABI layou
 test('signMessage has the key sign the nested PersonalSign digest, bare inside the key wrapping', async () => {
   const passkey = await createSoftwarePasskey();
   const account = await wallet.toCaliburPasskeyAccount({
+    maxUserOperationCost: 10n ** 16n,
     client: domainClient(),
     address: ACCOUNT,
     descriptor: passkey.descriptor,
@@ -257,6 +259,7 @@ test('a signer that is not a function is refused before an account is built', as
   const passkey = await createSoftwarePasskey();
   await expect(
     wallet.toCaliburPasskeyAccount({
+      maxUserOperationCost: 10n ** 16n,
       client: domainClient(),
       address: ACCOUNT,
       descriptor: passkey.descriptor,

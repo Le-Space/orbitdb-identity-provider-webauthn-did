@@ -45,10 +45,46 @@ export function toCaliburPasskeyAccount(parameters: {
   client: AccountClient;
   address: Address;
   descriptor: P256CredentialDescriptor;
+  /** The chain every signature is bound to; default `client.chain.id`, else asked of the RPC once. */
+  chainId?: number | undefined;
+  /** The Calibur the account delegates to, checked in the domain's salt; default `CALIBUR_ADDRESS`. */
+  implementation?: Address | undefined;
   verificationGasLimit?: bigint | undefined;
+  /** Overrides fields of `getDefaultGasCeilings(chainId)`. */
+  gasCeilings?: Partial<UserOperationGasCeilings> | undefined;
+  /** Required: the most a user operation may charge, in wei — its gas limits times maxFeePerGas. */
+  maxUserOperationCost: bigint;
+  /** Default `SINGLE_NONCE_KEY`: one nonce key, so a retry with the same nonce replaces rather than adds; user operations on another key are refused. */
   nonceKeyManager?: import('viem').NonceManager | undefined;
   sign?: ChallengeSigner | undefined;
 }): Promise<CaliburPasskeyAccount>;
+/** The most gas a user operation may carry, per field, before the passkey signs it. */
+export type UserOperationGasCeilings = {
+  callGasLimit: bigint;
+  verificationGasLimit: bigint;
+  preVerificationGas: bigint;
+  paymasterVerificationGasLimit: bigint;
+  paymasterPostOpGasLimit: bigint;
+};
+export const DEFAULT_USER_OPERATION_GAS_CEILINGS: Readonly<UserOperationGasCeilings>;
+/** preVerificationGas ceilings by chain id: 250k on Ethereum and Sepolia, 5M on OP Mainnet, Base, Arbitrum One and their Sepolia testnets. */
+export const PRE_VERIFICATION_GAS_CEILINGS: Readonly<Record<number, bigint>>;
+/** The ceilings an account on `chainId` gets by default: `DEFAULT_USER_OPERATION_GAS_CEILINGS` with the chain's preVerificationGas ceiling, where known. */
+export function getDefaultGasCeilings(
+  chainId: number
+): Readonly<UserOperationGasCeilings>;
+/** One nonce key (0) for every user operation of the account. */
+export const SINGLE_NONCE_KEY: import('viem').NonceManager;
+/** `eip712Domain()` described another account, chain or implementation; thrown before the passkey is prompted. */
+export class AccountDomainMismatchError extends Error {
+  constructor(field: string, actual: unknown, expected: unknown);
+  field: string;
+}
+/** A user operation is for another chain, past a gas ceiling, or over the cost limit; thrown before the passkey is prompted. */
+export class UserOperationLimitError extends Error {
+  constructor(message: string, field: string);
+  field: string;
+}
 /**
  * @typedef {import('viem').Address} Address
  * @typedef {import('viem').Hex} Hex

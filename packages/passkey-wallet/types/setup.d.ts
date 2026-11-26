@@ -113,6 +113,14 @@ export type CaliburPasskeySetup = {
   }): Promise<import('viem').SignedAuthorization>;
   toSmartAccount(parameters: {
     client: AccountClient;
+    /** As for `toCaliburPasskeyAccount`: default `client.chain.id`, else asked of the RPC once; 0 is refused. */
+    chainId?: number | undefined;
+    /** Overrides fields of `getDefaultGasCeilings(chainId)`. */
+    gasCeilings?:
+      Partial<import('./account.js').UserOperationGasCeilings> | undefined;
+    /** Required: the most, in wei, the setup's user operation may cost. */
+    maxUserOperationCost: bigint;
+    /** Default `SINGLE_NONCE_KEY`. */
     nonceKeyManager?: import('viem').NonceManager | undefined;
   }): Promise<CaliburSetupAccount>;
   sendUserOperation(
@@ -122,8 +130,13 @@ export type CaliburPasskeySetup = {
           client?: AccountClient | undefined;
           sendUserOperation: Function;
         },
-    parameters?: {
+    parameters: {
       client?: AccountClient | undefined;
+      chainId?: number | undefined;
+      gasCeilings?:
+        Partial<import('./account.js').UserOperationGasCeilings> | undefined;
+      /** Required: the most, in wei, the setup's user operation may cost. */
+      maxUserOperationCost: bigint;
       [key: string]: unknown;
     }
   ): Promise<Hex>;

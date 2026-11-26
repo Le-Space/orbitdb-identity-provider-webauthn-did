@@ -43,9 +43,20 @@ export {
   toWebAuthnP256Key,
 } from './calibur.js';
 export {
+  AccountDomainMismatchError,
+  DEFAULT_USER_OPERATION_GAS_CEILINGS,
   DEFAULT_VERIFICATION_GAS_LIMIT,
+  PRE_VERIFICATION_GAS_CEILINGS,
+  SINGLE_NONCE_KEY,
+  getDefaultGasCeilings,
   toCaliburPasskeyAccount,
+  UserOperationLimitError,
 } from './account.js';
+export {
+  sendUserOperationWithRetry,
+  UserOperationNonceUsedError,
+  UserOperationNotIncludedError,
+} from './send.js';
 export { createCaliburPasskeySetup, getCaliburKeyState } from './setup.js';
 export { createCaliburBundlerClient } from './bundler.js';
 export {

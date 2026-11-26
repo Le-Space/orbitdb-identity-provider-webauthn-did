@@ -34,6 +34,8 @@ export default defineConfig({
     'p256-wallet-primitives.test.js',
     'passkey-wallet-session-key.test.js',
     'passkey-wallet-erc7739.test.js',
+    'passkey-wallet-retry.test.js',
+    'passkey-wallet-limits.test.js',
     'prf-keys.test.js',
     'vault.test.js',
     'vault-keeper.test.js',

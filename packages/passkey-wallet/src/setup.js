@@ -24,12 +24,7 @@ import {
   getUserOperationHash,
   toSmartAccount,
 } from 'viem/account-abstraction';
-import {
-  getChainId,
-  getCode,
-  getTransactionCount,
-  readContract,
-} from 'viem/actions';
+import { getCode, getTransactionCount, readContract } from 'viem/actions';
 
 import { caliburAbi } from './abi.js';
 import {
@@ -50,6 +45,12 @@ import {
   ENTRY_POINT_ADDRESS,
   ROOT_KEY_HASH,
 } from './constants.js';
+import {
+  SINGLE_NONCE_KEY,
+  createUserOperationGuard,
+  pinChainId,
+  readUserOperationLimits,
+} from './account.js';
 
 /**
  * @typedef {import('viem').Address} Address
@@ -84,8 +85,8 @@ import {
  *   readonly calls: readonly { to: Address, value: bigint, data: Hex }[],
  *   readonly discarded: boolean,
  *   signAuthorization(parameters: { chainId: number, nonce: number }): Promise<import('viem').SignedAuthorization>,
- *   toSmartAccount(parameters: { client: AccountClient, nonceKeyManager?: import('viem').NonceManager | undefined }): Promise<CaliburSetupAccount>,
- *   sendUserOperation(bundlerClient: import('viem/account-abstraction').BundlerClient | { client?: AccountClient | undefined, sendUserOperation: Function }, parameters?: { client?: AccountClient | undefined, [key: string]: unknown }): Promise<Hex>,
+ *   toSmartAccount(parameters: { client: AccountClient, chainId?: number | undefined, gasCeilings?: Partial<import('./account.js').UserOperationGasCeilings> | undefined, maxUserOperationCost: bigint, nonceKeyManager?: import('viem').NonceManager | undefined }): Promise<CaliburSetupAccount>,
+ *   sendUserOperation(bundlerClient: import('viem/account-abstraction').BundlerClient | { client?: AccountClient | undefined, sendUserOperation: Function }, parameters: { client?: AccountClient | undefined, chainId?: number | undefined, gasCeilings?: Partial<import('./account.js').UserOperationGasCeilings> | undefined, maxUserOperationCost: bigint, [key: string]: unknown }): Promise<Hex>,
  *   sendTransaction(walletClient: import('viem').WalletClient | { account?: { address: Address } | undefined, chain?: import('viem').Chain | undefined, sendTransaction: Function }, parameters?: { client?: AccountClient | undefined, executor?: Address | undefined, deadline?: bigint | undefined, gas?: bigint | undefined }): Promise<Hex>,
  *   isActive(client: AccountClient): Promise<boolean>,
  *   discard(): void,
@@ -244,13 +245,6 @@ export function createCaliburPasskeySetup(parameters) {
   });
 
   /**
-   * @param {AccountClient} client
-   * @param {number | undefined} chainId
-   */
-  const readChainId = async (client, chainId) =>
-    chainId ?? client.chain?.id ?? (await getChainId(client));
-
-  /**
    * The EOA's current nonce, as an authorization sent by another account
    * needs it.
    * @param {AccountClient} client
@@ -289,11 +283,40 @@ export function createCaliburPasskeySetup(parameters) {
 
     /**
      * Path (a)'s account: a viem smart account signed by the setup key, with
-     * the EIP-7702 `authorization` viem expects of a delegating account.
-     * @param {{ client: AccountClient, nonceKeyManager?: import('viem').NonceManager | undefined }} accountParameters
+     * the EIP-7702 `authorization` viem expects of a delegating account. Its
+     * user operations pass the same checks as the passkey account's — chain,
+     * gas ceilings, `maxUserOperationCost`, nonce key 0 — before the setup
+     * key signs: a bundler that inflated the setup's gas or fees would be
+     * paid out of the new account's balance, or its paymaster's.
+     * @param {{
+     *   client: AccountClient,
+     *   chainId?: number | undefined,
+     *   gasCeilings?: Partial<import('./account.js').UserOperationGasCeilings> | undefined,
+     *   maxUserOperationCost: bigint,
+     *   nonceKeyManager?: import('viem').NonceManager | undefined,
+     * }} accountParameters
      */
-    async toSmartAccount({ client, nonceKeyManager }) {
+    async toSmartAccount({
+      client,
+      chainId: chainIdParameter,
+      gasCeilings: gasCeilingsParameter,
+      maxUserOperationCost,
+      nonceKeyManager = SINGLE_NONCE_KEY,
+    }) {
       useOwner('building the setup account');
+      const chainId = await pinChainId(client, chainIdParameter);
+      const { gasCeilings } = readUserOperationLimits({
+        chainId,
+        gasCeilings: gasCeilingsParameter,
+        maxUserOperationCost,
+        what: 'The setup account',
+      });
+      const assertWithinLimits = createUserOperationGuard({
+        chainId,
+        gasCeilings,
+        maxUserOperationCost,
+        singleNonceKey: nonceKeyManager === SINGLE_NONCE_KEY,
+      });
       const entryPoint = /** @type {const} */ ({
         abi: entryPoint08Abi,
         address: ENTRY_POINT_ADDRESS,
@@ -343,7 +366,14 @@ export function createCaliburPasskeySetup(parameters) {
         },
 
         async signUserOperation(userOperationParameters) {
-          const { chainId, ...userOperation } = userOperationParameters;
+          const { chainId: requestedChainId, ...userOperation } =
+            userOperationParameters;
+          assertWithinLimits(
+            /** @type {Record<string, unknown>} */ (
+              /** @type {unknown} */ (userOperation)
+            ),
+            requestedChainId
+          );
           // EntryPoint v0.8 hashes a 0x7702 initCode as the delegate address,
           // so the hash needs the authorization's address even before one is
           // signed.
@@ -356,7 +386,7 @@ export function createCaliburPasskeySetup(parameters) {
             yParity: 0,
           };
           const hash = getUserOperationHash({
-            chainId: await readChainId(client, chainId),
+            chainId,
             entryPointAddress: entryPoint.address,
             entryPointVersion: entryPoint.version,
             userOperation: { ...userOperation, authorization, sender: address },
@@ -377,21 +407,40 @@ export function createCaliburPasskeySetup(parameters) {
      * (`paymaster`, `paymasterContext`, gas and fee fields) pass through to
      * viem's `sendUserOperation`. Resolves to the user operation hash.
      * @param {any} bundlerClient a viem bundler client
-     * @param {{ client?: AccountClient | undefined } & Record<string, unknown>} [sendParameters]
+     * @param {{
+     *   client?: AccountClient | undefined,
+     *   chainId?: number | undefined,
+     *   gasCeilings?: Partial<import('./account.js').UserOperationGasCeilings> | undefined,
+     *   maxUserOperationCost: bigint,
+     * } & Record<string, unknown>} sendParameters
      *   `client` reads chain state; defaults to `bundlerClient.client`.
+     *   `chainId`, `gasCeilings` and the required `maxUserOperationCost` are
+     *   as for `toCaliburPasskeyAccount`.
      * @returns {Promise<Hex>}
      */
-    async sendUserOperation(bundlerClient, sendParameters = {}) {
-      const { client = bundlerClient?.client, ...rest } = sendParameters;
+    async sendUserOperation(bundlerClient, sendParameters) {
+      const {
+        client = bundlerClient?.client,
+        chainId: chainIdParameter,
+        gasCeilings,
+        maxUserOperationCost,
+        ...rest
+      } = sendParameters ?? {};
       if (!client) {
         throw new TypeError(
           'sendUserOperation needs a client for chain state, on the bundler client or as { client }'
         );
       }
       useOwner('sending the setup');
-      const account = await setup.toSmartAccount({ client });
+      const chainId = await pinChainId(client, chainIdParameter);
+      const account = await setup.toSmartAccount({
+        client,
+        chainId,
+        gasCeilings,
+        maxUserOperationCost,
+      });
       const authorization = await setup.signAuthorization({
-        chainId: await readChainId(client, undefined),
+        chainId,
         nonce: await readAuthorizationNonce(client),
       });
       return bundlerClient.sendUserOperation({
@@ -429,7 +478,7 @@ export function createCaliburPasskeySetup(parameters) {
       const { client = walletClient, deadline = 0n, gas } = sendParameters;
       const executor = getAddress(sendParameters.executor ?? sender.address);
       useOwner('sending the setup');
-      const chainId = await readChainId(walletClient, undefined);
+      const chainId = await pinChainId(walletClient, undefined);
       const authorization = await setup.signAuthorization({
         chainId,
         nonce: await readAuthorizationNonce(client),

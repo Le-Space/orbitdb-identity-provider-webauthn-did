@@ -129,8 +129,14 @@ Zama's KMS takes it too waits for the unified route on Sepolia
   `sendUserOperation(bundlerClient, parameters?)` (path a),
   `sendTransaction(walletClient, { executor?, deadline? })` (path b, through
   `execute(SignedBatchedCall, bytes)`), `signAuthorization`, `toSmartAccount`
-  (path a's viem account), `isActive(client)`, `discard()`.
-- `toCaliburPasskeyAccount({ client, address, descriptor, verificationGasLimit?, nonceKeyManager?, sign? })`
+  (path a's viem account), `isActive(client)`, `discard()`. Path (a) takes
+  `maxUserOperationCost` (required), `chainId` and `gasCeilings` as the
+  passkey account does, and its user operation passes the same checks before
+  the setup key signs.
+- `sendUserOperationWithRetry(bundlerClient, parameters, { attempts?, timeout?, pollingInterval? })`
+  — send a user operation and retry it with the same nonce, so that at most
+  one attempt runs (see below).
+- `toCaliburPasskeyAccount({ client, address, descriptor, maxUserOperationCost, chainId?, implementation?, verificationGasLimit?, gasCeilings?, nonceKeyManager?, sign? })`
   — the viem smart account for EntryPoint v0.8. `signTypedData` and
   `signMessage` sign for ERC-1271 in the ERC-7739 form Calibur takes from a
   registered key (nested `TypedDataSign` / `PersonalSign`, in the account's
@@ -164,6 +170,68 @@ Zama's KMS takes it too waits for the unified route on Sepolia
 Zama's Sepolia ACL, `0xf0Ffdc93b7E186bC2f8CB3dAA75D86d1930A433D`, is taken
 from `ZamaConfig._getSepoliaConfig()` in `@fhevm/solidity@0.11.1`
 (`config/ZamaConfig.sol`); on a Sepolia fork it reported `ACL v0.4.0`.
+
+## What the account refuses to sign
+
+The bundler, the paymaster and the RPC are the app's, and any of them may be
+hostile or simply wrong. Three things they used to decide on the account's
+behalf are checked before the passkey is prompted — a refusal after the prompt
+would still have produced the signature.
+
+- **The ERC-7739 domain.** `signMessage` and `signTypedData` bind the signature
+  to the account's EIP-712 domain, read from `eip712Domain()` over the RPC.
+  Each field is now held to what this account is: name `Calibur`, version
+  `CALIBUR_VERSION`, `verifyingContract` equal to the account, `chainId` equal
+  to the account's chain, and the implementation in the salt's low 160 bits
+  equal to `implementation` (default `CALIBUR_ADDRESS`). A mismatch throws
+  `AccountDomainMismatchError`. Without the check an RPC could bind a login or
+  permit signature to a second account the same passkey administers, or to
+  this address on another chain.
+- **The chain.** It is pinned when the account is built: `chainId`, else
+  `client.chain.id`, and only for a client without a chain is it asked of the
+  RPC — once, not per signature. A user operation for another chain throws
+  `UserOperationLimitError`. Give the client a chain to keep the RPC from
+  choosing it at all.
+- **Gas and cost.** `maxUserOperationCost` is required: the most, in wei, one
+  user operation may cost — its gas limits times `maxFeePerGas`. The fee per
+  gas comes from the RPC (`estimateFeesPerGas`) or the bundler, and the gas
+  ceilings below count gas, not wei; without a limit in wei a hostile RPC or
+  bundler could set the fee to whatever drains the account. Only the app can
+  name the amount, in the chain's currency, so there is no default.
+- **Gas ceilings.** Each gas field of a user operation must stay under its
+  ceiling: callGasLimit 10M, verificationGasLimit 2M, paymaster limits 1M each,
+  and preVerificationGas by chain (`PRE_VERIFICATION_GAS_CEILINGS`): 250k on
+  Ethereum and Sepolia, 5M on OP Mainnet, Base, Arbitrum One and their Sepolia
+  testnets, 1M elsewhere. `getDefaultGasCeilings(chainId)` says what an account
+  gets, and `gasCeilings` raises any of them. The bundler is paid for the gas a
+  signed operation carries whether it was needed or not, so an unbounded
+  preVerificationGas was a way to drain the account. Rollups that post data to
+  L1 have the bundler recover that cost through preVerificationGas, converted
+  at the L2 gas price — the cheaper L2 gas, the more of it — which is why their
+  ceiling is higher; on another rollup an app may need to raise it, and the
+  refusal names the field and the value.
+- **The nonce key.** Every user operation takes key 0 (`SINGLE_NONCE_KEY`),
+  and one on another key is refused before the passkey is asked — the nonce
+  comes from `EntryPoint.getNonce` over the RPC, and an RPC answering with a
+  fresh key would give the operation a lane of its own again. viem's default
+  drew a fresh key from `Date.now()` per operation, so an operation that was
+  signed but never included could be submitted after a retry had gone
+  through. An app that wants parallel lanes passes its own `nonceKeyManager`,
+  and with it the duty to retire operations it gave up on. Operations on one
+  key are sequential: a second one sent before the first is included takes
+  the same nonce and replaces it, or is refused.
+- **Retries.** One key alone does not make a retry safe. A bundler can
+  include an operation and still answer with an error or a timeout; an app
+  that sends the calls again then reads the _next_ nonce, and both run.
+  Retry with the first attempt's nonce — the EntryPoint runs one operation per
+  nonce — or use `sendUserOperationWithRetry`, which does that: it reads the
+  nonce once, sends every attempt with it, and between attempts looks for a
+  receipt of any earlier one. A nonce that was used without a receipt to show
+  for it ends the retries with `UserOperationNonceUsedError`; check whether
+  the calls ran before sending them again. When every attempt failed and the
+  nonce is still unused, `UserOperationNotIncludedError` carries the `nonce`
+  to pass back in, since any attempt may still be included. The guarantee
+  holds within one call: a retry loop around it reads a new nonce each time.
 
 ## Gas
 
@@ -214,6 +282,20 @@ What runs in the repository's node suite (`pnpm run test:node` at the root):
   opened, the format pinned by an envelope the vendored build sealed, and
   refusals of another sealing key, an altered ciphertext, an envelope naming
   another address and anything that is not an envelope.
+- `tests/passkey-wallet-limits.test.js`: each refusal above, with the passkey
+  shown never to have been asked — a domain naming another chain, account,
+  implementation, version or name; each gas field past its ceiling, a raised
+  ceiling, a raised ceiling, the ceiling by chain, a priority fee above the
+  fee cap, an account without `maxUserOperationCost`, a fee that would drain
+  it, a user operation for another chain; nonce key 0 by default, a nonce on
+  another key refused, while an app's own `nonceKeyManager` still gets its
+  lanes; and the same checks on the setup account, which needs
+  `maxUserOperationCost` too and refuses chain 0.
+- `tests/passkey-wallet-retry.test.js`: `sendUserOperationWithRetry` against a
+  stand-in bundler — a retry takes the first attempt's nonce, an attempt
+  included behind a timeout is not sent again, a nonce used without a receipt
+  stops the retries, and after every attempt failed the nonce comes back for
+  the next call.
 - `tests/passkey-wallet-erc7739.test.js`: the ERC-7739 digests recomputed
   through viem's own EIP-712 code with the nesting struct written out, and the
   account having its key sign exactly that digest as the WebAuthn challenge.

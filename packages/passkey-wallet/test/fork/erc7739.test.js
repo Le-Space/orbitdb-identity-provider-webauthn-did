@@ -135,6 +135,7 @@ async function caliburAccountWithPasskey(fork, given) {
     })
   ).toBe(true);
   const account = await wallet.toCaliburPasskeyAccount({
+    maxUserOperationCost: 10n ** 16n,
     client: fork.client,
     address: eoa.address,
     descriptor: passkey.descriptor,
