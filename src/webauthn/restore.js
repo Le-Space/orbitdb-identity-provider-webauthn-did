@@ -14,6 +14,12 @@
  * From those two: the DID, and the signing key derived from the PRF output
  * with the DID mixed in — the same pair the original device holds.
  *
+ * The PRF output itself is returned too. It is the root secret every key of
+ * this passkey comes from, the signing key being one of them, so an
+ * application that derives keys of its own needs it after a restore as much as
+ * after a first start — and asking the passkey for it again would be a third
+ * touch for an answer this one already has.
+ *
  * Nothing stands in for a missing PRF. A device whose authenticator cannot
  * evaluate it gets a refusal, because the alternative is an identity that
  * silently differs from the one the database knows.
@@ -47,10 +53,17 @@ const log = logger('orbitdb-identity-provider-webauthn-did:restore');
  *   Called before each ceremony, so an application can say which touch this is.
  * @returns {Promise<{did: string, publicKey: {x: Uint8Array, y: Uint8Array},
  *   credentialId: string, rawCredentialId: Uint8Array, signingKey: Uint8Array,
- *   prfInput: Uint8Array, credential: Object}>} `credential` is what
+ *   prfOutput: Uint8Array, prfInput: Uint8Array, credential: Object}>}
+ *   `credential` is what
  *   `OrbitDBWebAuthnIdentityProviderFunction({ webauthnCredential })` takes.
  *   `credentialId` is the base64url text, as everywhere else in this package,
  *   and `rawCredentialId` the bytes (before 0.7.0, `credentialId` was the bytes).
+ *
+ *   `prfOutput` is the 32 bytes the first touch returned: the root secret every
+ *   key of this passkey is derived from, `signingKey` included. Derive what
+ *   else is needed with `deriveSubkey` or `deriveAesKey` (`./vault`), or hand
+ *   it to the provider as `prfOutput`, then drop the bytes: whoever holds them
+ *   holds every key derived from this passkey, for as long as they are kept.
  */
 export async function restoreIdentityFromAuthenticator({
   rpId,
@@ -86,13 +99,14 @@ export async function restoreIdentityFromAuthenticator({
     });
   }
 
-  const prfOutput = first.getClientExtensionResults?.()?.prf?.results?.first;
-  if (!prfOutput) {
+  const prfResult = first.getClientExtensionResults?.()?.prf?.results?.first;
+  if (!prfResult) {
     // No fallback: an identity derived from anything else is not this one.
     throw new PrfUnavailableError(
       'the authenticator returned no PRF output, so the signing key cannot be derived'
     );
   }
+  const prfOutput = new Uint8Array(prfResult);
 
   // Touch two: the same credential, another challenge. Only the signature
   // matters, so this asks for no more verification than the key insists on.
@@ -112,7 +126,7 @@ export async function restoreIdentityFromAuthenticator({
   const publicKey = await recoverPublicKey(first, second);
   const did = await WebAuthnDIDProvider.createDID({ publicKey });
   const signingKey = await deriveSigningKeyBytes(
-    new Uint8Array(prfOutput),
+    prfOutput,
     did,
     signingKeyType
   );
@@ -127,6 +141,9 @@ export async function restoreIdentityFromAuthenticator({
     credentialId,
     rawCredentialId,
     signingKey,
+    // What touch one already answered, so a caller deriving keys of its own
+    // does not have to ask the passkey a third time.
+    prfOutput,
     prfInput,
     // Ready for the provider as it is, so nobody has to know which of the two
     // ids it wants under which name.

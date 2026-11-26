@@ -598,7 +598,15 @@ export interface RestoredIdentity {
   credentialId: string;
   /** The credential id as bytes. */
   rawCredentialId: Uint8Array;
+  /** Derived from `prfOutput` with the DID mixed in. */
   signingKey: Uint8Array;
+  /**
+   * The PRF output the first touch returned, 32 bytes: the root secret every
+   * key of this passkey is derived from, `signingKey` included. Derive what
+   * else is needed with `deriveSubkey` or `deriveAesKey` (`./vault`), or hand
+   * it to the provider as `prfOutput`, then drop the bytes. No further touch.
+   */
+  prfOutput: Uint8Array;
   prfInput: Uint8Array;
   /** Ready for `OrbitDBWebAuthnIdentityProviderFunction({ webauthnCredential })`. */
   credential: WebAuthnCredentialInfo;

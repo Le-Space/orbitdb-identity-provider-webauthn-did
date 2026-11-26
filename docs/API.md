@@ -184,8 +184,9 @@ Options, as `src/keystore/provider.js` reads them:
   the passkey's PRF output, at the cost of one assertion the first time an
   identity is created on a device. `false` leaves it to the keystore, which
   generates a random secp256k1 key that stays on that device.
-- `prfOutput` — a PRF output already read with `readPrfOutput`, so the signing
-  key costs no second touch; see
+- `prfOutput` — a PRF output already read with `readPrfOutput`, or the one
+  `restoreIdentityFromAuthenticator()` returns, so the signing key costs no
+  second touch; see
   [One touch for the data and the identity](#one-touch-for-the-data-and-the-identity).
   A `Uint8Array` of at least 32 bytes, or the provider throws a `TypeError`.
   Unused with `signer`, `useKeystoreDID` or `deriveSigningKeyFromPrf: false`,
@@ -271,14 +272,37 @@ Options, all optional:
   asked twice.
 
 Returns `{ did, publicKey: { x, y }, credentialId, rawCredentialId, signingKey,
-prfInput, credential }`. `credential` is what
+prfOutput, prfInput, credential }`. `credential` is what
 `OrbitDBWebAuthnIdentityProviderFunction({ webauthnCredential })` takes;
 `credentialId` is base64url text and `rawCredentialId` the bytes (before 0.7.0,
 `credentialId` was the bytes).
 
-Putting `signingKey` into the keystore under the DID before OrbitDB builds the
-identity spares one further touch: the provider would otherwise read the PRF
-output a second time to derive the very same key.
+`prfOutput` is the PRF output the first touch returned, 32 bytes. It is the
+root secret every key of this passkey is derived from: `signingKey` is one of
+them, and an application's own keys are others. Derive what the application
+needs with `deriveSubkey` or `deriveAesKey` (`./vault`), with the same `info`
+it used on the device that registered, and then drop the bytes. Returning them
+asks the authenticator nothing: they come from the first touch, which asked for
+them anyway.
+
+```js
+import { deriveSubkey } from '@le-space/orbitdb-identity-provider-webauthn-did/vault';
+
+const restored = await restoreIdentityFromAuthenticator();
+const listKey = await deriveSubkey(restored.prfOutput, 'myapp/list-key/v1');
+
+const identity = await identities.createIdentity({
+  provider: OrbitDBWebAuthnIdentityProviderFunction({
+    webauthnCredential: restored.credential,
+    prfOutput: restored.prfOutput,
+  }),
+});
+```
+
+Handing `prfOutput` to the provider, or putting `signingKey` into the keystore
+under the DID, before OrbitDB builds the identity spares one further touch: the
+provider would otherwise read the PRF output a second time to derive the very
+same key.
 
 Throws rather than substituting anything:
 
