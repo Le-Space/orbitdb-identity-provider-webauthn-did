@@ -28,11 +28,32 @@ import { PrfUnavailableError } from '../src/errors.js';
 import { Identities, MemoryStorage, useIdentityProvider } from '@orbitdb/core';
 import { OrbitDBWebAuthnIdentityProviderFunction } from '../src/keystore/provider.js';
 import { createSessionKeystore } from '../src/keystore/session-keystore.js';
+import { deriveSubkey, readPrfOutput } from '../src/vault/index.js';
+import { KEY_TYPES } from '../src/constants.js';
 
 const hex = (bytes) =>
   [...new Uint8Array(bytes)]
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('');
+
+/**
+ * Keep every answer the authenticator gives, as the page receives it, so a
+ * test can hold what restore returns against what was actually said.
+ */
+function recordAnswers(authenticator) {
+  const answers = [];
+  const get = authenticator.navigator.credentials.get;
+  authenticator.navigator.credentials.get = async (options) => {
+    const answer = await get(options);
+    answers.push(answer);
+    return answer;
+  };
+  return answers;
+}
+
+/** The PRF output an answer carries, if it carries one. */
+const prfOf = (answer) =>
+  answer.getClientExtensionResults().prf?.results?.first;
 
 /** A touch: what `navigator.credentials.get()` gives a page. */
 const touch = (extensions) =>
@@ -175,6 +196,79 @@ test.describe('the identity a second device gets back', () => {
     expect(touches).toEqual([1, 2]);
   });
 
+  test('returns the PRF output the first touch answered, without asking again', async () => {
+    await WebAuthnDIDProvider.createCredential({
+      userId: 'someone',
+      domain: 'localhost',
+    });
+    const answers = recordAnswers(authenticator);
+    const evaluated = authenticator.state.prfEvals;
+
+    const restored = await restoreIdentityFromAuthenticator({
+      rpId: 'localhost',
+    });
+
+    // The same two touches as before: the first asks for PRF, the second
+    // only signs. Returning the output costs the authenticator nothing.
+    expect(answers).toHaveLength(2);
+    expect(prfOf(answers[0])).toBeDefined();
+    expect(prfOf(answers[1])).toBeUndefined();
+    expect(authenticator.state.prfEvals - evaluated).toBe(1);
+
+    expect(restored.prfOutput).toBeInstanceOf(Uint8Array);
+    expect(restored.prfOutput).toHaveLength(32);
+    expect(hex(restored.prfOutput)).toBe(hex(prfOf(answers[0])));
+  });
+
+  for (const signingKeyType of [KEY_TYPES.SECP256K1, KEY_TYPES.ED25519]) {
+    test(`its ${signingKeyType} signing key is still the one derived from that output`, async () => {
+      const credential = await WebAuthnDIDProvider.createCredential({
+        userId: 'someone',
+        domain: 'localhost',
+      });
+      const registeredDid = await WebAuthnDIDProvider.createDID(credential);
+
+      const restored = await restoreIdentityFromAuthenticator({
+        rpId: 'localhost',
+        signingKeyType,
+      });
+
+      expect(hex(restored.signingKey)).toBe(
+        hex(
+          await deriveSigningKeyBytes(
+            restored.prfOutput,
+            registeredDid,
+            signingKeyType
+          )
+        )
+      );
+    });
+  }
+
+  test('gives an application the keys it derived on its first start', async () => {
+    // The device that registered reads the output itself, as an application
+    // does on a first start, and derives a key of its own from it.
+    const credential = await WebAuthnDIDProvider.createCredential({
+      userId: 'someone',
+      domain: 'localhost',
+    });
+    const info = 'example-app/list-key-agreement/v1';
+    const atFirstStart = await deriveSubkey(
+      await readPrfOutput(credential, { rpId: 'localhost' }),
+      info
+    );
+
+    // The device that has nothing: two touches, and the same key from them.
+    const before = authenticator.state.assertions;
+    const restored = await restoreIdentityFromAuthenticator({
+      rpId: 'localhost',
+    });
+    const afterRestore = await deriveSubkey(restored.prfOutput, info);
+
+    expect(hex(afterRestore)).toBe(hex(atFirstStart));
+    expect(authenticator.state.assertions - before).toBe(2);
+  });
+
   test('is refused when the authenticator has no PRF, never substituted', async () => {
     restore?.();
     const noPrf = await createMockAuthenticator({
@@ -237,7 +331,7 @@ test.describe('the step after restore: handing the identity to OrbitDB', () => {
   test.afterEach(() => restore?.());
 
   /** A device with nothing but the authenticator and OrbitDB. */
-  async function identityFrom(webauthnCredential) {
+  async function identityFrom(webauthnCredential, options = {}) {
     const keystore = await createSessionKeystore();
     const identities = await Identities({
       keystore,
@@ -247,6 +341,7 @@ test.describe('the step after restore: handing the identity to OrbitDB', () => {
       provider: OrbitDBWebAuthnIdentityProviderFunction({
         webauthnCredential,
         signingKeyType: 'secp256k1',
+        ...options,
       }),
     });
     return { identity, identities, keystore };
@@ -281,6 +376,40 @@ test.describe('the step after restore: handing the identity to OrbitDB', () => {
     expect(await identities.verifyIdentity(identity)).toBe(true);
     expect(envelope(identity).credentialId).toBe(restored.credentialId);
     await keystore.close();
+  });
+
+  test('handed the PRF output restore returned, the provider does not read it again', async () => {
+    await WebAuthnDIDProvider.createCredential({
+      userId: 'someone',
+      domain: 'localhost',
+    });
+    const restored = await restoreIdentityFromAuthenticator({
+      rpId: 'localhost',
+    });
+
+    // With it, the identity signature is the only touch left.
+    let before = { ...authenticator.state };
+    const { identity, identities, keystore } = await identityFrom(
+      restored.credential,
+      { prfOutput: restored.prfOutput }
+    );
+    expect(authenticator.state.prfEvals - before.prfEvals).toBe(0);
+    expect(authenticator.state.assertions - before.assertions).toBe(1);
+    expect(identity.id).toBe(restored.did);
+    expect(await identities.verifyIdentity(identity)).toBe(true);
+    await keystore.close();
+
+    // Without it, the provider reads the PRF output a second time on its way
+    // to the signing key: one touch more for an answer restore already had.
+    // The identity proof made above is stored by now and reused, since the
+    // signing key is the same, so that read is the only touch here.
+    before = { ...authenticator.state };
+    const asked = await identityFrom(restored.credential);
+    expect(authenticator.state.prfEvals - before.prfEvals).toBe(1);
+    expect(authenticator.state.assertions - before.assertions).toBe(1);
+    // The same signing key either way, so the same identity document.
+    expect(asked.identity.publicKey).toBe(identity.publicKey);
+    await asked.keystore.close();
   });
 
   test('a credential that brings only its bytes still signs, and names itself', async () => {

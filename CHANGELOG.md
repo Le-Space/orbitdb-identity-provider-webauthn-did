@@ -1,5 +1,20 @@
 # Changes
 
+## Unreleased
+
+### Added
+
+- **`restoreIdentityFromAuthenticator()` returns the PRF output it read, as `prfOutput`.** Its first
+  touch asks the passkey for the PRF output, and the signing key is derived from it; the output
+  itself was then thrown away. An application that derives keys of its own from the same output
+  (with `deriveSubkey` or `deriveAesKey` from `./vault`) had to ask the passkey a third time after a
+  restore, for an answer the restore already had. Now it takes `restored.prfOutput` (a `Uint8Array`,
+  32 bytes), derives what it needs with the same `info` it used on the device that registered, and
+  drops the bytes: they are the root secret every key of this passkey comes from. Handed to the
+  provider as `prfOutput`, the same bytes also spare the provider's own PRF read. The authenticator
+  is asked nothing new: the restore still makes the same two assertions, and `signingKey` is still
+  `deriveSigningKeyBytes(prfOutput, did, signingKeyType)`.
+
 ## 0.14.0
 
 An identity proof is a proof and nothing else: its challenge is labelled, and no longer something a
