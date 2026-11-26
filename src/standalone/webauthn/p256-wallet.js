@@ -441,6 +441,14 @@ async function verifiesWithKey({ x, y, r, s, authenticatorData, clientData }) {
  * over this challenge, the UP or UV flag unset, a signature that is not DER or
  * does not verify against the descriptor's x/y.
  *
+ * Give this a protocol's own hash — a user operation hash, an ERC-7739 digest
+ * — and never 32 bytes somebody else chose: it signs what it is handed, and a
+ * signature over a chosen value is a signature for whatever protocol reads
+ * that value as its challenge. Identity proofs of this package no longer are
+ * such a protocol (their challenge is labelled and not 32 bytes long, see
+ * webauthn/proof-verification.js), but first-format ones were, and stay
+ * forgeable this way wherever they are still accepted.
+ *
  * @param {{rawCredentialId: Uint8Array, x: Uint8Array, y: Uint8Array, rpId: string}} descriptor
  *   from `getP256CredentialDescriptor`
  * @param {Uint8Array|ArrayBuffer} challenge exactly 32 bytes

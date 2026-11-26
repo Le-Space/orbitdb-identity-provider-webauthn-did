@@ -42,6 +42,14 @@
  *   in what `open` returns, for as long as the vault is open.
  * - It decides nothing about where a record travels. `find` is the hook for a
  *   vault kept elsewhere — in a backup, in an index.
+ * - It cannot know of a renewal it is not shown. Of the records it is shown
+ *   it takes the latest and never steps back (see `open`), but a device with
+ *   an empty store that `find` hands only the vault from before a renewal
+ *   opens that one: nothing in an old record says it was replaced. Where a
+ *   removed authenticator may be in other hands, the place `find` reads has
+ *   to hold the renewed record — and not be writable by whoever holds that
+ *   authenticator — or the application has to check `generation` and
+ *   `record.vault.id` against something it trusts.
  * - Two pages writing one store at once: the last write wins. A record is
  *   replaced whole, by its vault id.
  */
@@ -50,6 +58,7 @@ import { deriveAesKey } from './prf-keys.js';
 import {
   addSlot,
   createVault,
+  generationOf,
   openVault,
   removeSlotById,
   replacePayload as replaceVaultPayload,
@@ -154,6 +163,15 @@ const normalised = (record) => ({
   slots: Array.isArray(record.slots) ? record.slots : [],
   removed: Array.isArray(record.removed) ? record.removed.map(String) : [],
 });
+
+/** A record's generation, or -1 for one whose vault this version cannot read. */
+function generationOfRecord(record) {
+  try {
+    return generationOf(record.vault);
+  } catch {
+    return -1;
+  }
+}
 
 /** @param {Uint8Array|undefined} payload */
 function payloadBytes(payload, what) {
@@ -280,20 +298,43 @@ export function createVaultKeeper({
    * a vault of its own, and from then on its slot is found here and `find` is
    * never asked again (Le-Space/belege#524).
    *
+   * **Renewals.** `find` is asked on every unlock, also when a vault is kept
+   * here, and may return one record or several. Of everything this
+   * authenticator's slot opens, the latest generation wins: a vault renewed on
+   * another device replaces the one kept here as soon as `find` shows it, and
+   * a record from before a renewal is never taken in place of a later one —
+   * neither from `find` nor from the store. A slot only its authenticator can
+   * seal vouches for the generation, so a removed authenticator cannot pass
+   * an old vault off as newer. With a vault kept here, a `find` that fails
+   * does not stop the unlock; the error comes back as `findError`.
+   *
+   * What this cannot do is on the module description: a device with nothing
+   * kept that is shown only the old vault opens the old vault. An application
+   * that knows better — from a pointer the owner's identity signed, say —
+   * passes `minGeneration`: anything earlier is refused with
+   * `VAULT_SUPERSEDED`, before it is kept here and without a new vault being
+   * made in its place. `found` and `generation` are returned as well, for an
+   * application that checks afterwards.
+   *
    * @param {Object} unlock
    * @param {Uint8Array} unlock.prfOutput - From `readPrfOutput`.
    * @param {Uint8Array} unlock.rawCredentialId
    * @param {string} [unlock.label] - The authenticator's name, kept in public.
    * @param {() => Uint8Array | Promise<Uint8Array>} [unlock.create] - The
    *   payload of a new vault, e.g. `() => rootPayload(randomBytes)`.
-   * @param {(kid: string) => Promise<object|null>} [unlock.find] - A record
-   *   kept elsewhere, by slot id.
+   * @param {(kid: string) => Promise<object|object[]|null>} [unlock.find] -
+   *   Records kept elsewhere, by slot id: one, several, or none.
+   * @param {number} [unlock.minGeneration=0] - The generation the
+   *   application knows the vault has reached.
    * @returns {Promise<{ record: object, payload: Uint8Array,
-   *   vaultKey: Uint8Array, kid: string, created: boolean, found: boolean }>}
+   *   vaultKey: Uint8Array, kid: string, created: boolean, found: boolean,
+   *   generation: number, findError?: unknown }>}
    *   Keep it in memory while the vault is open; it holds the vault key.
+   *   `found`: the record came from `find` on this unlock. `generation`: how
+   *   many vaults this one has replaced.
    * @throws {VaultError} `VAULT_STORE_UNREADABLE`, `VAULT_SLOT_REMOVED`,
-   *   `VAULT_NO_SLOT`, or `VAULT_LOCKED` when the slot does not open with
-   *   this PRF output.
+   *   `VAULT_NO_SLOT`, `VAULT_SUPERSEDED`, or `VAULT_LOCKED` when the slot
+   *   does not open with this PRF output.
    */
   async function open({
     prfOutput,
@@ -301,31 +342,99 @@ export function createVaultKeeper({
     label,
     create,
     find,
+    minGeneration = 0,
   } = {}) {
+    if (!Number.isSafeInteger(minGeneration) || minGeneration < 0) {
+      throw new TypeError('minGeneration must be a non-negative integer');
+    }
+    const superseded = (generation) =>
+      new VaultError(
+        generation === undefined
+          ? `No vault of generation ${minGeneration} or later is at hand for this authenticator`
+          : `The vault at hand is of generation ${generation}, from before a renewal: generation ${minGeneration} or later is expected`,
+        { code: ERROR_CODES.VAULT_SUPERSEDED }
+      );
     const kid = await slotIdFor(rawCredentialId);
     const all = records();
-    let record = all.find((r) => holds(r, kid));
-    if (!record && all.some((r) => r.removed.includes(kid))) {
+    // Latest first: should the store hold a vault and the one it replaced,
+    // the one from before the renewal is not the one to open.
+    const kept = all
+      .filter((r) => holds(r, kid))
+      .sort((a, b) => generationOfRecord(b) - generationOfRecord(a))[0];
+    if (!kept && all.some((r) => r.removed.includes(kid))) {
       throw new VaultError(
         'This authenticator was removed from the vault kept here',
         { code: ERROR_CODES.VAULT_SLOT_REMOVED }
       );
     }
-    let found = false;
-    if (!record && find) {
-      const elsewhere = await find(kid);
-      if (isRecord(elsewhere) && holds(elsewhere, kid)) {
-        record = normalised(elsewhere);
-        found = true;
-      }
-    }
     const slotKey = await slotKeyOf(prfOutput);
 
+    // What is kept elsewhere is asked for on every unlock, not only when
+    // nothing is kept here: that is how a device learns its vault was renewed
+    // on another. Only what is later than the vault kept here is of interest —
+    // a copy from before a renewal must never replace the renewal.
+    const keptGeneration = kept ? generationOfRecord(kept) : -1;
+    let elsewhere = [];
+    let findError;
+    if (find) {
+      try {
+        const answer = await find(kid);
+        const holding = (Array.isArray(answer) ? answer : [answer])
+          .filter((r) => isRecord(r) && holds(r, kid))
+          .map(normalised);
+        // A record with this authenticator's slot that cannot be read — cut
+        // short, altered, or of a version this code does not know — is not
+        // "nothing found". With nothing kept here, a vault made in its place
+        // would part this device from the one it belongs to, for good: the
+        // real record, shown later, is no later than the new one.
+        if (
+          !kept &&
+          holding.length > 0 &&
+          holding.every((r) => generationOfRecord(r) < 0)
+        ) {
+          generationOf(holding[0].vault);
+        }
+        elsewhere = holding
+          .filter((r) => generationOfRecord(r) > keptGeneration)
+          .sort((a, b) => generationOfRecord(b) - generationOfRecord(a));
+      } catch (error) {
+        // With nothing kept here there is nothing to fall back on, and a
+        // failed lookup must not end in a new, empty vault.
+        if (!kept) throw error;
+        findError = error;
+      }
+    }
+
+    let record;
+    let opened;
+    let found = false;
+    for (const candidate of elsewhere) {
+      try {
+        // The number on a record is only a claim until the slot opens: the
+        // generation is part of what the slot was sealed with.
+        opened = await openVault(candidate.vault, { slotKey, rawCredentialId });
+        record = candidate;
+        found = true;
+        break;
+      } catch (error) {
+        // Not this authenticator's after all, or altered. With a vault kept
+        // here, or another candidate, that one is passed over; with neither,
+        // the caller hears why the only record it was given did not open.
+        if (!kept && candidate === elsewhere[elsewhere.length - 1]) throw error;
+      }
+    }
+    if (!record && kept) {
+      record = kept;
+      opened = await openVault(record.vault, { slotKey, rawCredentialId });
+    }
+
     if (record) {
-      const { payload, vaultKey } = await openVault(record.vault, {
-        slotKey,
-        rawCredentialId,
-      });
+      const { payload, vaultKey } = opened;
+      // Before anything is kept: a vault from before a renewal the
+      // application knows of is not adopted, and not opened for use.
+      if (generationOf(record.vault) < minGeneration) {
+        throw superseded(generationOf(record.vault));
+      }
       if (found) {
         const before = record.slots.find((slot) => slot?.kid === kid);
         record = {
@@ -339,10 +448,25 @@ export function createVaultKeeper({
               before?.addedAt ?? now().toISOString()
             ),
           ],
+          // What this device took out stays taken out across a renewal that
+          // happened elsewhere.
+          removed: [
+            ...new Set([...record.removed, ...(kept ? kept.removed : [])]),
+          ].filter((removedKid) => !holds(record, removedKid)),
         };
-        save(record);
+        // In place of the vault kept here, which it replaces.
+        save(record, kept ? kept.vault.id : record.vault.id);
       }
-      return { record, payload, vaultKey, kid, created: false, found };
+      return {
+        record,
+        payload,
+        vaultKey,
+        kid,
+        created: false,
+        found,
+        generation: generationOf(record.vault),
+        ...(findError === undefined ? {} : { findError }),
+      };
     }
 
     if (!create) {
@@ -351,6 +475,9 @@ export function createVaultKeeper({
         { code: ERROR_CODES.VAULT_NO_SLOT }
       );
     }
+    // A vault made now would be of generation 0. Where a later one is known
+    // to exist, making one is the wrong answer to not having found it.
+    if (minGeneration > 0) throw superseded();
     const payload = payloadBytes(await create(), 'create()');
     const { vault, vaultKey } = await createVault(payload, {
       slotKey,
@@ -362,7 +489,15 @@ export function createVaultKeeper({
       removed: [],
     };
     save(record);
-    return { record, payload, vaultKey, kid, created: true, found: false };
+    return {
+      record,
+      payload,
+      vaultKey,
+      kid,
+      created: true,
+      found: false,
+      generation: 0,
+    };
   }
 
   /**
@@ -448,6 +583,13 @@ export function createVaultKeeper({
    * refused here. The old record is replaced here; copies of it elsewhere
    * still open with the old slots.
    *
+   * The new vault is one generation on from the old, and every authenticator
+   * that stays vouches for that with its slot. A keeper shown both takes the
+   * new one, on any device (see `open`). **Put the renewed record wherever
+   * `find` reads from, straight away**: a device that has nothing kept and is
+   * shown only the old record cannot know it was replaced, and would go on
+   * sealing under a vault key the removed authenticator knows.
+   *
    * @param {object} opened - From `open`.
    * @param {Object} change
    * @param {Array<{ prfOutput: Uint8Array, rawCredentialId: Uint8Array }>}
@@ -511,7 +653,9 @@ export function createVaultKeeper({
         : payloadBytes(payload, 'renew’s payload');
 
     const [first, ...rest] = slots;
-    let { vault, vaultKey } = await createVault(next, first);
+    let { vault, vaultKey } = await createVault(next, first, {
+      generation: generationOf(opened.record.vault) + 1,
+    });
     for (const slot of rest) vault = await addSlot(vault, vaultKey, slot);
 
     const record = {
@@ -521,7 +665,13 @@ export function createVaultKeeper({
       removed: [...new Set([...opened.record.removed, ...out])],
     };
     save(record, opened.record.vault.id);
-    return { ...opened, record, payload: next, vaultKey };
+    return {
+      ...opened,
+      record,
+      payload: next,
+      vaultKey,
+      generation: generationOf(vault),
+    };
   }
 
   /**

@@ -1,8 +1,12 @@
 const DEFAULT_WEBAUTHN_CONFIG = Object.freeze({
   discoverableCredentials: true,
+  // Unset on purpose: legacy proofs are accepted, with one warning. `true`
+  // accepts them knowingly, `false` refuses them. See proof-verification.js.
+  acceptLegacyProofs: undefined,
 });
 
 let webauthnConfig = { ...DEFAULT_WEBAUTHN_CONFIG };
+let legacyProofNoticed = false;
 
 function hasOwn(obj, key) {
   return Object.prototype.hasOwnProperty.call(obj, key);
@@ -15,6 +19,13 @@ function normalizeWebAuthnConfig(options = {}) {
     normalized.discoverableCredentials = Boolean(
       options.discoverableCredentials
     );
+  }
+
+  if (hasOwn(options, 'acceptLegacyProofs')) {
+    normalized.acceptLegacyProofs =
+      options.acceptLegacyProofs === undefined
+        ? undefined
+        : Boolean(options.acceptLegacyProofs);
   }
 
   return normalized;
@@ -30,7 +41,19 @@ export function configureWebAuthn(options = {}) {
 
 export function resetWebAuthnConfig() {
   webauthnConfig = { ...DEFAULT_WEBAUTHN_CONFIG };
+  legacyProofNoticed = false;
   return getWebAuthnConfig();
+}
+
+/**
+ * Whether this is the first legacy proof accepted since the configuration was
+ * last reset — so that the notice about it is given once, not per proof.
+ * @returns {boolean}
+ */
+export function firstLegacyProofNotice() {
+  if (legacyProofNoticed) return false;
+  legacyProofNoticed = true;
+  return true;
 }
 
 export function getWebAuthnConfig() {

@@ -127,6 +127,37 @@ says no, a webauthn identity is checked again the way an uncached one would be �
 signature over the public key, and this provider's binding of the key to the DID. Other providers'
 identities, and anything that fails those checks, stay refused.
 
+### Identity proofs, and the first format
+
+A passkey identity carries a proof that the passkey vouches for its signing key: a WebAuthn
+assertion in `signatures.publicKey`. Until 0.14.0 that assertion's challenge was
+`SHA-256(credentialId ‖ data)` — 32 bytes, a bare hash. The same passkey may sign for other
+protocols, and a wallet signs any 32 bytes it is handed, so **one wallet signature over a value
+somebody chose was a valid identity for the passkey's DID**, for good.
+
+From 0.14.0 the challenge is labelled and longer than any hash —
+`"orbitdb-webauthn-did:v2:identity:" ‖ SHA-256(…)` — which nothing that signs a 32-byte challenge
+can produce. New identities get such a proof. Verification takes both formats by default, because
+every identity made before, and everything those identities wrote, is in the first:
+
+```javascript
+import { configureWebAuthn } from '@le-space/orbitdb-identity-provider-webauthn-did';
+
+configureWebAuthn({ acceptLegacyProofs: false }); // refuse the first format
+```
+
+- **Unset** (default): the first format verifies, with one console notice. The hole stays open on
+  this peer: an attacker forges a first-format proof whatever format the victim uses.
+- **`false`**: the first format is refused, and a device that has such a proof stored makes a new
+  one — one passkey prompt, a new identity document, the same DID. Entries written under the old
+  document no longer verify on a peer that syncs them afresh. For an application without history
+  to keep, set this from the start.
+- **`true`**: accepted knowingly, without the notice.
+
+**Rolling out.** A peer on 0.12.x or earlier cannot verify the new format. Update every peer that
+verifies identities — relays too — before any device creates a new identity proof on 0.14.0; devices
+that already have one stored keep using it and are not affected.
+
 ### Discoverable Recovery Notes
 
 For the DID-based flow:
@@ -263,6 +294,7 @@ const { authenticatorData, clientDataJSON, challengeIndex, typeIndex, r, s } =
 - **Key.** `x` and `y` are 32-byte big-endian `Uint8Array`s, like `publicKey.x`/`y` on the default path; Calibur's `abi.encode(uint256 x, uint256 y)` is the two concatenated. They come from `publicKey` (`{ x, y }` or SEC1 bytes) or, failing that, from a P-256 `did:key`; where both are present they must agree. `rpId` is the one `createCredential` returns; a credential stored before it returned one falls back to `window.location.hostname`.
 - **`null`** for RS256 and Ed25519 keys, for the placeholder `createCredential` writes when it cannot read the public key (also once largeBlob metadata has dropped its `synthetic` flag: the point is not on the curve), and for anything unreadable.
 - **Signing.** Unlike other requests, this one pins `allowCredentials` to the descriptor, whatever `configureWebAuthn` says, and requires user verification. An assertion from another credential is refused. The challenge is used as the WebAuthn challenge itself, as Calibur passes its hash.
+- **Only ever a protocol's own hash.** `signP256Challenge` signs whatever 32 bytes it is given, so give it a user operation hash or an ERC-7739 digest and never a value somebody else chose. Identity proofs made before 0.14.0 used a bare 32-byte hash as their challenge too, and one signature over a chosen value was an identity for the passkey's DID — see [Identity proofs](#identity-proofs-and-the-first-format).
 - **Result**: the fields of webauthn-sol's `WebAuthnAuth`. `r` and `s` are 32 bytes big-endian, `s` normalised to low-s (webauthn-sol refuses `s > n/2`). `clientDataJSON` is a string; `typeIndex` and `challengeIndex` are the UTF-8 byte offsets of `"type":"webauthn.get"` and `"challenge":"<base64url(challenge), unpadded>"` in it. The signature is verified against `x`/`y` before it is returned; anything a verifier would refuse throws instead.
 
 | Signing mode                                   | Descriptor                                                                                                        |

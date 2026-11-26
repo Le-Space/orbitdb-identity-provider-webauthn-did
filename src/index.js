@@ -66,6 +66,10 @@ import {
   isUnsupportedVarsigEnvelopeError,
 } from './varsig/index.js';
 
+// What a proof is about, and which format one is in — for an application
+// deciding when it can stop accepting the first format.
+export { PROOF_CONTEXTS, proofFormat } from './webauthn/proof-verification.js';
+
 export {
   WebAuthnDIDProvider,
   OrbitDBWebAuthnIdentityProvider,
@@ -344,6 +348,7 @@ export {
   removeSlot,
   replacePayload,
   slotIdFor,
+  generationOf,
 } from './keystore/vault.js';
 // Where the vaults are kept, and what every unlock does with them.
 export {

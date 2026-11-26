@@ -460,6 +460,14 @@ What a vault does not do:
   what the old one protected.
 - **It cannot tell the current record from an earlier copy of itself.** Where a
   rollback matters, the place the record is stored has to say which is current.
+  What it can tell, since 0.14.0, is which of two records is the later
+  _renewal_: a vault that replaces another is version 2 and carries a
+  `generation`, sealed into every slot, so each authenticator that stays vouches
+  for it and a removed one — which knows the old vault key and nothing more —
+  cannot raise it. `generationOf(vault)` reads it (0 for a vault made fresh,
+  which stays version 1 and opens with earlier versions of this package; a
+  renewed vault does not). No record can say that a later one exists somewhere
+  it was not shown.
 - **It does not make two keys one person.** Each authenticator keeps its own DID
   and signing key; who may write to a database is its access controller's
   decision.
@@ -504,11 +512,28 @@ await keeper.addPasskey(opened, {
   a record kept elsewhere — a backup, an index — and keeps it here once it has
   opened; without that it makes a new vault holding `create()`, with this
   authenticator's slot. It returns `{ record, payload, vaultKey, kid, created,
-found }`; keep that in memory while the vault is open, it holds the vault key.
+found, generation }`; keep that in memory while the vault is open, it holds the
+  vault key.
 - Pass `find` on every unlock where the vault may be kept elsewhere, not only
   on a restore path. A synced passkey on a new device otherwise makes a vault
   of its own, and from then on `open` finds that one here and never asks
   `find` again (Le-Space/belege#524).
+- **After a renewal**, `find` is how the other devices learn of it. It is asked
+  on every unlock — also when a vault is kept here — and may return one record
+  or several. Of everything this authenticator's slot opens, the latest
+  generation wins: a vault renewed elsewhere replaces the one kept here as soon
+  as `find` shows it, and a copy from before a renewal is never taken in place
+  of a later one. With a vault kept here, a `find` that fails does not stop the
+  unlock; the error comes back as `findError`.
+- **What that cannot do:** a device with nothing kept, shown only the vault from
+  before a renewal, opens that vault — and seals what follows under a key the
+  removed authenticator knows. So put the renewed record wherever `find` reads
+  from straight away, and keep that place from being written by whoever holds
+  the removed key. An application that knows the generation the vault has
+  reached, from something it trusts (a pointer the owner's identity signed, for
+  one), passes `minGeneration`: anything earlier is refused with
+  `VAULT_SUPERSEDED`, before it is kept here and without a new vault being made
+  instead.
 - An authenticator removed here is refused (`VAULT_SLOT_REMOVED`), never given
   a new vault: for an application whose books existed before the vault, that
   would be a stale copy that looks like the real books.
@@ -521,7 +546,9 @@ found }`; keep that in memory while the vault is open, it holds the vault key.
   vault id, with a slot for every authenticator that stays. Every one of them
   answers with its PRF output, checked against its slot, so none is left out
   by mistake; the ones in `removed` are taken out. A new `payload` replaces
-  keys a removed authenticator must not know.
+  keys a removed authenticator must not know. The new vault is one generation
+  on from the old. It protects what is sealed from then on **on devices that
+  have it**: see `find` above for the ones that do not yet.
 - `replacePayload(opened, payload)`, `status(rawCredentialId)` (is there a
   vault here for this key, without asking it?) and `records()`.
 
@@ -541,8 +568,9 @@ it with `deriveSubkey(root, info)`, so the vault never changes when the
 application needs one more key. Belege's vaults hold exactly that.
 
 More refusals from the keeper, as `VaultError` codes: `VAULT_STORE_UNREADABLE`,
-`VAULT_SLOT_REMOVED`, and `VAULT_SLOT_IN_USE` — the authenticator that opened
-the vault cannot remove itself, or be left out of a renewal.
+`VAULT_SLOT_REMOVED`, `VAULT_SLOT_IN_USE` — the authenticator that opened
+the vault cannot remove itself, or be left out of a renewal — and
+`VAULT_SUPERSEDED`, when nothing at hand reaches `minGeneration`.
 
 #### An identity that is nobody's passkey: `createSecretSigner(secret, { info })`
 

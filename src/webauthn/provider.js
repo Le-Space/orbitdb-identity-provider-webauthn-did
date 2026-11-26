@@ -32,6 +32,8 @@ import { prfInputForRelyingParty } from './prf-input.js';
 import {
   p256PublicKeyBytes,
   verifyWebAuthnProof,
+  proofChallenge,
+  PROOF_CONTEXTS,
 } from './proof-verification.js';
 import { beforePasskeyCeremony } from '../passkey-steps.js';
 
@@ -648,11 +650,19 @@ export class WebAuthnDIDProvider {
    * Creates a persistent signature that can be verified multiple times
    */
   /**
-   * Sign arbitrary data with WebAuthn.
+   * Sign data with WebAuthn, as a proof `verify()` accepts.
+   *
+   * The challenge is not a bare hash of the data: it carries a label and the
+   * `context`, so the assertion cannot double as a signature for another
+   * protocol the same passkey signs for, nor a proof made for an application
+   * as an identity binding (`context: 'identity'`, which only the identity
+   * provider asks for). See proof-verification.js.
+   *
    * @param {string|Uint8Array} data - Data to sign.
+   * @param {{ context?: string }} [options] - default `'data'`
    * @returns {Promise<string>} Base64url-encoded signature envelope.
    */
-  async sign(data) {
+  async sign(data, { context = PROOF_CONTEXTS.DATA } = {}) {
     if (!WebAuthnDIDProvider.isSupported()) {
       webauthnLog.error('WebAuthn is not supported in this browser');
       throw new WebAuthnNotSupportedError();
@@ -684,16 +694,14 @@ export class WebAuthnDIDProvider {
         dataHashStr
       );
 
-      // Create a deterministic challenge based on the credential ID and data
-      const combined = new Uint8Array(
-        this.rawCredentialId.length + dataBytes.length
-      );
-      combined.set(this.rawCredentialId, 0);
-      combined.set(dataBytes, this.rawCredentialId.length);
-      const challenge = await crypto.subtle.digest(
-        CRYPTO_ALGORITHMS.SHA_256,
-        combined
-      );
+      // A deterministic challenge from the credential ID, the data and the
+      // context — labelled, and longer than any hash, so it is a proof and
+      // nothing else.
+      const challenge = await proofChallenge({
+        credentialId: this.rawCredentialId,
+        data: dataBytes,
+        context,
+      });
       const challengeHashStr = Array.from(new Uint8Array(challenge))
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('')
@@ -803,15 +811,18 @@ export class WebAuthnDIDProvider {
    * @param {string} signatureData base64url proof from `sign()`
    * @param {string|Uint8Array} data the signed data
    * @param {Uint8Array|{x: ArrayLike<number>, y: ArrayLike<number>}} publicKey P-256 key
+   * @param {{ context?: string, acceptLegacyProofs?: boolean | undefined }} [options]
+   *   the context the proof was made in (default `'data'`), and whether a
+   *   proof in the first format may pass (default: `configureWebAuthn`)
    * @returns {Promise<boolean>}
    */
-  async verify(signatureData, data, publicKey) {
+  async verify(signatureData, data, publicKey, options) {
     const keyBytes = p256PublicKeyBytes(publicKey);
     if (!keyBytes || data === undefined) {
       webauthnLog('verify() needs the signed data and a P-256 public key');
       return false;
     }
-    return verifyWebAuthnProof(signatureData, data, keyBytes);
+    return verifyWebAuthnProof(signatureData, data, keyBytes, options);
   }
 
   static arrayBufferToBase64url(buffer) {

@@ -145,6 +145,14 @@ export interface CreateCredentialOptions {
 
 export interface WebAuthnConfig {
   discoverableCredentials?: boolean;
+  /**
+   * Whether identity proofs in the first format (before 0.14.0) verify, and
+   * are kept in use by a device that has one stored. Unset: accepted, with
+   * one console notice. `true`: accepted knowingly. `false`: refused — the
+   * only setting under which a 32-byte signature by the same passkey cannot
+   * be turned into an identity.
+   */
+  acceptLegacyProofs?: boolean | undefined;
   userVerification?: UserVerificationRequirement;
   /** Not read by `configureWebAuthn`; give `createCredential` an `authenticatorType`. */
   authenticatorAttachment?: AuthenticatorAttachment;
@@ -215,9 +223,29 @@ export class WebAuthnDIDProvider {
   static createDID(credentialInfo: WebAuthnCredentialInfo): Promise<string>;
   static arrayBufferToBase64url(buffer: ArrayBuffer | ArrayBufferView): string;
   static base64urlToArrayBuffer(base64url: string): ArrayBuffer;
-  sign(data: string | Uint8Array): Promise<string>;
-  verify(signatureData: string): Promise<boolean>;
+  /** A proof over `data`; `context` defaults to `'data'`. */
+  sign(
+    data: string | Uint8Array,
+    options?: { context?: string }
+  ): Promise<string>;
+  /** Whether `signatureData` is a proof over `data` by `publicKey`, made in `context` (default `'data'`). */
+  verify(
+    signatureData: string,
+    data: string | Uint8Array,
+    publicKey: Uint8Array | { x: ArrayLike<number>; y: ArrayLike<number> },
+    options?: { context?: string; acceptLegacyProofs?: boolean | undefined }
+  ): Promise<boolean>;
 }
+
+/** What a proof from `WebAuthnDIDProvider.sign` is about. Identity bindings use `IDENTITY`. */
+export const PROOF_CONTEXTS: Readonly<{ IDENTITY: 'identity'; DATA: 'data' }>;
+
+/**
+ * Which format a proof is in, by its challenge: `2` for the current one
+ * (labelled, longer than a hash), `1` for the first (a bare 32-byte hash),
+ * `null` for anything else. Verifies nothing.
+ */
+export function proofFormat(encodedProof: unknown): 1 | 2 | null;
 
 export class OrbitDBWebAuthnIdentityProvider {
   constructor(options?: Record<string, unknown>);
@@ -649,10 +677,16 @@ export function deriveAesKey(
  * nothing secret in the clear.
  */
 export interface Vault {
-  version: 1;
+  /** 1 for a vault made fresh; 2 for one that replaces another, with `generation`. */
+  version: 1 | 2;
   algorithm: 'AES-GCM';
   /** 16 random bytes, hex. */
   id: string;
+  /**
+   * Version 2 only: how many vaults this one has replaced, at least 1. Bound
+   * into every ciphertext, so each slot vouches for it.
+   */
+  generation?: number;
   payload: { iv: string; ciphertext: string };
   slots: Array<{
     /** SHA-256 of the authenticator's raw credential id, hex. */
@@ -672,8 +706,17 @@ export interface VaultSlotKey {
 /** A new vault with one slot, for the authenticator that creates it. */
 export function createVault(
   payload: Uint8Array,
-  firstSlot: VaultSlotKey
+  firstSlot: VaultSlotKey,
+  /** `generation`: for a vault that replaces another, `generationOf(replaced) + 1`. */
+  options?: { generation?: number }
 ): Promise<{ vault: Vault; vaultKey: Uint8Array }>;
+
+/**
+ * How many vaults this one has replaced: 0 for a vault made fresh. Of two
+ * records an authenticator's slot opens, the higher generation is the later.
+ * Read from the record — only opening it shows the number is genuine.
+ */
+export function generationOf(vault: Vault): number;
 
 /** Throws `VaultError`: `VAULT_NO_SLOT`, `VAULT_LOCKED`, `VAULT_MALFORMED`. */
 export function openVault(
@@ -743,7 +786,8 @@ export type VaultErrorCode =
   | 'VAULT_LAST_SLOT'
   | 'VAULT_STORE_UNREADABLE'
   | 'VAULT_SLOT_REMOVED'
-  | 'VAULT_SLOT_IN_USE';
+  | 'VAULT_SLOT_IN_USE'
+  | 'VAULT_SUPERSEDED';
 
 declare const defaultExport: {
   WebAuthnDIDProvider: typeof WebAuthnDIDProvider;

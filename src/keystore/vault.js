@@ -28,7 +28,18 @@
  *   rollback matters, the place the record is stored has to say which is
  *   current.
  *
- * Format, version 1:
+ * What it does do about earlier copies: a vault that replaces another — made
+ * because an authenticator was lost or stolen — carries a **generation**, one
+ * more than the vault it replaces, bound into every ciphertext. A slot is
+ * sealed under a key only its authenticator derives, so a slot that opens at
+ * generation 3 is that authenticator's word that it took part in making
+ * generation 3; nobody else can raise the number for it, the removed
+ * authenticator included, which knows the old vault key and nothing more.
+ * Given two records its slot opens, whoever holds them can tell which is
+ * later (`generationOf`). What no record can say is that a later one exists
+ * somewhere it was not shown.
+ *
+ * Format, version 1 — a vault that replaces none, generation 0:
  *
  *     {
  *       "version": 1,
@@ -43,16 +54,23 @@
  *
  * Associated data, part of the format: `@le-space/vault:v1:payload:<id>` for
  * the payload, `@le-space/vault:v1:slot:<id>:<kid>` for each slot.
+ *
+ * Format, version 2 — a vault that replaces another: the same, with
+ * `"version": 2` and `"generation": <integer, 1 or more>`, and the generation
+ * at the end of the associated data: `@le-space/vault:v2:payload:<id>:<generation>`
+ * and `@le-space/vault:v2:slot:<id>:<kid>:<generation>`. Code that only knows
+ * version 1 refuses such a record as malformed, which is the right answer to
+ * a vault it cannot place.
  */
 import { ERROR_CODES, VaultError } from '../errors.js';
 
 const VERSION = 1;
+const GENERATION_VERSION = 2;
 const ALGORITHM = 'AES-GCM';
 const KEY_BYTES = 32;
 const IV_BYTES = 12;
 const ID_BYTES = 16;
 const TAG_BYTES = 16;
-const AAD_PREFIX = `@le-space/vault:v${VERSION}`;
 const encoder = new TextEncoder();
 
 const HEX = /^(?:[0-9a-f]{2})*$/;
@@ -81,8 +99,25 @@ function bytesOf(value, what) {
   throw new TypeError(`${what} must be bytes`);
 }
 
-const payloadAad = (id) => encoder.encode(`${AAD_PREFIX}:payload:${id}`);
-const slotAad = (id, kid) => encoder.encode(`${AAD_PREFIX}:slot:${id}:${kid}`);
+/** The end of the associated data: nothing for version 1, the generation after. */
+const generationSuffix = (vault) =>
+  vault.version === GENERATION_VERSION ? `:${vault.generation}` : '';
+
+/** @param {{ version: number, id: string, generation?: number }} vault */
+const payloadAad = (vault) =>
+  encoder.encode(
+    `@le-space/vault:v${vault.version}:payload:${vault.id}${generationSuffix(vault)}`
+  );
+
+/** @param {{ version: number, id: string, generation?: number }} vault @param {string} kid */
+const slotAad = (vault, kid) =>
+  encoder.encode(
+    `@le-space/vault:v${vault.version}:slot:${vault.id}:${kid}${generationSuffix(vault)}`
+  );
+
+/** @param {unknown} generation */
+const isGeneration = (generation) =>
+  Number.isSafeInteger(generation) && /** @type {number} */ (generation) >= 0;
 
 /**
  * An AES-GCM key from a CryptoKey or 32 raw bytes.
@@ -161,14 +196,21 @@ const isHex = (value, bytes) =>
   (bytes === undefined || value.length === 2 * bytes);
 
 /**
- * Throws unless `vault` has the shape of a version-1 vault.
+ * Throws unless `vault` has the shape of a vault: version 1 without a
+ * generation, or version 2 with one of at least 1.
  * @param {unknown} vault
  */
 function assertVault(vault) {
-  const ok =
+  const versioned =
     vault &&
     typeof vault === 'object' &&
-    vault.version === VERSION &&
+    (vault.version === VERSION
+      ? vault.generation === undefined
+      : vault.version === GENERATION_VERSION &&
+        isGeneration(vault.generation) &&
+        vault.generation >= 1);
+  const ok =
+    versioned &&
     vault.algorithm === ALGORITHM &&
     isHex(vault.id, ID_BYTES) &&
     vault.payload &&
@@ -184,7 +226,7 @@ function assertVault(vault) {
         isHex(slot.ciphertext, KEY_BYTES + TAG_BYTES)
     );
   if (!ok) {
-    throw new VaultError('Not a version-1 vault', {
+    throw new VaultError('Not a vault this version can read', {
       code: ERROR_CODES.VAULT_MALFORMED,
     });
   }
@@ -195,6 +237,9 @@ const copyOf = (vault) => ({
   version: vault.version,
   algorithm: vault.algorithm,
   id: vault.id,
+  ...(vault.version === GENERATION_VERSION
+    ? { generation: vault.generation }
+    : {}),
   payload: { iv: vault.payload.iv, ciphertext: vault.payload.ciphertext },
   slots: vault.slots.map((slot) => ({
     kid: slot.kid,
@@ -231,8 +276,25 @@ async function provenVaultKey(vault, vaultKey) {
     );
   }
   const key = await aesKey(vaultKey, 'vaultKey');
-  await open(key, vault.payload, payloadAad(vault.id), 'The vault');
+  await open(key, vault.payload, payloadAad(vault), 'The vault');
   return key;
+}
+
+/**
+ * How many vaults this one has replaced, one after another: 0 for a vault
+ * made fresh, one more for each renewal. Of two records an authenticator's
+ * slot opens, the one with the higher generation is the later — see the
+ * module description for why that can be believed, and what it cannot tell.
+ *
+ * Read from the record; only opening it shows the number is genuine.
+ *
+ * @param {object} vault
+ * @returns {number}
+ * @throws {VaultError} `VAULT_MALFORMED`
+ */
+export function generationOf(vault) {
+  assertVault(vault);
+  return vault.version === GENERATION_VERSION ? vault.generation : 0;
 }
 
 /**
@@ -244,10 +306,21 @@ async function provenVaultKey(vault, vaultKey) {
  * @param {Object} firstSlot
  * @param {CryptoKey|Uint8Array} firstSlot.slotKey - From `deriveAesKey`.
  * @param {Uint8Array} firstSlot.rawCredentialId
+ * @param {Object} [options]
+ * @param {number} [options.generation=0] - For a vault that replaces another:
+ *   `generationOf(replaced) + 1`. Every authenticator given a slot in it
+ *   vouches for that number.
  * @returns {Promise<{ vault: object, vaultKey: Uint8Array }>} The record to
  *   store, and the vault key to keep in memory while the vault is open.
  */
-export async function createVault(payload, { slotKey, rawCredentialId } = {}) {
+export async function createVault(
+  payload,
+  { slotKey, rawCredentialId } = {},
+  { generation = 0 } = {}
+) {
+  if (!isGeneration(generation)) {
+    throw new TypeError('generation must be a non-negative integer');
+  }
   const plaintext = bytesOf(payload, 'payload');
   const slotCryptoKey = await aesKey(slotKey, 'slotKey');
   const kid = await slotIdFor(rawCredentialId);
@@ -256,13 +329,15 @@ export async function createVault(payload, { slotKey, rawCredentialId } = {}) {
   const id = toHex(crypto.getRandomValues(new Uint8Array(ID_BYTES)));
   const vaultCryptoKey = await aesKey(vaultKey, 'vaultKey');
 
+  const header =
+    generation === 0
+      ? { version: VERSION, algorithm: ALGORITHM, id }
+      : { version: GENERATION_VERSION, algorithm: ALGORITHM, id, generation };
   const vault = {
-    version: VERSION,
-    algorithm: ALGORITHM,
-    id,
-    payload: await seal(vaultCryptoKey, plaintext, payloadAad(id)),
+    ...header,
+    payload: await seal(vaultCryptoKey, plaintext, payloadAad(header)),
     slots: [
-      { kid, ...(await seal(slotCryptoKey, vaultKey, slotAad(id, kid))) },
+      { kid, ...(await seal(slotCryptoKey, vaultKey, slotAad(header, kid))) },
     ],
   };
   return { vault, vaultKey };
@@ -291,13 +366,13 @@ export async function openVault(vault, { slotKey, rawCredentialId } = {}) {
   const vaultKey = await open(
     await aesKey(slotKey, 'slotKey'),
     slot,
-    slotAad(vault.id, kid),
+    slotAad(vault, kid),
     'The slot'
   );
   const payload = await open(
     await aesKey(vaultKey, 'vaultKey'),
     vault.payload,
-    payloadAad(vault.id),
+    payloadAad(vault),
     'The vault'
   );
   return { payload, vaultKey };
@@ -333,7 +408,7 @@ export async function addSlot(
   const sealed = await seal(
     await aesKey(slotKey, 'slotKey'),
     bytesOf(vaultKey, 'vaultKey'),
-    slotAad(vault.id, kid)
+    slotAad(vault, kid)
   );
   const next = copyOf(vault);
   next.slots.push({ kid, ...sealed });
@@ -402,7 +477,7 @@ export async function replacePayload(vault, vaultKey, payload) {
   next.payload = await seal(
     key,
     bytesOf(payload, 'payload'),
-    payloadAad(vault.id)
+    payloadAad(vault)
   );
   return next;
 }

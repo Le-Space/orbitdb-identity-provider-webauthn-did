@@ -1,5 +1,112 @@
 # Changes
 
+## 0.14.0
+
+An identity proof is a proof and nothing else: its challenge is labelled, and no longer something a
+signature made for another protocol can stand in for.
+
+A vault that replaces another says so, and a keeper never steps back to the one from before.
+
+### Breaking
+
+- **New identity proofs are in a new format, which 0.12.x and earlier cannot verify.** Update every
+  peer that verifies identities — relays included — before any device creates a new identity proof
+  on 0.14.0. A device that already has a proof stored keeps using it, so nothing changes for it until
+  the application refuses the first format (below).
+
+### Security
+
+- **One 32-byte signature by the passkey could be turned into an identity for its DID.** The proof in
+  `signatures.publicKey` is a WebAuthn assertion, and its challenge was `SHA-256(credentialId ‖ data)`
+  — 32 bytes, a bare hash. The same passkey may sign for other protocols: since 0.8.0 it is meant to
+  be a wallet key, and `signP256Challenge` signs any 32 bytes it is given. So a signature over a value
+  somebody chose was, byte for byte, an identity proof for whatever that value hashed. An application
+  that let the passkey sign one attacker-supplied "hash" handed out a permanent binding of the
+  attacker's key to the victim's DID — proofs do not expire. Nothing this package ships signs chosen
+  values (`@le-space/passkey-wallet` signs keccak hashes only), which is why this is a hazard for
+  applications rather than a hole in them all. Found in an audit of 0.12.2.
+
+  A label inside the hash would not have helped, since whoever picks the 32 bytes can hash the label
+  in. The challenge itself is now
+  `"orbitdb-webauthn-did:v2:<context>:" ‖ SHA-256(len(credentialId) ‖ credentialId ‖ data)`: longer
+  than any hash and starting with text, so nothing that signs a 32-byte challenge can produce it, and
+  a proof cannot pass for a wallet signature either. The context keeps an identity binding
+  (`identity`) apart from what `WebAuthnDIDProvider.sign(data)` makes for an application (`data`): a
+  proof over text an application was handed is not an identity. The credential id, which the proof
+  names and the verifier cannot check, is length-prefixed. A proof in this format must also show the
+  user was verified, not merely present — `sign()` always asked for it, and nothing checked.
+
+- **The first format still verifies unless the application refuses it**, because every identity made
+  before, and everything those identities wrote, is in it. While it does, the hole is open on the
+  verifying side — an attacker forges a first-format proof whatever format the victim uses.
+  `configureWebAuthn({ acceptLegacyProofs: false })` refuses it; a device with such a proof stored
+  then makes a new one (one passkey prompt, a new identity document, the same DID), and entries
+  written under the old document no longer verify on a peer that syncs them afresh. Unset, a
+  first-format proof is accepted with one console notice; `true` accepts without it. An application
+  with no history to keep should refuse from the start. See the README, "Identity proofs, and the
+  first format".
+
+- **A vault from before a renewal was taken as readily as the renewal.** `renew` is the answer to a
+  stolen authenticator: a new vault key, a new vault, no slot for the key that went. The old record
+  still exists wherever it was copied to, still opens for the authenticators that stayed, and still
+  carries the stolen one's slot. A keeper took whatever `find` gave it and — once it kept a vault —
+  never asked again, so a device shown the old record sealed everything that followed under a vault
+  key the stolen authenticator knows, and a device that had adopted it stayed there for good. Found
+  in an audit of 0.12.2.
+
+  A renewed vault now carries a **generation**, one more than the vault it replaces, sealed into
+  every slot (vault format version 2). A slot is sealed under a key only its authenticator derives,
+  so each one that stays vouches for the number, and a removed authenticator — which knows the old
+  vault key and nothing more — cannot pass an old vault off as newer. The keeper asks `find` on every
+  unlock, takes one record or several, and of everything this authenticator's slot opens keeps the
+  latest: a renewal made elsewhere is picked up as soon as it is shown, and nothing older than the
+  vault kept here is ever taken. A record with this authenticator's slot that cannot be read — cut
+  short, altered, or of a later format — is refused (`VAULT_MALFORMED`) on a device with nothing
+  kept, as before, rather than passed over: a new vault made in its place would part the device from
+  the real one for good.
+
+  **What this cannot do:** a device with nothing kept, shown _only_ the old record, still opens it —
+  no record says it was replaced. Put the renewed record wherever `find` reads from at once, and
+  where the generation is known from something trusted, pass `open({ minGeneration })`: anything
+  earlier is refused (`VAULT_SUPERSEDED`), neither kept nor replaced by a new vault.
+
+  A vault made fresh is unchanged — version 1, generation 0, byte for byte what 0.12.x wrote and
+  reads. A _renewed_ vault is version 2, which 0.12.x refuses as malformed: update every device
+  before renewing.
+
+### Fixed
+
+- **A cancel at the keystore step no longer makes the identity without it.** With
+  `encryptKeystore`, `createIdentity` caught every failure to create or unlock the encrypted
+  keystore, logged it and went on, and the two wrapped what they caught in an error of their own. So
+  a person who pressed Cancel on the step announced since 0.13.0 got an identity whose keystore key
+  is not sealed, or, with `useKeystoreDID`, the same prompt again and then a plain `Error`.
+  `PasskeyStepCancelled` now passes through all of them unchanged, as 0.13.0 promised.
+
+### Added
+
+- `generationOf(vault)` and `createVault(payload, slot, { generation })` in the main entry,
+  `./standalone` and `./vault`; `open({ find, minGeneration })` on the vault keeper, where `find` may
+  return several records, and `generation` and `findError` on what it returns; the `VaultError` code
+  `VAULT_SUPERSEDED`.
+- `configureWebAuthn({ acceptLegacyProofs })`; `sign(data, { context })` and
+  `verify(proof, data, publicKey, { context, acceptLegacyProofs })` on `WebAuthnDIDProvider`;
+  `PROOF_CONTEXTS` and `proofFormat(proof)` (`1`, `2` or `null`, by the challenge) in the main entry.
+
+Tested in `tests/identity-proof-context.test.js`: the attack itself — a wallet signature over a
+chosen 32 bytes verifies as an identity for the victim's DID in the first format, and no longer once
+it is refused; the wallet signer refuses a current-format challenge; a proof made for an application
+is not an identity; a touch without verification is not enough; and a device keeps a stored
+first-format proof while it is accepted and replaces it once it is refused.
+
+And in `tests/vault-generation.test.js`: the generation is sealed into slot and payload, and a
+removed authenticator relabelling the old vault as newer gets a record that does not open; shown the
+old and the renewed record in either order a device opens the renewed one; a device on the old vault
+moves forward when shown the renewal, and one on the renewal is not moved back; `minGeneration`
+refuses the old vault before it is kept; a record that cannot be read makes no vault of its own —
+and, stated as a test, the limit above. The cancel at the keystore step is in
+`tests/passkey-steps.test.js`, through `createIdentity` with and without `useKeystoreDID`.
+
 ## 0.13.0
 
 An application can now say, before each passkey prompt, what it is for — and `./elements` brings a

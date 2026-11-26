@@ -10,8 +10,14 @@ import * as KeystoreEncryption from './encryption.js';
 import { ensureDerivedSigningKey } from './derived-signing-key.js';
 import { assertSigner, isSessionKeystore } from './session-keystore.js';
 import { PrfUnavailableError } from '../errors.js';
+import { PasskeyStepCancelled } from '../passkey-steps.js';
 import { WebAuthnDIDProvider } from '../webauthn/provider.js';
-import { verifyWebAuthnIdentityBinding } from '../webauthn/proof-verification.js';
+import { getWebAuthnConfig } from '../webauthn/config.js';
+import {
+  PROOF_CONTEXTS,
+  proofFormat,
+  verifyWebAuthnIdentityBinding,
+} from '../webauthn/proof-verification.js';
 import {
   identityProofKey,
   loadIdentityProof,
@@ -429,6 +435,8 @@ export class OrbitDBWebAuthnIdentityProvider {
       }
       return did;
     } catch (error) {
+      // A cancel is the person's answer, not a failure to report as another.
+      if (error instanceof PasskeyStepCancelled) throw error;
       identityLog.error(
         'Failed to create Ed25519 DID from keystore: %s',
         error.message
@@ -605,6 +613,7 @@ export class OrbitDBWebAuthnIdentityProvider {
       identityLog('Encrypted keystore created and stored successfully');
     } catch (error) {
       if (error instanceof PrfUnavailableError) throw error;
+      if (error instanceof PasskeyStepCancelled) throw error;
       identityLog.error(
         'Failed to create encrypted keystore: %s',
         error.message
@@ -686,6 +695,7 @@ export class OrbitDBWebAuthnIdentityProvider {
 
       return this.unlockedKeypair;
     } catch (error) {
+      if (error instanceof PasskeyStepCancelled) throw error;
       identityLog.error(
         'Failed to unlock encrypted keystore: %s',
         error.message
@@ -737,15 +747,29 @@ export class OrbitDBWebAuthnIdentityProvider {
 
     const proofKey = await identityProofKey(this.credential.credentialId, data);
     const stored = loadIdentityProof(proofKey);
-    if (stored) {
+    // A proof stored before 0.14.0 is in the first format. It keeps the
+    // identity document this device has been writing under, so it stays in
+    // use for as long as such proofs are accepted at all; once the
+    // application refuses them, nobody would take it, and a new one is made.
+    const refused =
+      stored &&
+      proofFormat(stored) !== 2 &&
+      getWebAuthnConfig().acceptLegacyProofs === false;
+    if (stored && !refused) {
       identityLog(
         'Reusing stored identity proof, so the identity document stays stable'
       );
       return stored;
     }
 
-    identityLog('No stored identity proof; requesting a WebAuthn assertion');
-    const proof = await this.webauthnProvider.sign(data);
+    identityLog(
+      refused
+        ? 'Stored identity proof is in the legacy format, which is refused; requesting a new one'
+        : 'No stored identity proof; requesting a WebAuthn assertion'
+    );
+    const proof = await this.webauthnProvider.sign(data, {
+      context: PROOF_CONTEXTS.IDENTITY,
+    });
     storeIdentityProof(proofKey, proof);
     return proof;
   }
@@ -762,7 +786,8 @@ export class OrbitDBWebAuthnIdentityProvider {
     return this.webauthnProvider.verify(
       signature,
       data,
-      publicKey || this.credential.publicKey
+      publicKey || this.credential.publicKey,
+      { context: PROOF_CONTEXTS.IDENTITY }
     );
   }
 
@@ -820,6 +845,9 @@ export class OrbitDBWebAuthnIdentityProvider {
         identityLog('✅ Encrypted keystore created and unlocked successfully');
         identityLog('Encrypted keystore created and unlocked');
       } catch (error) {
+        // A cancel stops the action. Carrying on would make the identity
+        // without the encrypted keystore the person was asked to unlock.
+        if (error instanceof PasskeyStepCancelled) throw error;
         // Log error visibly so users know encryption failed
         console.error('❌ Failed to setup encrypted keystore:', error.message);
         console.error('   Full error:', error);

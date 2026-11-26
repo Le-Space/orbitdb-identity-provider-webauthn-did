@@ -14,6 +14,7 @@ export const ERROR_CODES = Object.freeze({
   VAULT_STORE_UNREADABLE: 'VAULT_STORE_UNREADABLE',
   VAULT_SLOT_REMOVED: 'VAULT_SLOT_REMOVED',
   VAULT_SLOT_IN_USE: 'VAULT_SLOT_IN_USE',
+  VAULT_SUPERSEDED: 'VAULT_SUPERSEDED',
 });
 
 export class WebAuthnIdentityError extends Error {
@@ -101,8 +102,10 @@ export class PrfUnavailableError extends KeystoreEncryptionError {
  * (`VAULT_SLOT_EXISTS`), or the slot is the last one (`VAULT_LAST_SLOT`).
  * From the vault keeper also: the vaults kept in a store cannot be read
  * (`VAULT_STORE_UNREADABLE`), the authenticator was removed from the vault
- * kept there (`VAULT_SLOT_REMOVED`), or it is the one that opened the vault
- * and so cannot remove itself (`VAULT_SLOT_IN_USE`).
+ * kept there (`VAULT_SLOT_REMOVED`), it is the one that opened the vault
+ * and so cannot remove itself (`VAULT_SLOT_IN_USE`), or the only vault at
+ * hand is from before a renewal the application knows of
+ * (`VAULT_SUPERSEDED`).
  */
 export class VaultError extends KeystoreEncryptionError {
   constructor(message, options = {}) {

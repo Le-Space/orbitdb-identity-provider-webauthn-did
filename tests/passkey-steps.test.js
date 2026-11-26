@@ -16,6 +16,8 @@ import {
   PasskeyStepCancelled,
   PASSKEY_PURPOSES,
   restoreIdentityFromAuthenticator,
+  OrbitDBWebAuthnIdentityProvider,
+  createSessionKeystore,
 } from '../src/index.js';
 import * as standalone from '../src/standalone/index.js';
 import { getPrfOutput } from '../src/keystore/derived-signing-key.js';
@@ -115,6 +117,34 @@ test.describe('passkey steps', () => {
 
     expect(authenticator.state.assertions - before).toBe(0);
   });
+
+  for (const useKeystoreDID of [false, true]) {
+    test(`a cancel at the keystore step stops createIdentity (useKeystoreDID: ${useKeystoreDID})`, async () => {
+      const credential = await WebAuthnDIDProvider.createCredential({
+        userId: 'alice',
+        displayName: 'Alice',
+      });
+      setPasskeyStepHandler((step) => {
+        asked.push(step);
+        if (step.purpose === 'keystore') throw new PasskeyStepCancelled();
+      });
+      const keystore = await createSessionKeystore();
+
+      // createIdentity used to log the failure and carry on, so the identity
+      // came out without the encrypted keystore the person had declined.
+      const creating = withPasskeySteps({ of: 3, askFirst: true }, () =>
+        OrbitDBWebAuthnIdentityProvider.createIdentity({
+          webauthnCredential: credential,
+          encryptKeystore: true,
+          keystore,
+          useKeystoreDID,
+          ...(useKeystoreDID ? { keystoreKeyType: 'Ed25519' } : {}),
+        })
+      );
+      await expect(creating).rejects.toBeInstanceOf(PasskeyStepCancelled);
+      expect(asked.map((step) => step.purpose)).toEqual(['keystore']);
+    });
+  }
 
   test('the handler is awaited: the prompt starts only once it resolves', async () => {
     const credential = await WebAuthnDIDProvider.createCredential({

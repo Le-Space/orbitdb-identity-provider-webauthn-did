@@ -19,6 +19,7 @@ export {
   removeSlot,
   replacePayload,
   slotIdFor,
+  generationOf,
 } from '../keystore/vault.js';
 export {
   createVaultKeeper,

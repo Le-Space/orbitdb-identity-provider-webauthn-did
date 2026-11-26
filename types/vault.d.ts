@@ -15,6 +15,7 @@ export {
   removeSlot,
   replacePayload,
   slotIdFor,
+  generationOf,
   createVaultKeeper,
   rootPayload,
   rootOf,

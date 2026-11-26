@@ -91,6 +91,7 @@ test('the ./vault entry offers the vault, its keeper and the PRF keys', async ()
       'createVaultKeeper',
       'deriveAesKey',
       'deriveSubkey',
+      'generationOf',
       'openVault',
       'readPrfOutput',
       'removeSlot',

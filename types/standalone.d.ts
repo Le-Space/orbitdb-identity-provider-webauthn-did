@@ -335,10 +335,16 @@ export function deriveAesKey(
  * nothing secret in the clear.
  */
 export interface Vault {
-  version: 1;
+  /** 1 for a vault made fresh; 2 for one that replaces another, with `generation`. */
+  version: 1 | 2;
   algorithm: 'AES-GCM';
   /** 16 random bytes, hex. */
   id: string;
+  /**
+   * Version 2 only: how many vaults this one has replaced, at least 1. Bound
+   * into every ciphertext, so each slot vouches for it.
+   */
+  generation?: number;
   payload: { iv: string; ciphertext: string };
   slots: Array<{
     /** SHA-256 of the authenticator's raw credential id, hex. */
@@ -358,8 +364,17 @@ export interface VaultSlotKey {
 /** A new vault with one slot, for the authenticator that creates it. */
 export function createVault(
   payload: Uint8Array,
-  firstSlot: VaultSlotKey
+  firstSlot: VaultSlotKey,
+  /** `generation`: for a vault that replaces another, `generationOf(replaced) + 1`. */
+  options?: { generation?: number }
 ): Promise<{ vault: Vault; vaultKey: Uint8Array }>;
+
+/**
+ * How many vaults this one has replaced: 0 for a vault made fresh. Of two
+ * records an authenticator's slot opens, the higher generation is the later.
+ * Read from the record — only opening it shows the number is genuine.
+ */
+export function generationOf(vault: Vault): number;
 
 /** Throws `VaultError`: `VAULT_NO_SLOT`, `VAULT_LOCKED`, `VAULT_MALFORMED`. */
 export function openVault(
@@ -424,8 +439,12 @@ export interface OpenedVault {
   kid: string;
   /** Made by this `open`. */
   created: boolean;
-  /** Came from `find`, and is kept here now. */
+  /** Came from `find` on this unlock, and is kept here now. */
   found: boolean;
+  /** How many vaults this one has replaced; see `generationOf`. */
+  generation: number;
+  /** `find` failed while a vault kept here was opened instead. */
+  findError?: unknown;
 }
 
 /** An authenticator's answer: its PRF output, for its credential. */
@@ -445,12 +464,26 @@ export interface VaultKeeper {
   /**
    * Open the vault this authenticator has a slot in; else one `find` returns;
    * else a new one holding `create()`. Throws `VAULT_SLOT_REMOVED` for an
-   * authenticator removed here, `VAULT_NO_SLOT` without `create`.
+   * authenticator removed here, `VAULT_NO_SLOT` without `create`,
+   * `VAULT_SUPERSEDED` when nothing at hand reaches `minGeneration`.
    */
   open(
     unlock: VaultPasskey & {
+      /**
+       * The generation the application knows the vault has reached, from
+       * something it trusts. Anything earlier is refused, and neither kept
+       * nor replaced by a new vault.
+       */
+      minGeneration?: number;
       create?: () => Uint8Array | Promise<Uint8Array>;
-      find?: (kid: string) => Promise<VaultRecord | null | undefined>;
+      /**
+       * Records kept elsewhere, by slot id: one, several or none. Asked on
+       * every unlock; the latest generation this authenticator's slot opens
+       * wins, and nothing older than the vault kept here is taken.
+       */
+      find?: (
+        kid: string
+      ) => Promise<VaultRecord | VaultRecord[] | null | undefined>;
     }
   ): Promise<OpenedVault>;
   /** A slot for one more authenticator. Throws `VAULT_SLOT_EXISTS`. */
@@ -521,7 +554,8 @@ export type VaultErrorCode =
   | 'VAULT_LAST_SLOT'
   | 'VAULT_STORE_UNREADABLE'
   | 'VAULT_SLOT_REMOVED'
-  | 'VAULT_SLOT_IN_USE';
+  | 'VAULT_SLOT_IN_USE'
+  | 'VAULT_SUPERSEDED';
 
 /** The authenticator answered without a PRF output; nothing stands in for it. */
 export class PrfUnavailableError extends Error {
